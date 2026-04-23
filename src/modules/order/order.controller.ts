@@ -1,0 +1,101 @@
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common'
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import type { Request } from 'express'
+import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { OptionalJwtAuthGuard } from 'src/common/guards/optional-jwt-auth.guard'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Roles } from 'src/common/decorators/roles.decorator'
+import { Role } from 'src/common/types/enums'
+import { JWTPayload } from 'src/common/types/jwt-payload'
+import { OrderService } from './order.service'
+import { CreateOrderDto } from './dto/create-order.dto'
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
+import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto'
+import { SetTtnDto } from './dto/set-ttn.dto'
+import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
+import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
+import { OrderListResponseDto, OrderResponseDto } from './dto/order-response.dto'
+
+@Controller(ENDPOINTS.ORDERS.BASE)
+@ApiTags(ENDPOINTS.ORDERS.BASE)
+export class OrderController {
+	constructor(private readonly orderService: OrderService) {}
+
+	@Post(ENDPOINTS.ORDERS.CREATE)
+	@UseGuards(OptionalJwtAuthGuard)
+	@ApiOperation(API_OPERATION.ORDERS.CREATE)
+	create(@Body() dto: CreateOrderDto, @Req() req: Request) {
+		const userId = (req.user as JWTPayload | undefined)?.id
+		return this.orderService.create(dto, userId)
+	}
+
+	@Get(ENDPOINTS.ORDERS.GET_ALL)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.GET_ALL)
+	@ApiOkResponse({ type: OrderListResponseDto })
+	findAll(@Query() query: GetOrdersQueryDto) {
+		return this.orderService.findAll(query)
+	}
+
+	@Get(ENDPOINTS.ORDERS.MY)
+	@UseGuards(JwtAuthGuard)
+	@ApiOperation(API_OPERATION.ORDERS.MY)
+	@ApiOkResponse({ type: OrderListResponseDto })
+	findMyOrders(@Req() req: Request, @Query() query: GetOrdersQueryDto) {
+		const userId = (req.user as JWTPayload).id
+		return this.orderService.findMyOrders(userId, query)
+	}
+
+	@Get(ENDPOINTS.ORDERS.MY_BY_ID)
+	@UseGuards(JwtAuthGuard)
+	@ApiOperation(API_OPERATION.ORDERS.MY_BY_ID)
+	@ApiOkResponse({ type: OrderResponseDto })
+	findMyOrderById(@Req() req: Request, @Param('id') id: string) {
+		const userId = (req.user as JWTPayload).id
+		return this.orderService.findMyOrderById(userId, id)
+	}
+
+	@Get(ENDPOINTS.ORDERS.GET_BY_ID)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.GET_BY_ID)
+	@ApiOkResponse({ type: OrderResponseDto })
+	findById(@Param('id') id: string) {
+		return this.orderService.findById(id)
+	}
+
+	@Patch(ENDPOINTS.ORDERS.UPDATE)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.UPDATE)
+	@ApiOkResponse({ type: OrderResponseDto })
+	update(@Param('id') id: string, @Body() dto: AdminUpdateOrderDto) {
+		return this.orderService.update(id, dto)
+	}
+
+	@Patch(ENDPOINTS.ORDERS.UPDATE_ORDER_STATUS)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.UPDATE_ORDER_STATUS)
+	updateOrderStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
+		return this.orderService.updateOrderStatus(id, dto)
+	}
+
+	@Patch(ENDPOINTS.ORDERS.UPDATE_PAYMENT_STATUS)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.UPDATE_PAYMENT_STATUS)
+	updatePaymentStatus(@Param('id') id: string, @Body() dto: UpdatePaymentStatusDto) {
+		return this.orderService.updatePaymentStatus(id, dto)
+	}
+
+	@Patch(ENDPOINTS.ORDERS.SET_TTN)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.SET_TTN)
+	setTtn(@Param('id') id: string, @Body() dto: SetTtnDto) {
+		return this.orderService.setTtn(id, dto)
+	}
+}

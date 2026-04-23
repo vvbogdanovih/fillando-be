@@ -1,0 +1,84 @@
+import { Injectable, Logger } from '@nestjs/common'
+import { Resend } from 'resend'
+import { ENV } from 'src/common/constants'
+import {
+	OrderIbanConfirmationData,
+	orderIbanConfirmationTemplate
+} from './templates/order-iban-confirmation.template/order-iban-confirmation.template'
+import {
+	serviceOrderCreatedTemplate,
+	ServiceOrderCreatedEmailData
+} from './templates/service/order-iban-confirmation.template/order-created-service.template'
+
+@Injectable()
+export class EmailService {
+	private readonly logger = new Logger(EmailService.name)
+	private readonly resend = new Resend(ENV.RESEND_API_KEY)
+
+	private async send(options: {
+		to: string | string[]
+		subject: string
+		html: string
+		from?: string
+	}) {
+		const { to, subject, html, from = 'Fillando <noreply@fillando.com>' } = options
+		if (!ENV.ALLOW_EMAIL_SENDING) {
+			this.logger.debug(
+				{ to, subject },
+				'Email sending skipped because ALLOW_EMAIL_SENDING is disabled'
+			)
+			return { id: 'skipped' }
+		}
+		const { data, error } = await this.resend.emails.send({ from, to, subject, html })
+		if (error) {
+			this.logger.error({ error }, 'Failed to send email')
+			throw new Error(error.message)
+		}
+		return data
+	}
+
+	async sendOrderIbanConfirmation(
+		to: string,
+		orderNumber: string,
+		details: Omit<OrderIbanConfirmationData, 'orderNumber'>
+	): Promise<void> {
+		const customerEmail = this.send({
+			to,
+			subject: `Замовлення ${orderNumber} успішно створено`,
+			html: orderIbanConfirmationTemplate({ orderNumber, ...details })
+		})
+
+		const serviceData: ServiceOrderCreatedEmailData = {
+			orderNumber,
+			orderStatus: details.orderStatus,
+			paymentStatus: details.paymentStatus,
+			paymentType: 'IBAN',
+			customer: {
+				name: details.customer.name,
+				phone: details.customer.phone,
+				email: to
+			},
+			items: details.items.map(item => ({
+				name: item.name,
+				sku: item.sku,
+				vendor_sku: item.vendor_sku,
+				image: item.image,
+				price: item.price,
+				quantity: item.quantity
+			})),
+			subtotalPrice: details.subtotalPrice,
+			totalPrice: details.totalPrice,
+			appliedDiscount: details.appliedDiscount ?? null,
+			deliveryMethod: details.deliveryMethod,
+			deliveryAddress: details.deliveryAddress
+		}
+
+		const serviceEmail = this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Нове замовлення ${orderNumber}`,
+			html: serviceOrderCreatedTemplate(serviceData)
+		})
+
+		await Promise.all([customerEmail, serviceEmail])
+	}
+}

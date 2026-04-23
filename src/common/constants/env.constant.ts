@@ -1,0 +1,104 @@
+import { z } from 'zod'
+import { fromZodError } from 'zod-validation-error'
+import 'dotenv/config'
+
+const envSchema = z.object({
+	DATABASE_URL: z.string().min(1),
+
+	GOOGLE_CLIENT_ID: z.string().min(1),
+	GOOGLE_CLIENT_SECRET: z.string().min(1),
+	GOOGLE_CALLBACK_URL: z.string().min(1),
+
+	JWT_SECRET: z.string().min(10),
+	JWT_EXPIRATION: z.coerce.number(),
+	ACCSESS_TOKEN_NAME: z.string().min(1),
+
+	REFRESH_JWT_SECRET: z.string().min(10),
+	REFRESH_JWT_EXPIRATION: z.coerce.number(),
+	REFRESH_TOKEN_NAME: z.string().min(1),
+
+	PASSWORD_PEPPER: z.string().min(16),
+
+	AWS_REGION: z.string().min(1),
+	AWS_ACCESS_KEY_ID: z.string().min(1),
+	AWS_SECRET_ACCESS_KEY: z.string().min(1),
+	AWS_S3_BUCKET_NAME: z.string().min(1),
+	AWS_S3_PUBLIC_URL: z.string().url(),
+
+	NOVA_POS_API_KEY: z.string().min(1),
+
+	RESEND_API_KEY: z.string().min(1),
+	SERVICE_EMAIL: z.string().email(),
+	ALLOW_EMAIL_SENDING: z.coerce.boolean().default(true),
+
+	FRONTEND_URL: z.string().min(1),
+	PORT: z.coerce.number(),
+
+	NODE_ENV: z.enum(['development', 'production']).default('development'),
+	LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info')
+})
+
+type EnvSchema = z.infer<typeof envSchema>
+
+const getParsedEnv = (): EnvSchema => {
+	const result = envSchema.safeParse({
+		DATABASE_URL: process.env.DATABASE_URL,
+		GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+		GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+		GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL,
+		JWT_SECRET: process.env.JWT_SECRET,
+		JWT_EXPIRATION: process.env.JWT_EXPIRATION,
+		ACCSESS_TOKEN_NAME: process.env.ACCSESS_TOKEN_NAME,
+		REFRESH_JWT_SECRET: process.env.REFRESH_JWT_SECRET,
+		REFRESH_JWT_EXPIRATION: process.env.REFRESH_JWT_EXPIRATION,
+		REFRESH_TOKEN_NAME: process.env.REFRESH_TOKEN_NAME,
+		PASSWORD_PEPPER: process.env.PASSWORD_PEPPER,
+		AWS_REGION: process.env.AWS_REGION,
+		AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+		AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+		AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
+		AWS_S3_PUBLIC_URL: process.env.AWS_S3_PUBLIC_URL,
+		NOVA_POS_API_KEY: process.env.NOVA_POS_API_KEY,
+		RESEND_API_KEY: process.env.RESEND_API_KEY,
+		SERVICE_EMAIL: process.env.SERVICE_EMAIL,
+		ALLOW_EMAIL_SENDING: process.env.ALLOW_EMAIL_SENDING,
+		FRONTEND_URL: process.env.FRONTEND_URL,
+		PORT: process.env.PORT,
+		NODE_ENV: process.env.NODE_ENV,
+		LOG_LEVEL: process.env.LOG_LEVEL
+	})
+	if (!result.success) {
+		console.log('error', result.error)
+		throw new Error(fromZodError(result.error).toString())
+	}
+	return result.data
+}
+
+const validatedEnv = getParsedEnv()
+
+export const ENV = {
+	DATABASE_URL: validatedEnv.DATABASE_URL,
+	GOOGLE_CLIENT_ID: validatedEnv.GOOGLE_CLIENT_ID,
+	GOOGLE_CLIENT_SECRET: validatedEnv.GOOGLE_CLIENT_SECRET,
+	GOOGLE_CALLBACK_URL: validatedEnv.GOOGLE_CALLBACK_URL,
+	JWT_SECRET: validatedEnv.JWT_SECRET,
+	JWT_EXPIRATION: validatedEnv.JWT_EXPIRATION,
+	ACCSESS_TOKEN_NAME: validatedEnv.ACCSESS_TOKEN_NAME,
+	REFRESH_JWT_SECRET: validatedEnv.REFRESH_JWT_SECRET,
+	REFRESH_JWT_EXPIRATION: validatedEnv.REFRESH_JWT_EXPIRATION,
+	REFRESH_TOKEN_NAME: validatedEnv.REFRESH_TOKEN_NAME,
+	PASSWORD_PEPPER: validatedEnv.PASSWORD_PEPPER,
+	AWS_REGION: validatedEnv.AWS_REGION,
+	AWS_ACCESS_KEY_ID: validatedEnv.AWS_ACCESS_KEY_ID,
+	AWS_SECRET_ACCESS_KEY: validatedEnv.AWS_SECRET_ACCESS_KEY,
+	AWS_S3_BUCKET_NAME: validatedEnv.AWS_S3_BUCKET_NAME,
+	AWS_S3_PUBLIC_URL: validatedEnv.AWS_S3_PUBLIC_URL,
+	NOVA_POS_API_KEY: validatedEnv.NOVA_POS_API_KEY,
+	RESEND_API_KEY: validatedEnv.RESEND_API_KEY,
+	SERVICE_EMAIL: validatedEnv.SERVICE_EMAIL,
+	ALLOW_EMAIL_SENDING: validatedEnv.ALLOW_EMAIL_SENDING,
+	FRONTEND_URL: validatedEnv.FRONTEND_URL,
+	PORT: validatedEnv.PORT,
+	NODE_ENV: validatedEnv.NODE_ENV,
+	LOG_LEVEL: validatedEnv.LOG_LEVEL
+} as const

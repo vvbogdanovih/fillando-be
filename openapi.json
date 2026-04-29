@@ -2145,6 +2145,62 @@
         ]
       }
     },
+    "/users": {
+      "get": {
+        "description": "Paginated list of all users with optional role filter. Admin only.",
+        "operationId": "UsersController_findAll",
+        "parameters": [
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "USER",
+                "ADMIN"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsersListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get all users",
+        "tags": [
+          "/users"
+        ]
+      }
+    },
     "/users/me": {
       "get": {
         "description": "Returns the profile of the authenticated user",
@@ -3503,6 +3559,85 @@
             "default": true
           }
         }
+      },
+      "UserListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "664f1b2c3d4e5f6a7b8c9d0e"
+          },
+          "email": {
+            "type": "string",
+            "example": "ivan@example.com"
+          },
+          "name": {
+            "type": "string",
+            "example": "Іван Петренко"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "ADMIN"
+            ]
+          },
+          "phone": {
+            "type": "object",
+            "example": "+380991234567",
+            "nullable": true
+          },
+          "authMethod": {
+            "type": "string",
+            "enum": [
+              "EMAIL",
+              "GOOGLE",
+              "GITHUB"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "phone",
+          "authMethod",
+          "createdAt"
+        ]
+      },
+      "UsersListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserListItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
       },
       "UpdateMeDto": {
         "type": "object",

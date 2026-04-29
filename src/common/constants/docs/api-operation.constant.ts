@@ -34,6 +34,10 @@ export const API_OPERATION = {
 		}
 	},
 	USERS: {
+		GET_ALL: {
+			summary: 'Get all users',
+			description: 'Paginated list of all users with optional role filter. Admin only.'
+		},
 		ME: {
 			summary: 'Get my profile',
 			description: 'Returns the profile of the authenticated user'

@@ -11,6 +11,7 @@ export const ENDPOINTS = {
 	},
 	USERS: {
 		BASE: '/users',
+		GET_ALL: '/',
 		ME: '/me'
 	},
 	CATEGORIES: {

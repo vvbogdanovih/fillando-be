@@ -4,13 +4,45 @@ import {
 	Injectable,
 	NotFoundException
 } from '@nestjs/common'
+import { Types } from 'mongoose'
 import { UserRepository } from 'src/database/mongoose/repositories/user.repository'
+import { User } from 'src/database/mongoose/schemas/user.schema'
 import { JWTPayload } from 'src/common/types/jwt-payload'
 import { UpdateMeDto } from './dto/update-me.dto'
+import { GetUsersQueryDto } from './dto/get-users-query.dto'
+
+type LeanUser = User & { _id: Types.ObjectId; createdAt: Date }
 
 @Injectable()
 export class UsersService {
 	constructor(private readonly userRepository: UserRepository) {}
+
+	async findAll(query: GetUsersQueryDto) {
+		const { page = 1, limit = 20, role } = query
+		const filter: Record<string, unknown> = {}
+		if (role) filter.role = role
+
+		const skip = (page - 1) * limit
+		const [items, total] = await Promise.all([
+			this.userRepository.findAllPaginated(filter, skip, limit),
+			this.userRepository.countDocuments(filter)
+		])
+
+		return {
+			items: (items as LeanUser[]).map(user => ({
+				id: user._id.toString(),
+				email: user.email,
+				name: user.name,
+				role: user.role,
+				phone: user.phone ?? null,
+				authMethod: user.authMethod,
+				createdAt: user.createdAt
+			})),
+			total,
+			page,
+			limit
+		}
+	}
 
 	async getMe(user: JWTPayload) {
 		const found = await this.userRepository.findById(user.id)

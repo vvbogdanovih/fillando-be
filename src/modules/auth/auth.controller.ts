@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import {
-	AccessTokenLifetime,
 	API_OPERATION,
 	ENDPOINTS,
 	ENV,
@@ -31,7 +30,7 @@ export class AuthController {
 			httpOnly: true,
 			secure: false,
 			sameSite: 'lax',
-			maxAge: AccessTokenLifetime.ms
+			maxAge: RefreshTokenLifetime.ms
 		})
 	}
 

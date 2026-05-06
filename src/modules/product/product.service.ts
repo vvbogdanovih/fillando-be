@@ -99,9 +99,7 @@ export class ProductService {
 					variants.map(async variant => {
 						const systemSku = await this.generateSku()
 						const slug = generateSlug(
-							variant.v_value
-								? `${product.name} ${variant.v_value}`
-								: product.name
+							variant.v_value ? `${product.name} ${variant.v_value}` : product.name
 						)
 						return this.productVariantRepository.create({
 							...variant,
@@ -219,6 +217,8 @@ export class ProductService {
 			patch.name = dto.v_value ? `${product.name} — ${dto.v_value}` : product.name
 			patch.slug = generateSlug(dto.v_value ? `${product.name} ${dto.v_value}` : product.name)
 		}
+		if ('price' in dto) patch.price_updated_at = new Date()
+		if ('stock' in dto) patch.stock_updated_at = new Date()
 
 		const updated = await this.productVariantRepository.update(
 			{

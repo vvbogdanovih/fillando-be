@@ -34,6 +34,12 @@ export class ProductVariant {
 	@Prop()
 	vendor_product_sku?: string
 
+	@Prop({ type: Date, default: null })
+	price_updated_at: Date | null
+
+	@Prop({ type: Date, default: null })
+	stock_updated_at: Date | null
+
 	@Prop({ type: String, enum: ProductStatus, default: ProductStatus.ACTIVE })
 	status: ProductStatus
 }

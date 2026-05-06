@@ -3,8 +3,9 @@
  *
  * Fetches all product variants belonging to the NicePrice vendor that have
  * a `vendor_product_sku`, scrapes the current price on the vendor site,
- * and updates the `price` field in MongoDB to `vendor_price * 1.1` (rounded
- * to a whole number — no kopecks).
+ * and updates the `price` field in MongoDB using a tiered markup (25% for
+ * 0-300 ₴, 13% for 300-500 ₴, 11% for 500-1500 ₴, 10% for 1500-5000 ₴,
+ * 8% for 5000+ ₴), rounded to a whole number — no kopecks.
  *
  * Usage:
  *   node scripts/AvailabilityCheck/UpdatePriceNicePrice.js
@@ -23,13 +24,24 @@ if (!DATABASE_URL) {
 }
 const DELAY_MS = 1500 // delay between HTTP requests to the vendor site
 const DRY_RUN = false // set to true to print results without writing to the database
-const MARKUP = 1.1 // price multiplier
+const SKIP_IF_UPDATED_WITHIN_MS = 12 * 60 * 60 * 1000 // skip variant if price was updated less than 12 hours ago
 
 const BASE_URL = 'https://npshop.com.ua'
 const SEARCH_BASE = `${BASE_URL}/ua/site_search`
 const HTTP_TIMEOUT_MS = 20000
 const USER_AGENT =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+// ── Pricing ──────────────────────────────────────────────────────────────────
+
+/** Tiered markup based on vendor price range */
+function getMarkup(vendorPrice) {
+	if (vendorPrice <= 300) return 1.25
+	if (vendorPrice <= 500) return 1.13
+	if (vendorPrice <= 1500) return 1.11
+	if (vendorPrice <= 5000) return 1.10
+	return 1.08
+}
 
 // ── Scraping helpers ─────────────────────────────────────────────────────────
 
@@ -144,6 +156,7 @@ const ProductVariantSchema = new mongoose.Schema(
 		product_id: mongoose.Schema.Types.ObjectId,
 		vendor_product_sku: String,
 		price: Number,
+		price_updated_at: Date,
 		status: String
 	},
 	{ collection: 'product_variants' }
@@ -161,7 +174,7 @@ async function main() {
 
 	const variants = await ProductVariant.find(
 		{ vendor_product_sku: { $exists: true, $ne: '' } },
-		'_id vendor_product_sku price'
+		'_id vendor_product_sku price price_updated_at'
 	).lean()
 	console.log(`Found ${variants.length} variants with vendor_product_sku.\n`)
 
@@ -171,12 +184,19 @@ async function main() {
 		return
 	}
 
-	const results = { updated: 0, skipped: 0, errors: 0 }
+	const results = { updated: 0, skipped: 0, fresh: 0, errors: 0 }
+	const now = Date.now()
 
 	for (let i = 0; i < variants.length; i++) {
 		const variant = variants[i]
 		const sku = variant.vendor_product_sku
 		const prefix = `[${i + 1}/${variants.length}] ${sku}`
+
+		if (variant.price_updated_at && now - new Date(variant.price_updated_at).getTime() < SKIP_IF_UPDATED_WITHIN_MS) {
+			console.log(`${prefix} → FRESH (updated ${variant.price_updated_at.toISOString()}), skipping`)
+			results.fresh++
+			continue
+		}
 
 		let result
 		try {
@@ -198,16 +218,19 @@ async function main() {
 		}
 
 		const prevPrice = variant.price ?? 0
-		const newPrice = Math.round(result.vendorPrice * MARKUP)
+		const markup = getMarkup(result.vendorPrice)
+		const newPrice = Math.round(result.vendorPrice * markup)
 
 		const changed = prevPrice !== newPrice
 		const changeLabel = changed ? `${prevPrice} → ${newPrice}` : `${newPrice} (unchanged)`
 		console.log(
-			`${prefix} → vendor: ${result.vendorPrice} ₴ × ${MARKUP} = ${newPrice} ₴ | ${changeLabel}${result.productName ? ` | "${result.productName}"` : ''}`
+			`${prefix} → vendor: ${result.vendorPrice} ₴ × ${markup} = ${newPrice} ₴ | ${changeLabel}${result.productName ? ` | "${result.productName}"` : ''}`
 		)
 
-		if (!DRY_RUN && changed) {
-			await ProductVariant.updateOne({ _id: variant._id }, { $set: { price: newPrice } })
+		if (!DRY_RUN) {
+			const $set = { price_updated_at: new Date() }
+			if (changed) $set.price = newPrice
+			await ProductVariant.updateOne({ _id: variant._id }, { $set })
 		}
 
 		if (changed) results.updated++
@@ -220,6 +243,7 @@ async function main() {
 	console.log('\n── Summary ─────────────────────────────────────')
 	console.log(`  Total variants : ${variants.length}`)
 	console.log(`  Updated        : ${results.updated}`)
+	console.log(`  Fresh (skipped): ${results.fresh}`)
 	console.log(`  Skipped        : ${results.skipped}`)
 	console.log(`  Errors         : ${results.errors}`)
 	if (DRY_RUN) console.log('  [dry-run] No changes were written.')

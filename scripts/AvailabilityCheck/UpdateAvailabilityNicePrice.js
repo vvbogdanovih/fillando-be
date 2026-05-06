@@ -22,6 +22,7 @@ if (!DATABASE_URL) {
 }
 const DELAY_MS = 1500 // delay between HTTP requests to the vendor site
 const DRY_RUN = false // set to true to print results without writing to the database
+const SKIP_IF_UPDATED_WITHIN_MS = 12 * 60 * 60 * 1000 // skip variant if stock was updated less than 12 hours ago
 
 const BASE_URL = 'https://npshop.com.ua'
 const SEARCH_BASE = `${BASE_URL}/ua/site_search`
@@ -152,6 +153,7 @@ const ProductVariantSchema = new mongoose.Schema(
 		product_id: mongoose.Schema.Types.ObjectId,
 		vendor_product_sku: String,
 		stock: Number,
+		stock_updated_at: Date,
 		status: String
 	},
 	{ collection: 'product_variants' }
@@ -171,7 +173,7 @@ async function main() {
 	// Find all variants that have a vendor_product_sku (NicePrice-sourced variants)
 	const variants = await ProductVariant.find(
 		{ vendor_product_sku: { $exists: true, $ne: '' } },
-		'_id vendor_product_sku stock'
+		'_id vendor_product_sku stock stock_updated_at'
 	).lean()
 	console.log(`Found ${variants.length} variants with vendor_product_sku.\n`)
 
@@ -182,12 +184,19 @@ async function main() {
 	}
 
 	// 4. Check each variant and update
-	const results = { updated: 0, skipped: 0, errors: 0 }
+	const results = { updated: 0, skipped: 0, fresh: 0, errors: 0 }
+	const now = Date.now()
 
 	for (let i = 0; i < variants.length; i++) {
 		const variant = variants[i]
 		const sku = variant.vendor_product_sku
 		const prefix = `[${i + 1}/${variants.length}] ${sku}`
+
+		if (variant.stock_updated_at && now - new Date(variant.stock_updated_at).getTime() < SKIP_IF_UPDATED_WITHIN_MS) {
+			console.log(`${prefix} → FRESH (updated ${variant.stock_updated_at.toISOString()}), skipping`)
+			results.fresh++
+			continue
+		}
 
 		let result
 		try {
@@ -217,11 +226,14 @@ async function main() {
 			`${prefix} → stock: ${changeLabel}${result.presenceText ? ` | "${result.presenceText}"` : ''}`
 		)
 
-		if (!DRY_RUN && changed) {
-			await ProductVariant.updateOne({ _id: variant._id }, { $set: { stock: newStock } })
+		if (!DRY_RUN) {
+			const $set = { stock_updated_at: new Date() }
+			if (changed) $set.stock = newStock
+			await ProductVariant.updateOne({ _id: variant._id }, { $set })
 		}
 
-		if (changed || !DRY_RUN) results.updated++
+		if (changed) results.updated++
+		else results.skipped++
 
 		if (i < variants.length - 1) await sleep(DELAY_MS)
 	}
@@ -230,6 +242,7 @@ async function main() {
 	console.log('\n── Summary ─────────────────────────────────────')
 	console.log(`  Total variants : ${variants.length}`)
 	console.log(`  Updated        : ${results.updated}`)
+	console.log(`  Fresh (skipped): ${results.fresh}`)
 	console.log(`  Skipped        : ${results.skipped}`)
 	console.log(`  Errors         : ${results.errors}`)
 	if (DRY_RUN) console.log('  [dry-run] No changes were written.')

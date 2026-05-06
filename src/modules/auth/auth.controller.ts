@@ -1,11 +1,6 @@
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
-import {
-	API_OPERATION,
-	ENDPOINTS,
-	ENV,
-	RefreshTokenLifetime
-} from 'src/common/constants'
+import { API_OPERATION, ENDPOINTS, ENV, RefreshTokenLifetime } from 'src/common/constants'
 import { AuthService } from './auth.service'
 import { PinoLogger } from 'nestjs-pino'
 import { AuthGuard } from '@nestjs/passport'

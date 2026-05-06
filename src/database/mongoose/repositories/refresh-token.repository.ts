@@ -11,7 +11,7 @@ export class RefreshTokenRepository extends BaseRepository<RefreshToken> {
 	}
 
 	findByTokenHash(hash: string): Promise<HydratedDocument<RefreshToken> | null> {
-		return this.model.findOne({ token: hash }).populate('userId').exec()
+		return this.model.findOne({ token: hash }).exec()
 	}
 
 	async deleteByTokenHash(hash: string): Promise<void> {

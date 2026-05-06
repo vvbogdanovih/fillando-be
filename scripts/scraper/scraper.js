@@ -6,7 +6,7 @@ const path = require('path')
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const ARTICLES_FILE = 'scripts/scraper/articles.txt'
-const OUTPUT_DIR = '/Users/vladyslav/Desktop/Fillando/Filaments/PLA_PLUS'
+const OUTPUT_DIR = '/Users/vladyslav/Desktop/AssetsFilando/Filaments/PLA'
 const REPORT_FILE = 'scripts/scraper/report.json'
 
 const CONCURRENCY = 3

@@ -85,7 +85,7 @@ Every time a refresh token is saved (`saveRefreshToken`):
 2. The raw token is **hashed with SHA256** before being written — the plaintext token never touches the database.
 3. The record stores: `token` (hash), `userId`, `expiresAt`, `ipAddress`, `userAgent` (parsed browser/OS string).
 
-`findByTokenHash` uses `.populate('userId')` so the `userId` field is resolved to the full `User` document on read.
+`findByTokenHash` returns the raw `RefreshToken` document without populating `userId` — the refresh flow only needs the `ObjectId` to save the rotated token.
 
 ---
 

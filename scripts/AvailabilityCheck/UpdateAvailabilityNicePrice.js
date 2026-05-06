@@ -11,10 +11,15 @@
 
 const axios = require('axios')
 const mongoose = require('mongoose')
+require('dotenv').config()
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const DATABASE_URL = 'mongodb://fillando_dev_user:hE0noG8qaI6ezU4rkA3pcW7gdS9mwP@195.72.145.206:27017/fillando-dev?authSource=fillando-dev'
+const DATABASE_URL = process.env.DATABASE_URL
+if (!DATABASE_URL) {
+	console.error('DATABASE_URL is not set. Check your .env file.')
+	process.exit(1)
+}
 const DELAY_MS = 1500 // delay between HTTP requests to the vendor site
 const DRY_RUN = false // set to true to print results without writing to the database
 
@@ -121,8 +126,9 @@ async function checkAvailability(sku) {
 	if (typeof dom.quantity === 'number') {
 		stock = dom.quantity
 	} else if (dom.presenceText) {
-		// "є в наявності", "в наявності" → treat as 1; anything else → 0
-		stock = /наявн/i.test(dom.presenceText) ? 1 : 0
+		// "є в наявності", "в наявності" → treat as 1
+		// "Немає в наявності" → treat as 0
+		stock = /наявн/i.test(dom.presenceText) && !/немає/i.test(dom.presenceText) ? 1 : 0
 	}
 
 	return {

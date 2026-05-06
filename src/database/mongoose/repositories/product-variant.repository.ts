@@ -153,7 +153,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			pipeline.push({ $match: { $and: attrConditions } })
 		}
 
-		const sortStage: Record<string, 1 | -1> =
+		const userSort: Record<string, 1 | -1> =
 			sort === 'price_asc'
 				? { price: 1 }
 				: sort === 'price_desc'
@@ -161,7 +161,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					: { _id: -1 }
 
 		pipeline.push(
-			{ $sort: sortStage },
+			{ $addFields: { _outOfStock: { $cond: [{ $gt: ['$stock', 0] }, 0, 1] } } },
+			{ $sort: { _outOfStock: 1, ...userSort } as Record<string, 1 | -1> },
 			{
 				$facet: {
 					items: [

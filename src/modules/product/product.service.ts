@@ -98,6 +98,11 @@ export class ProductService {
 			? await Promise.all(
 					variants.map(async variant => {
 						const systemSku = await this.generateSku()
+						const slug = generateSlug(
+							variant.v_value
+								? `${product.name} ${variant.v_value}`
+								: product.name
+						)
 						return this.productVariantRepository.create({
 							...variant,
 							sku: systemSku,
@@ -109,11 +114,7 @@ export class ProductService {
 							name: variant.v_value
 								? `${product.name} — ${variant.v_value}`
 								: product.name,
-							slug: generateSlug(
-								variant.v_value
-									? `${product.name} ${variant.v_value}`
-									: product.name
-							),
+							slug,
 							stock: variant.stock ?? 0,
 							images: variant.images ?? []
 						} as any)

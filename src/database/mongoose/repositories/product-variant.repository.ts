@@ -55,7 +55,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			this.model
 				.find(
 					{ product_id: variant.product_id },
-					{ _id: 1, name: 1, slug: 1, price: 1, v_value: 1, images: 1 }
+					{ _id: 1, name: 1, slug: 1, price: 1, v_value: 1, images: 1, stock: 1 }
 				)
 				.lean()
 				.exec(),
@@ -98,6 +98,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				name: s.name,
 				slug: s.slug,
 				price: s.price,
+				stock: s.stock,
 				v_value: s.v_value,
 				images: s.images
 			})),

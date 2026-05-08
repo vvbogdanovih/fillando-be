@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Resend } from 'resend'
 import { ENV } from 'src/common/constants'
 import {
+	OrderCashConfirmationData,
+	orderCashConfirmationTemplate
+} from './templates/order-cash-confirmation.template/order-cash-confirmation.template'
+import {
 	OrderIbanConfirmationData,
 	orderIbanConfirmationTemplate
 } from './templates/order-iban-confirmation.template/order-iban-confirmation.template'
@@ -53,6 +57,51 @@ export class EmailService {
 			orderStatus: details.orderStatus,
 			paymentStatus: details.paymentStatus,
 			paymentType: 'IBAN',
+			customer: {
+				name: details.customer.name,
+				phone: details.customer.phone,
+				email: to
+			},
+			items: details.items.map(item => ({
+				name: item.name,
+				sku: item.sku,
+				vendor_sku: item.vendor_sku,
+				image: item.image,
+				price: item.price,
+				quantity: item.quantity
+			})),
+			subtotalPrice: details.subtotalPrice,
+			totalPrice: details.totalPrice,
+			appliedDiscount: details.appliedDiscount ?? null,
+			deliveryMethod: details.deliveryMethod,
+			deliveryAddress: details.deliveryAddress
+		}
+
+		const serviceEmail = this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Нове замовлення ${orderNumber}`,
+			html: serviceOrderCreatedTemplate(serviceData)
+		})
+
+		await Promise.all([customerEmail, serviceEmail])
+	}
+
+	async sendOrderCashConfirmation(
+		to: string,
+		orderNumber: string,
+		details: Omit<OrderCashConfirmationData, 'orderNumber'>
+	): Promise<void> {
+		const customerEmail = this.send({
+			to,
+			subject: `Замовлення ${orderNumber} успішно створено`,
+			html: orderCashConfirmationTemplate({ orderNumber, ...details })
+		})
+
+		const serviceData: ServiceOrderCreatedEmailData = {
+			orderNumber,
+			orderStatus: details.orderStatus,
+			paymentStatus: details.paymentStatus,
+			paymentType: 'CASH',
 			customer: {
 				name: details.customer.name,
 				phone: details.customer.phone,

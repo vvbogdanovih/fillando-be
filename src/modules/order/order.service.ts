@@ -226,7 +226,10 @@ export class OrderService {
 
 		this.logger.log(`Order ${order_number} created`)
 
-		if (dto.payment_method === PaymentMethod.IBAN) {
+		if (
+			dto.payment_method === PaymentMethod.IBAN ||
+			dto.payment_method === PaymentMethod.CASH
+		) {
 			const emailCustomer = { name: dto.customer.name, phone: dto.customer.phone }
 			const emailItems = orderItems.map(i => ({
 				name: i.name,
@@ -246,24 +249,37 @@ export class OrderService {
 					}
 				: null
 
-			this.emailService
-				.sendOrderIbanConfirmation(dto.customer.email, order_number, {
-					orderStatus: order.order_status,
-					paymentStatus: order.payment_status,
-					customer: emailCustomer,
-					items: emailItems,
-					subtotalPrice,
-					totalPrice: total_price,
-					appliedDiscount: applied_discount,
-					deliveryMethod: dto.delivery_method,
-					deliveryAddress: emailDeliveryAddress
-				})
-				.catch(err =>
-					this.logger.error(
-						{ err },
-						`Failed to send IBAN confirmation email for order ${order_number}`
-					)
+			const emailDetails = {
+				orderStatus: order.order_status,
+				paymentStatus: order.payment_status,
+				customer: emailCustomer,
+				items: emailItems,
+				subtotalPrice,
+				totalPrice: total_price,
+				appliedDiscount: applied_discount,
+				deliveryMethod: dto.delivery_method,
+				deliveryAddress: emailDeliveryAddress
+			}
+
+			const sendEmail =
+				dto.payment_method === PaymentMethod.IBAN
+					? this.emailService.sendOrderIbanConfirmation(
+							dto.customer.email,
+							order_number,
+							emailDetails
+						)
+					: this.emailService.sendOrderCashConfirmation(
+							dto.customer.email,
+							order_number,
+							emailDetails
+						)
+
+			sendEmail.catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to send ${dto.payment_method} confirmation email for order ${order_number}`
 				)
+			)
 		}
 
 		return order

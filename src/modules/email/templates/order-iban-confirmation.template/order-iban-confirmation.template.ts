@@ -36,6 +36,7 @@ function formatOrderStatus(status: OrderStatus): string {
 	if (status === OrderStatus.PROCESSING) return 'В обробці'
 	if (status === OrderStatus.SHIPPED) return 'Відправлене'
 	if (status === OrderStatus.DELIVERED) return 'Доставлене'
+	if (status === OrderStatus.COMPLETED) return 'Виконане'
 	if (status === OrderStatus.CANCELLED) return 'Скасоване'
 	if (status === OrderStatus.RETURNED) return 'Повернене'
 	return '—'

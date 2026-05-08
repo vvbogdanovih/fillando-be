@@ -6,12 +6,13 @@
  * the `stock` field in MongoDB.
  *
  * Usage:
- *   node scripts/AvailabilityCheck/UpdateAvailabilityNicePrice.js
+ *   node scripts/AvailabilityCheck/prod/UpdateAvailabilityNicePrice.js
  */
 
 const axios = require('axios')
 const mongoose = require('mongoose')
-require('dotenv').config()
+const path = require('path')
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env.prod') })
 
 // ── Config ────────────────────────────────────────────────────────────────────
 

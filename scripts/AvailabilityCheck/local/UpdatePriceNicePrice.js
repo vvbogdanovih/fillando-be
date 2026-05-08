@@ -8,7 +8,7 @@
  * 8% for 5000+ ₴), rounded to a whole number — no kopecks.
  *
  * Usage:
- *   node scripts/AvailabilityCheck/UpdatePriceNicePrice.js
+ *   node scripts/AvailabilityCheck/local/UpdatePriceNicePrice.js
  */
 
 const axios = require('axios')

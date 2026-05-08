@@ -8,14 +8,14 @@ Access: ADMIN (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`)
 
 ## Endpoints
 
-| Method | Path | Description |
-| --- | --- | --- |
-| `GET` | `/api/orders` | Paginated orders list with filters by `order_status` and `payment_status` |
-| `GET` | `/api/orders/:id` | Full order details |
-| `PATCH` | `/api/orders/:id` | Edit order fields (items, customer, delivery, payment method, comment) |
-| `PATCH` | `/api/orders/:id/status` | Update fulfillment status |
-| `PATCH` | `/api/orders/:id/payment-status` | Update payment status and optional transaction id |
-| `PATCH` | `/api/orders/:id/ttn` | Set Nova Post TTN |
+| Method  | Path                             | Description                                                               |
+| ------- | -------------------------------- | ------------------------------------------------------------------------- |
+| `GET`   | `/api/orders`                    | Paginated orders list with filters by `order_status` and `payment_status` |
+| `GET`   | `/api/orders/:id`                | Full order details                                                        |
+| `PATCH` | `/api/orders/:id`                | Edit order fields (items, customer, delivery, payment method, comment)    |
+| `PATCH` | `/api/orders/:id/status`         | Update fulfillment status                                                 |
+| `PATCH` | `/api/orders/:id/payment-status` | Update payment status and optional transaction id                         |
+| `PATCH` | `/api/orders/:id/ttn`            | Set Nova Post TTN                                                         |
 
 ---
 

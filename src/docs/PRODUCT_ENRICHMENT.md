@@ -13,10 +13,10 @@ MongoDB. Which source is used depends on the vendor attached to the product.
 The `vendors` collection uses a `slug` field as a programmatic identifier.
 Two slugs drive product behaviour:
 
-| Slug        | Meaning                    | Stock source                           |
-| ----------- | -------------------------- | -------------------------------------- |
-| `fillando`   | Internal Fillando inventory | `variant.stock` stored in MongoDB      |
-| `niceprice` | External NicePrice partner | Live call to NicePrice API per variant |
+| Slug        | Meaning                     | Stock source                           |
+| ----------- | --------------------------- | -------------------------------------- |
+| `fillando`  | Internal Fillando inventory | `variant.stock` stored in MongoDB      |
+| `niceprice` | External NicePrice partner  | Live call to NicePrice API per variant |
 
 Any vendor whose slug is **not** `niceprice` uses stored stock. The slug `niceprice` is the only
 value that triggers external API calls. It is defined as a constant in `product.service.ts`:

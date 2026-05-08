@@ -6,14 +6,14 @@ This guide explains how to add new endpoints and how to keep Swagger docs in syn
 
 ## 1. What is responsible for what
 
-| Part               | File(s)                                               | Responsibility                                                                                                         |
-| ------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Route path**     | `src/common/constants/endpoints.constant.ts`          | Base path and path segments for each endpoint (e.g. `/auth`, `/login`). Single source of truth for URLs.               |
-| **Operation docs** | `src/common/constants/docs/api-operation.constant.ts` | Swagger **summary** and **description** for each endpoint. Used by `@ApiOperation()` in controllers.                   |
-| **Property docs**  | `src/common/constants/docs/api-property.constant.ts`  | Swagger **example**, **description**, **minLength** etc. for DTO fields. Used by `@ApiProperty()` in DTOs.             |
-| **Controller**     | `src/modules/<module>/<module>.controller.ts`         | Declares HTTP method + path, guards, and calls the service. Adds `@ApiTags`, `@ApiOperation()`.                        |
-| **Service**        | `src/modules/<module>/<module>.service.ts`            | Business logic: validation, DB, external APIs. No HTTP or Swagger.                                                     |
-| **DTO**            | `src/modules/<module>/dto/*.dto.ts`                   | Request/response shape + validation (`class-validator`) + Swagger (`@ApiProperty()`).                                  |
+| Part               | File(s)                                               | Responsibility                                                                                                                                                         |
+| ------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Route path**     | `src/common/constants/endpoints.constant.ts`          | Base path and path segments for each endpoint (e.g. `/auth`, `/login`). Single source of truth for URLs.                                                               |
+| **Operation docs** | `src/common/constants/docs/api-operation.constant.ts` | Swagger **summary** and **description** for each endpoint. Used by `@ApiOperation()` in controllers.                                                                   |
+| **Property docs**  | `src/common/constants/docs/api-property.constant.ts`  | Swagger **example**, **description**, **minLength** etc. for DTO fields. Used by `@ApiProperty()` in DTOs.                                                             |
+| **Controller**     | `src/modules/<module>/<module>.controller.ts`         | Declares HTTP method + path, guards, and calls the service. Adds `@ApiTags`, `@ApiOperation()`.                                                                        |
+| **Service**        | `src/modules/<module>/<module>.service.ts`            | Business logic: validation, DB, external APIs. No HTTP or Swagger.                                                                                                     |
+| **DTO**            | `src/modules/<module>/dto/*.dto.ts`                   | Request/response shape + validation (`class-validator`) + Swagger (`@ApiProperty()`).                                                                                  |
 | **Swagger UI**     | `src/main.ts`                                         | `DocumentBuilder` + `SwaggerModule.setup('swagger', app, document)` (or `<prefix>/swagger` when a global prefix is set). Docs are generated from controllers and DTOs. |
 
 ---
@@ -151,8 +151,8 @@ applied to any endpoint. See `src/docs/TODO.md` for the planned RBAC work.
 
 ## 5. Current modules
 
-| Module           | Base path         | Write guard                         |
-| ---------------- | ----------------- | ----------------------------------- |
+| Module           | Base path     | Write guard                         |
+| ---------------- | ------------- | ----------------------------------- |
 | `AuthModule`     | `/auth`       | Public (issues its own tokens)      |
 | `VendorModule`   | `/vendors`    | `JwtAuthGuard` on POST/PATCH/DELETE |
 | `CategoryModule` | `/categories` | `JwtAuthGuard` on POST/PATCH/DELETE |

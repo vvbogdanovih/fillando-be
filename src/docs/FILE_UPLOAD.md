@@ -133,11 +133,11 @@ async deleteProduct(id: string) {
 
 ## Environment Variables
 
-| Variable                | Description                                        | Example                   |
-| ----------------------- | -------------------------------------------------- | ------------------------- |
-| `AWS_REGION`            | AWS region where the bucket is hosted              | `eu-central-1`            |
-| `AWS_ACCESS_KEY_ID`     | IAM access key with S3 permissions                 | `AKIAIOSFODNN7EXAMPLE`    |
-| `AWS_SECRET_ACCESS_KEY` | IAM secret key                                     | `wJalrXUtnFEMI/...`       |
+| Variable                | Description                                        | Example                    |
+| ----------------------- | -------------------------------------------------- | -------------------------- |
+| `AWS_REGION`            | AWS region where the bucket is hosted              | `eu-central-1`             |
+| `AWS_ACCESS_KEY_ID`     | IAM access key with S3 permissions                 | `AKIAIOSFODNN7EXAMPLE`     |
+| `AWS_SECRET_ACCESS_KEY` | IAM secret key                                     | `wJalrXUtnFEMI/...`        |
 | `AWS_S3_BUCKET_NAME`    | Name of the S3 bucket                              | `fillando-media`           |
 | `AWS_S3_PUBLIC_URL`     | Base URL for public file access (S3 or CloudFront) | `https://cdn.fillando.com` |
 

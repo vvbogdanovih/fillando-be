@@ -192,8 +192,13 @@ async function main() {
 		const sku = variant.vendor_product_sku
 		const prefix = `[${i + 1}/${variants.length}] ${sku}`
 
-		if (variant.stock_updated_at && now - new Date(variant.stock_updated_at).getTime() < SKIP_IF_UPDATED_WITHIN_MS) {
-			console.log(`${prefix} → FRESH (updated ${variant.stock_updated_at.toISOString()}), skipping`)
+		if (
+			variant.stock_updated_at &&
+			now - new Date(variant.stock_updated_at).getTime() < SKIP_IF_UPDATED_WITHIN_MS
+		) {
+			console.log(
+				`${prefix} → FRESH (updated ${variant.stock_updated_at.toISOString()}), skipping`
+			)
 			results.fresh++
 			continue
 		}

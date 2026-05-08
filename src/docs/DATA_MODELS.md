@@ -66,21 +66,21 @@ Cart documents are created lazily on first write (no document is created at regi
 
 Schema: `src/database/mongoose/schemas/order.schema.ts`
 
-| Field                     | Type                      | Notes                                                      |
-| ------------------------- | ------------------------- | ---------------------------------------------------------- |
-| `order_number`            | string                    | required, unique                                           |
-| `user_id`                 | ObjectId → `users` \| null | optional — null for guest checkout                         |
-| `customer`                | `CustomerSnapshot`        | required — snapshot of customer contact data (admin-editable) |
-| `items`                   | `OrderItem[]`             | required — snapshot of ordered variants (admin-editable)     |
-| `subtotal_price`          | number                    | required — sum before any discount                         |
-| `total_price`             | number                    | required                                                   |
-| `applied_discount`        | `AppliedDiscount` \| null | nullable — coupon snapshot captured at checkout            |
-| `payment_method`          | `PaymentMethod` enum      | required                                                   |
-| `payment_status`          | `PaymentStatus` enum      | default: `PENDING`                                         |
-| `delivery_method`         | `DeliveryMethod` enum     | required                                                   |
-| `delivery_address`        | `DeliveryAddress` \| null | nullable — depends on delivery method                      |
-| `comment`                 | string \| null            | optional                                                   |
-| `createdAt` / `updatedAt` | Date                      | auto-managed (timestamps)                                  |
+| Field                     | Type                       | Notes                                                         |
+| ------------------------- | -------------------------- | ------------------------------------------------------------- |
+| `order_number`            | string                     | required, unique                                              |
+| `user_id`                 | ObjectId → `users` \| null | optional — null for guest checkout                            |
+| `customer`                | `CustomerSnapshot`         | required — snapshot of customer contact data (admin-editable) |
+| `items`                   | `OrderItem[]`              | required — snapshot of ordered variants (admin-editable)      |
+| `subtotal_price`          | number                     | required — sum before any discount                            |
+| `total_price`             | number                     | required                                                      |
+| `applied_discount`        | `AppliedDiscount` \| null  | nullable — coupon snapshot captured at checkout               |
+| `payment_method`          | `PaymentMethod` enum       | required                                                      |
+| `payment_status`          | `PaymentStatus` enum       | default: `PENDING`                                            |
+| `delivery_method`         | `DeliveryMethod` enum      | required                                                      |
+| `delivery_address`        | `DeliveryAddress` \| null  | nullable — depends on delivery method                         |
+| `comment`                 | string \| null             | optional                                                      |
+| `createdAt` / `updatedAt` | Date                       | auto-managed (timestamps)                                     |
 
 #### Embedded: `OrderItem` (`_id: false`)
 
@@ -97,12 +97,12 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 
 #### Embedded: `AppliedDiscount` (`_id: false`)
 
-| Field              | Type                             | Notes                                         |
-| ------------------ | -------------------------------- | --------------------------------------------- |
-| `coupon_id`        | ObjectId → `discount_coupons`    | required                                      |
-| `code`             | string                           | required — stored as 10-char uppercase alnum  |
-| `discount_percent` | number                           | required — `0..100`                           |
-| `discount_amount`  | number                           | required — absolute amount at checkout moment |
+| Field              | Type                          | Notes                                         |
+| ------------------ | ----------------------------- | --------------------------------------------- |
+| `coupon_id`        | ObjectId → `discount_coupons` | required                                      |
+| `code`             | string                        | required — stored as 10-char uppercase alnum  |
+| `discount_percent` | number                        | required — `0..100`                           |
+| `discount_amount`  | number                        | required — absolute amount at checkout moment |
 
 Admin update behavior (`PATCH /api/orders/:id`, ADMIN only):
 
@@ -117,14 +117,14 @@ Admin update behavior (`PATCH /api/orders/:id`, ADMIN only):
 
 Schema: `src/database/mongoose/schemas/discount-coupon.schema.ts`
 
-| Field                     | Type    | Notes                                                                 |
-| ------------------------- | ------- | --------------------------------------------------------------------- |
-| `number`                  | string  | required, unique — internal incremental id in format `DIS-0000123`    |
+| Field                     | Type    | Notes                                                                     |
+| ------------------------- | ------- | ------------------------------------------------------------------------- |
+| `number`                  | string  | required, unique — internal incremental id in format `DIS-0000123`        |
 | `code`                    | string  | required, unique, uppercase, format: `XXXXXXXXXX` (10 random alnum chars) |
-| `discount_percent`        | number  | required, `0..100`                                                    |
-| `valid_until`             | Date    | required — coupon expiration moment                                   |
-| `is_active`               | boolean | default: `true`                                                       |
-| `createdAt` / `updatedAt` | Date    | auto-managed (timestamps)                                             |
+| `discount_percent`        | number  | required, `0..100`                                                        |
+| `valid_until`             | Date    | required — coupon expiration moment                                       |
+| `is_active`               | boolean | default: `true`                                                           |
+| `createdAt` / `updatedAt` | Date    | auto-managed (timestamps)                                                 |
 
 ---
 
@@ -200,15 +200,15 @@ Schema: `src/database/mongoose/schemas/product.schema.ts`
 
 #### Embedded: `ProductVariant` (`_id: true`)
 
-| Field                | Type     | Notes                                                                      |
-| -------------------- | -------- | -------------------------------------------------------------------------- |
-| `_id`                | ObjectId | auto-generated                                                             |
-| `sku`                | string   | required                                                                   |
-| `v_value`            | string   | required — variant value (e.g. `'Red'`, `'XL'`)                            |
-| `price`              | number   | optional — overrides product base price                                    |
+| Field                | Type     | Notes                                                                       |
+| -------------------- | -------- | --------------------------------------------------------------------------- |
+| `_id`                | ObjectId | auto-generated                                                              |
+| `sku`                | string   | required                                                                    |
+| `v_value`            | string   | required — variant value (e.g. `'Red'`, `'XL'`)                             |
+| `price`              | number   | optional — overrides product base price                                     |
 | `stock`              | number   | optional — used for Fillando vendor; overwritten at read time for NicePrice |
-| `vendor_product_sku` | string   | optional — external SKU used to fetch stock from NicePrice                 |
-| `images`             | string[] | variant-level images                                                       |
+| `vendor_product_sku` | string   | optional — external SKU used to fetch stock from NicePrice                  |
+| `images`             | string[] | variant-level images                                                        |
 
 #### Embedded: `Attribute` (`_id: false`)
 

@@ -21,7 +21,7 @@ The vendor's `slug` drives stock-fetching behaviour at read time (see `PRODUCT_E
 
 | Slug        | Effect                                                   |
 | ----------- | -------------------------------------------------------- |
-| `fillando`   | Uses stored `variant.stock` from MongoDB                 |
+| `fillando`  | Uses stored `variant.stock` from MongoDB                 |
 | `niceprice` | Triggers live stock fetch from NicePrice API per variant |
 
 Do **not** rename or delete these two vendors — doing so breaks product stock resolution.

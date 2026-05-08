@@ -39,7 +39,7 @@ function getMarkup(vendorPrice) {
 	if (vendorPrice <= 300) return 1.25
 	if (vendorPrice <= 500) return 1.13
 	if (vendorPrice <= 1500) return 1.11
-	if (vendorPrice <= 5000) return 1.10
+	if (vendorPrice <= 5000) return 1.1
 	return 1.08
 }
 
@@ -192,8 +192,13 @@ async function main() {
 		const sku = variant.vendor_product_sku
 		const prefix = `[${i + 1}/${variants.length}] ${sku}`
 
-		if (variant.price_updated_at && now - new Date(variant.price_updated_at).getTime() < SKIP_IF_UPDATED_WITHIN_MS) {
-			console.log(`${prefix} → FRESH (updated ${variant.price_updated_at.toISOString()}), skipping`)
+		if (
+			variant.price_updated_at &&
+			now - new Date(variant.price_updated_at).getTime() < SKIP_IF_UPDATED_WITHIN_MS
+		) {
+			console.log(
+				`${prefix} → FRESH (updated ${variant.price_updated_at.toISOString()}), skipping`
+			)
 			results.fresh++
 			continue
 		}

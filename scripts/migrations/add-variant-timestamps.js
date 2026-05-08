@@ -24,7 +24,12 @@ async function main() {
 	const collection = db.collection('product_variants')
 
 	const result = await collection.updateMany(
-		{ $or: [{ price_updated_at: { $exists: false } }, { stock_updated_at: { $exists: false } }] },
+		{
+			$or: [
+				{ price_updated_at: { $exists: false } },
+				{ stock_updated_at: { $exists: false } }
+			]
+		},
 		{ $set: { price_updated_at: null, stock_updated_at: null } }
 	)
 

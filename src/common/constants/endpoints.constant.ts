@@ -44,6 +44,7 @@ export const ENDPOINTS = {
 		BASE: '/products',
 		GET_ALL: '/',
 		CATALOG: '/catalog',
+		SEARCH: '/search',
 		VARIANT_SLUGS: '/variants/slugs',
 		VARIANT_COUNT: '/variants/count',
 		BY_SLUG: '/by-slug/:slug',

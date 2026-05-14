@@ -8,6 +8,7 @@ import { UpdateProductDto } from './dto/update-product.dto'
 import { ValidateProductDto } from './dto/validate-product.dto'
 import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
+import { SearchProductsDto } from './dto/search-products.dto'
 
 @Controller(ENDPOINTS.PRODUCTS.BASE)
 @ApiTags(ENDPOINTS.PRODUCTS.BASE)
@@ -24,6 +25,12 @@ export class ProductController {
 	@ApiOperation(API_OPERATION.PRODUCTS.CATALOG)
 	getCatalog(@Query() query: Record<string, string>) {
 		return this.productService.getCatalog(query)
+	}
+
+	@Get(ENDPOINTS.PRODUCTS.SEARCH)
+	@ApiOperation(API_OPERATION.PRODUCTS.SEARCH)
+	search(@Query() dto: SearchProductsDto) {
+		return this.productService.search(dto)
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.VARIANT_SLUGS)

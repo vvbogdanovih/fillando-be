@@ -63,4 +63,12 @@ export class Product {
 
 export const ProductSchema = SchemaFactory.createForClass(Product)
 ProductSchema.index({ 'attributes.k': 1, 'attributes.v': 1 })
+ProductSchema.index(
+	{ name: 'text', 'description.html': 'text', 'attributes.v': 'text', 'attributes.l': 'text' },
+	{
+		weights: { name: 10, 'attributes.v': 5, 'attributes.l': 3, 'description.html': 1 },
+		default_language: 'none',
+		name: 'product_text_search'
+	}
+)
 export type ProductDocument = HydratedDocument<Product>

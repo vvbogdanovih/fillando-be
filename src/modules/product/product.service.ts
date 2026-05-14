@@ -9,6 +9,7 @@ import { UpdateProductDto } from './dto/update-product.dto'
 import { ValidateProductDto, ValidateProductResponseDto } from './dto/validate-product.dto'
 import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
+import { SearchProductsDto } from './dto/search-products.dto'
 
 @Injectable()
 export class ProductService {
@@ -23,6 +24,25 @@ export class ProductService {
 	private async generateSku(): Promise<string> {
 		const num = await this.numbersRepository.increment('sku')
 		return `FL-${String(num).padStart(6, '0')}`
+	}
+
+	async search(dto: SearchProductsDto) {
+		const { q, page = 1, limit = 20 } = dto
+
+		const [textResults, skuResults] = await Promise.all([
+			this.productRepository.findByTextSearch(q),
+			this.productVariantRepository.findBySkuPrefix(q)
+		])
+
+		const productIds = textResults.map(r => r._id)
+		const skuVariantIds = skuResults.map(r => r._id)
+
+		return this.productVariantRepository.findSearchResults({
+			productIds,
+			skuVariantIds,
+			page,
+			limit
+		})
 	}
 
 	findAll() {

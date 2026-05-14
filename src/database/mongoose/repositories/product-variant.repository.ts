@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { HydratedDocument, Model, Types } from 'mongoose'
 import { ProductVariant } from '../schemas/product-variant.schema'
+import { ProductStatus } from 'src/common/types/enums'
 import { BaseRepository } from './base.repository'
 
 @Injectable()
@@ -104,6 +105,97 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			})),
 			category_slug: (category as any)?.slug ?? null,
 			subcategory_slug: subcategory?.slug ?? null
+		}
+	}
+
+	async findBySkuPrefix(prefix: string): Promise<Array<{ _id: Types.ObjectId }>> {
+		const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+		return this.model
+			.find(
+				{ sku: { $regex: `^${escaped}`, $options: 'i' }, status: ProductStatus.ACTIVE },
+				{ _id: 1 }
+			)
+			.limit(100)
+			.lean<Array<{ _id: Types.ObjectId }>>()
+			.exec()
+	}
+
+	async findSearchResults(params: {
+		productIds: Types.ObjectId[]
+		skuVariantIds: Types.ObjectId[]
+		page: number
+		limit: number
+	}) {
+		const { productIds, skuVariantIds, page, limit } = params
+		const skip = (page - 1) * limit
+
+		const matchConditions: any[] = []
+		if (productIds.length > 0) {
+			matchConditions.push({ product_id: { $in: productIds }, status: 'active' })
+		}
+		if (skuVariantIds.length > 0) {
+			matchConditions.push({ _id: { $in: skuVariantIds } })
+		}
+
+		if (matchConditions.length === 0) {
+			return {
+				items: [],
+				pagination: { total: 0, page, limit, totalPages: 0 }
+			}
+		}
+
+		const pipeline: any[] = [
+			{ $match: { $or: matchConditions } },
+			{
+				$lookup: {
+					from: 'products',
+					localField: 'product_id',
+					foreignField: '_id',
+					as: 'product'
+				}
+			},
+			{ $unwind: '$product' },
+			{
+				$addFields: {
+					_isSkuMatch: {
+						$cond: [{ $in: ['$_id', skuVariantIds] }, 0, 1]
+					},
+					_outOfStock: { $cond: [{ $gt: ['$stock', 0] }, 0, 1] }
+				}
+			},
+			{ $sort: { _isSkuMatch: 1, _outOfStock: 1, score: -1 } as Record<string, 1 | -1> },
+			{
+				$facet: {
+					items: [
+						{ $skip: skip },
+						{ $limit: limit },
+						{
+							$project: {
+								_id: 0,
+								id: { $toString: '$_id' },
+								name: 1,
+								slug: 1,
+								sku: 1,
+								price: 1,
+								stock: 1,
+								v_value: 1,
+								attributes: '$product.attributes',
+								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] }
+							}
+						}
+					],
+					meta: [{ $count: 'total' }]
+				}
+			}
+		]
+
+		const [result] = await this.model.aggregate(pipeline).exec()
+		const items = result?.items ?? []
+		const total = result?.meta[0]?.total ?? 0
+
+		return {
+			items,
+			pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
 		}
 	}
 

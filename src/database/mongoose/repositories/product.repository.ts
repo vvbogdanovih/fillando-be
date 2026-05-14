@@ -21,4 +21,13 @@ export class ProductRepository extends BaseRepository<Product> {
 	findByVendorId(vendorId: string): Promise<Product[]> {
 		return this.findAll({ vendor_id: new Types.ObjectId(vendorId) })
 	}
+
+	async findByTextSearch(query: string): Promise<Array<{ _id: Types.ObjectId; score: number }>> {
+		return this.model
+			.find({ $text: { $search: query } }, { score: { $meta: 'textScore' }, _id: 1 })
+			.sort({ score: { $meta: 'textScore' } })
+			.limit(200)
+			.lean<Array<{ _id: Types.ObjectId; score: number }>>()
+			.exec()
+	}
 }

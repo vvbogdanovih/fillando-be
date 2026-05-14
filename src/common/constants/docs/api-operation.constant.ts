@@ -185,6 +185,11 @@ export const API_OPERATION = {
 			summary: 'Get catalog products',
 			description: 'Paginated, filterable product listing for a given subcategory.'
 		},
+		SEARCH: {
+			summary: 'Search products',
+			description:
+				'Full-text search across product names, descriptions, and attributes. Also matches variant SKU prefixes. Returns paginated results.'
+		},
 		VARIANT_SLUGS: {
 			summary: 'Get all variant slugs',
 			description: 'Returns minimal variant data for sitemap generation (slug and updatedAt).'

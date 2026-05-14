@@ -23,6 +23,8 @@ The bucket is **public-read**. Permanent public URLs are stored in the database 
 3. POST /api/upload/confirm
    Client → Backend: { keys: [...] }
    Backend → S3:     headObject check per key
+                     if jpeg/png → download, convert to WebP via Sharp, re-upload with same key
+                     if already webp → no conversion needed
    Backend → Client: { confirmed: [...], failed: [...] }
    Client then saves the publicUrl(s) via the relevant entity API
 ```
@@ -146,6 +148,7 @@ async deleteProduct(id: string) {
 ## Constraints
 
 - **Allowed content types:** `image/jpeg`, `image/png`, `image/webp`
+- **Auto WebP conversion:** JPEG and PNG files are automatically converted to WebP (quality 80) during the confirm step. The S3 key stays the same — only the content and Content-Type change. Files uploaded as WebP are kept as-is.
 - **Presigned URL TTL:** 15 minutes
 - **File size limit:** Not enforced server-side (validate on the frontend before requesting presign)
 - **Batch size:** No hard limit; presign accepts an array of files in a single request
@@ -178,4 +181,3 @@ The bucket should allow public `GetObject` but restrict `PutObject` to the IAM u
 - `urlToKey(url)` helper on `UploadService` for key extraction from stored URLs
 - S3 Lifecycle rule to auto-delete orphaned temp files after 24h (if a `temp/` prefix is introduced)
 - CloudFront signed URLs for private content
-- Image resizing/optimization via Lambda@Edge or a dedicated service

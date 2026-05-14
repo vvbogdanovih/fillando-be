@@ -9,6 +9,7 @@ import UAParser from 'ua-parser-js'
 import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { OptionalJwtAuthGuard } from 'src/common/guards/optional-jwt-auth.guard'
 
 @Controller(ENDPOINTS.AUTH.BASE)
 @ApiTags(ENDPOINTS.AUTH.BASE)
@@ -144,9 +145,12 @@ export class AuthController {
 	}
 
 	@Get(ENDPOINTS.AUTH.ME)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(OptionalJwtAuthGuard)
 	@ApiOperation(API_OPERATION.AUTH.ME)
 	async me(@Req() req: Request) {
+		if (!req.user) {
+			return { message: 'Not authenticated', user: null }
+		}
 		const user = await this.authService.getMe(req.user)
 		return { message: 'Me successful', user: user }
 	}

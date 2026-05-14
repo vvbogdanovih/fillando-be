@@ -3,9 +3,10 @@
  *
  * Fetches all product variants belonging to the NicePrice vendor that have
  * a `vendor_product_sku`, scrapes the current price on the vendor site,
- * and updates the `price` field in MongoDB using a tiered markup (25% for
- * 0-300 ₴, 13% for 300-500 ₴, 11% for 500-1500 ₴, 10% for 1500-5000 ₴,
- * 8% for 5000+ ₴), rounded to a whole number — no kopecks.
+ * and updates the `price` field in MongoDB using a fixed tiered markup
+ * (+30 ₴ for 0-200, +35 for 200-400, +40 for 400-600, +45 for 600-800,
+ * +50 for 800-1000, +100 for 1000-1500, +110 for 1500-2500, +120 for 2500+),
+ * rounded to a whole number — no kopecks.
  *
  * Usage:
  *   node scripts/AvailabilityCheck/local/UpdatePriceNicePrice.js
@@ -34,13 +35,16 @@ const USER_AGENT =
 
 // ── Pricing ──────────────────────────────────────────────────────────────────
 
-/** Tiered markup based on vendor price range */
-function getMarkup(vendorPrice) {
-	if (vendorPrice <= 300) return 1.25
-	if (vendorPrice <= 500) return 1.13
-	if (vendorPrice <= 1500) return 1.11
-	if (vendorPrice <= 5000) return 1.1
-	return 1.08
+/** Fixed tiered markup (in ₴) based on vendor price range */
+function getMarkupAmount(vendorPrice) {
+	if (vendorPrice <= 200) return 30
+	if (vendorPrice <= 400) return 35
+	if (vendorPrice <= 600) return 40
+	if (vendorPrice <= 800) return 45
+	if (vendorPrice <= 1000) return 50
+	if (vendorPrice <= 1500) return 100
+	if (vendorPrice <= 2500) return 110
+	return 120
 }
 
 // ── Scraping helpers ─────────────────────────────────────────────────────────
@@ -223,13 +227,13 @@ async function main() {
 		}
 
 		const prevPrice = variant.price ?? 0
-		const markup = getMarkup(result.vendorPrice)
-		const newPrice = Math.round(result.vendorPrice * markup)
+		const markup = getMarkupAmount(result.vendorPrice)
+		const newPrice = Math.round(result.vendorPrice + markup)
 
 		const changed = prevPrice !== newPrice
 		const changeLabel = changed ? `${prevPrice} → ${newPrice}` : `${newPrice} (unchanged)`
 		console.log(
-			`${prefix} → vendor: ${result.vendorPrice} ₴ × ${markup} = ${newPrice} ₴ | ${changeLabel}${result.productName ? ` | "${result.productName}"` : ''}`
+			`${prefix} → vendor: ${result.vendorPrice} ₴ + ${markup} ₴ = ${newPrice} ₴ | ${changeLabel}${result.productName ? ` | "${result.productName}"` : ''}`
 		)
 
 		if (!DRY_RUN) {

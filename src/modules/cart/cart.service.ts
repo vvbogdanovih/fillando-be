@@ -65,8 +65,8 @@ export class CartService {
 
 		if (removedItems.length > 0) {
 			await this.cartRepository.update(
-				{ user_id: new Types.ObjectId(userId) } as any,
-				{ $set: { items: validItems.map(i => (i as any).toObject?.() ?? i) } } as any
+				{ user_id: new Types.ObjectId(userId) },
+				{ $set: { items: validItems.map(i => (i as any).toObject?.() ?? i) } }
 			)
 		}
 
@@ -123,8 +123,8 @@ export class CartService {
 
 		items[index].quantity = dto.quantity
 		const updated = await this.cartRepository.update(
-			{ user_id: new Types.ObjectId(userId) } as any,
-			{ $set: { items } } as any
+			{ user_id: new Types.ObjectId(userId) },
+			{ $set: { items } }
 		)
 		const populated = await this.populateItems(updated!.items)
 		return { items: populated, removed_items: [] }
@@ -139,8 +139,8 @@ export class CartService {
 			.map((i: any) => i.toObject?.() ?? { ...i })
 
 		const updated = await this.cartRepository.update(
-			{ user_id: new Types.ObjectId(userId) } as any,
-			{ $set: { items } } as any
+			{ user_id: new Types.ObjectId(userId) },
+			{ $set: { items } }
 		)
 		const populated = await this.populateItems(updated!.items)
 		return { items: populated, removed_items: [] }
@@ -148,8 +148,8 @@ export class CartService {
 
 	async clearCart(userId: string) {
 		await this.cartRepository.update(
-			{ user_id: new Types.ObjectId(userId) } as any,
-			{ $set: { items: [] } } as any
+			{ user_id: new Types.ObjectId(userId) },
+			{ $set: { items: [] } }
 		)
 		return { items: [], removed_items: [] }
 	}

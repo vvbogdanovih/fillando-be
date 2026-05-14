@@ -27,7 +27,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	}
 
 	findByIds(ids: Types.ObjectId[]): Promise<ProductVariant[]> {
-		return this.findAll({ _id: { $in: ids } } as any)
+		return this.findAll({ _id: { $in: ids } })
 	}
 
 	findAllSlugs(): Promise<Array<{ slug: string; updatedAt: Date }>> {

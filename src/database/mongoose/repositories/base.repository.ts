@@ -17,7 +17,7 @@ export abstract class BaseRepository<T> {
 	}
 
 	findAll(filter: mongoose.QueryFilter<T> = {}): Promise<T[]> {
-		return this.model.find(filter).lean().exec() as unknown as Promise<T[]>
+		return this.model.find(filter).lean().exec()
 	}
 
 	update(

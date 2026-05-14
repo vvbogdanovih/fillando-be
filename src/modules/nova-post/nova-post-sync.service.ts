@@ -64,11 +64,11 @@ export class NovaPostSyncService {
 
 		this.runSync(subject)
 			.then(result => {
-				subject.next({ data: { type: 'done', ...result } as SyncProgressEvent })
+				subject.next({ data: { type: 'done', ...result } })
 				subject.complete()
 			})
 			.catch(err => {
-				subject.next({ data: { type: 'error', message: err.message } as SyncProgressEvent })
+				subject.next({ data: { type: 'error', message: err.message } })
 				subject.complete()
 			})
 
@@ -82,12 +82,12 @@ export class NovaPostSyncService {
 		await Promise.all([this.cityRepo.clearAll(), this.warehouseRepo.clearAll()])
 		const cities = await this.syncCities(synced =>
 			subject.next({
-				data: { type: 'progress', entity: 'cities', synced } as SyncProgressEvent
+				data: { type: 'progress', entity: 'cities', synced }
 			})
 		)
 		const warehouses = await this.syncWarehouses(synced =>
 			subject.next({
-				data: { type: 'progress', entity: 'warehouses', synced } as SyncProgressEvent
+				data: { type: 'progress', entity: 'warehouses', synced }
 			})
 		)
 		this.logger.log(`Sync complete — cities: ${cities}, warehouses: ${warehouses}`)

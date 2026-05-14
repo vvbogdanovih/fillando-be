@@ -24,13 +24,7 @@ export class UserRepository extends BaseRepository<User> {
 		skip: number,
 		limit: number
 	): Promise<User[]> {
-		return this.model
-			.find(filter)
-			.sort({ createdAt: -1 })
-			.skip(skip)
-			.limit(limit)
-			.lean()
-			.exec() as unknown as Promise<User[]>
+		return this.model.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean().exec()
 	}
 
 	countDocuments(filter: mongoose.QueryFilter<User>): Promise<number> {

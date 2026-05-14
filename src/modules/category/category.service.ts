@@ -79,7 +79,7 @@ export class CategoryService {
 
 	async addSubcategory(categoryId: string, dto: CreateSubcategoryDto) {
 		const payload = { ...dto, required_attributes: this.mapRequiredAttributes(dto) }
-		const updated = await this.categoryRepository.addSubcategory(categoryId, payload as any)
+		const updated = await this.categoryRepository.addSubcategory(categoryId, payload)
 		if (!updated) throw new NotFoundException('Category not found')
 		return updated
 	}

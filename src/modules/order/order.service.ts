@@ -403,9 +403,7 @@ export class OrderService {
 			updateSet.delivery_address =
 				deliveryMethod === DeliveryMethod.PICKUP
 					? null
-					: this.mapDeliveryAddress(
-							deliveryAddress as NonNullable<typeof deliveryAddress>
-						)
+					: this.mapDeliveryAddress(deliveryAddress)
 		}
 
 		const updatedOrder = await this.orderRepository.update(

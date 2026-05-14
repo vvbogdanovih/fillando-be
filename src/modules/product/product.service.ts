@@ -115,7 +115,7 @@ export class ProductService {
 							slug,
 							stock: variant.stock ?? 0,
 							images: variant.images ?? []
-						} as any)
+						})
 					})
 				)
 			: []
@@ -129,10 +129,13 @@ export class ProductService {
 			l: attr.l,
 			v: attr.v
 		}))
-		const updated = await this.productRepository.update({ _id: id }, {
-			...dto,
-			attributes
-		} as any)
+		const updated = await this.productRepository.update(
+			{ _id: id },
+			{
+				...dto,
+				attributes
+			}
+		)
 		if (!updated) throw new NotFoundException('Product not found')
 
 		if (dto.name) {
@@ -185,7 +188,7 @@ export class ProductService {
 		const variant = await this.productVariantRepository.findOne({
 			_id: new Types.ObjectId(variantId),
 			product_id: new Types.ObjectId(productId)
-		} as any)
+		})
 		if (!variant) throw new NotFoundException('Variant not found')
 		return variant
 	}
@@ -205,7 +208,7 @@ export class ProductService {
 			slug: generateSlug(dto.v_value ? `${product.name} ${dto.v_value}` : product.name),
 			stock: dto.stock ?? 0,
 			images: dto.images ?? []
-		} as any)
+		})
 	}
 
 	async updateVariant(productId: string, variantId: string, dto: UpdateVariantDto) {
@@ -224,7 +227,7 @@ export class ProductService {
 			{
 				_id: new Types.ObjectId(variantId),
 				product_id: new Types.ObjectId(productId)
-			} as any,
+			},
 			patch as any
 		)
 		if (!updated) throw new NotFoundException('Variant not found')
@@ -238,7 +241,7 @@ export class ProductService {
 		const deleted = await this.productVariantRepository.delete({
 			_id: new Types.ObjectId(variantId),
 			product_id: new Types.ObjectId(productId)
-		} as any)
+		})
 		if (!deleted) throw new NotFoundException('Variant not found')
 		return { message: 'Variant deleted' }
 	}
@@ -251,8 +254,8 @@ export class ProductService {
 			{
 				_id: new Types.ObjectId(variantId),
 				product_id: new Types.ObjectId(productId)
-			} as any,
-			{ $set: { images: dto.images } } as any
+			},
+			{ $set: { images: dto.images } }
 		)
 		if (!updated) throw new NotFoundException('Variant not found')
 		return updated

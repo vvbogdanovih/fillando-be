@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common'
 import {
 	S3Client,
 	HeadObjectCommand,
+	GetObjectCommand,
 	DeleteObjectCommand,
 	DeleteObjectsCommand,
 	PutObjectCommand
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { randomUUID } from 'crypto'
+import sharp from 'sharp'
 import { ENV } from 'src/common/constants'
 import {
 	FilePresignRequestDto,
@@ -22,6 +24,8 @@ const CONTENT_TYPE_TO_EXT: Record<UploadContentType, string> = {
 }
 
 const PRESIGN_EXPIRES_IN = 900 // 15 minutes
+const WEBP_QUALITY = 80
+const CONVERTIBLE_TYPES = ['image/jpeg', 'image/png']
 
 @Injectable()
 export class UploadService {
@@ -49,7 +53,7 @@ export class UploadService {
 	}
 
 	async confirmUploads(keys: string[]) {
-		const results = await Promise.allSettled(keys.map(key => this.headObject(key)))
+		const results = await Promise.allSettled(keys.map(key => this.confirmAndConvert(key)))
 		const confirmed: string[] = []
 		const failed: string[] = []
 		keys.forEach((key, i) => {
@@ -81,15 +85,40 @@ export class UploadService {
 		const command = new PutObjectCommand({
 			Bucket: ENV.AWS_S3_BUCKET_NAME,
 			Key: key,
-			ContentType: file.contentType
+			ContentType: file.contentType,
+			CacheControl: 'public, max-age=31536000, immutable'
 		})
 		const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: PRESIGN_EXPIRES_IN })
 		const publicUrl = `${ENV.AWS_S3_PUBLIC_URL}/${key}`
 		return { key, uploadUrl, publicUrl }
 	}
 
-	private async headObject(key: string) {
-		await this.s3.send(new HeadObjectCommand({ Bucket: ENV.AWS_S3_BUCKET_NAME, Key: key }))
+	private async confirmAndConvert(key: string) {
+		const head = await this.s3.send(
+			new HeadObjectCommand({ Bucket: ENV.AWS_S3_BUCKET_NAME, Key: key })
+		)
+
+		const contentType = head.ContentType ?? ''
+		if (!CONVERTIBLE_TYPES.includes(contentType)) return
+
+		const obj = await this.s3.send(
+			new GetObjectCommand({ Bucket: ENV.AWS_S3_BUCKET_NAME, Key: key })
+		)
+
+		const original = Buffer.from(await obj.Body!.transformToByteArray())
+		const webpBuffer = await sharp(original).webp({ quality: WEBP_QUALITY }).toBuffer()
+
+		await this.s3.send(
+			new PutObjectCommand({
+				Bucket: ENV.AWS_S3_BUCKET_NAME,
+				Key: key,
+				Body: webpBuffer,
+				ContentType: 'image/webp',
+				CacheControl: 'public, max-age=31536000, immutable'
+			})
+		)
+
+		this.logger.log(`Converted ${key} (${contentType}) to WebP`)
 	}
 
 	private buildKey(file: FilePresignRequestDto): string {

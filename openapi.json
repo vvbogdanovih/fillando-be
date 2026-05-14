@@ -1,3673 +1,3306 @@
 {
-  "openapi": "3.0.0",
-  "paths": {
-    "/auth/login": {
-      "post": {
-        "description": "Login user",
-        "operationId": "AuthController_login",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Login",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/auth/register": {
-      "post": {
-        "description": "Register user",
-        "operationId": "AuthController_register",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Register",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/auth/google": {
-      "get": {
-        "description": "Google login",
-        "operationId": "AuthController_googleLogin",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Google login",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/auth/google/callback": {
-      "get": {
-        "description": "Google callback",
-        "operationId": "AuthController_googleAuthRedirect",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Google callback",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/auth/logout": {
-      "post": {
-        "description": "Logout user",
-        "operationId": "AuthController_logout",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Logout",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/auth/refresh": {
-      "post": {
-        "description": "Refresh access token",
-        "operationId": "AuthController_refresh",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Refresh access token",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/auth/me": {
-      "get": {
-        "description": "Get user",
-        "operationId": "AuthController_me",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get me",
-        "tags": [
-          "/auth"
-        ]
-      }
-    },
-    "/vendors": {
-      "get": {
-        "description": "Get all vendors",
-        "operationId": "VendorController_findAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get all vendors",
-        "tags": [
-          "/vendors"
-        ]
-      },
-      "post": {
-        "description": "Create a new vendor",
-        "operationId": "VendorController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateVendorDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Create vendor",
-        "tags": [
-          "/vendors"
-        ]
-      }
-    },
-    "/vendors/check-availability": {
-      "get": {
-        "description": "Check if a vendor name or slug is available (not taken)",
-        "operationId": "VendorController_checkAvailability",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "query",
-            "description": "URL-friendly identifier",
-            "schema": {
-              "example": "my-slug",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Check vendor availability",
-        "tags": [
-          "/vendors"
-        ]
-      }
-    },
-    "/vendors/{id}": {
-      "get": {
-        "description": "Get a single vendor by id",
-        "operationId": "VendorController_findById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get vendor by id",
-        "tags": [
-          "/vendors"
-        ]
-      },
-      "patch": {
-        "description": "Update an existing vendor",
-        "operationId": "VendorController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateVendorDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update vendor",
-        "tags": [
-          "/vendors"
-        ]
-      },
-      "delete": {
-        "description": "Delete a vendor",
-        "operationId": "VendorController_delete",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete vendor",
-        "tags": [
-          "/vendors"
-        ]
-      }
-    },
-    "/categories": {
-      "get": {
-        "description": "Get all categories",
-        "operationId": "CategoryController_findAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get all categories",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "post": {
-        "description": "Create a new category",
-        "operationId": "CategoryController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateCategoryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Create category",
-        "tags": [
-          "/categories"
-        ]
-      }
-    },
-    "/categories/with-subcategories": {
-      "get": {
-        "description": "Get categories with subcategories",
-        "operationId": "CategoryController_findWithSubcategories",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get categories with subcategories",
-        "tags": [
-          "/categories"
-        ]
-      }
-    },
-    "/categories/slug/{slug}": {
-      "get": {
-        "description": "Get a single category (with subcategories) by slug",
-        "operationId": "CategoryController_findBySlug",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get category by slug",
-        "tags": [
-          "/categories"
-        ]
-      }
-    },
-    "/categories/{id}": {
-      "get": {
-        "description": "Get a single category by id",
-        "operationId": "CategoryController_findById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get category by id",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "patch": {
-        "description": "Update an existing category",
-        "operationId": "CategoryController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCategoryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update category",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "put": {
-        "description": "Fully replace a category (all fields required)",
-        "operationId": "CategoryController_replace",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateCategoryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Replace category",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "delete": {
-        "description": "Delete a category",
-        "operationId": "CategoryController_delete",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete category",
-        "tags": [
-          "/categories"
-        ]
-      }
-    },
-    "/categories/{id}/subcategories": {
-      "get": {
-        "description": "Get all subcategories of a category",
-        "operationId": "CategoryController_findSubcategories",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get subcategories",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "post": {
-        "description": "Add a subcategory to a category",
-        "operationId": "CategoryController_addSubcategory",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSubcategoryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Add subcategory",
-        "tags": [
-          "/categories"
-        ]
-      }
-    },
-    "/categories/{id}/subcategories/{subId}": {
-      "get": {
-        "description": "Get a specific subcategory by id",
-        "operationId": "CategoryController_findSubcategoryById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "subId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get subcategory by id",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "patch": {
-        "description": "Update an embedded subcategory",
-        "operationId": "CategoryController_updateSubcategory",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "subId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSubcategoryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update subcategory",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "put": {
-        "description": "Fully replace a subcategory (all fields required)",
-        "operationId": "CategoryController_replaceSubcategory",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "subId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSubcategoryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Replace subcategory",
-        "tags": [
-          "/categories"
-        ]
-      },
-      "delete": {
-        "description": "Remove an embedded subcategory",
-        "operationId": "CategoryController_removeSubcategory",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "subId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Remove subcategory",
-        "tags": [
-          "/categories"
-        ]
-      }
-    },
-    "/products": {
-      "get": {
-        "description": "Get all products",
-        "operationId": "ProductController_findAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get all products",
-        "tags": [
-          "/products"
-        ]
-      },
-      "post": {
-        "description": "Create a new product",
-        "operationId": "ProductController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateProductDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Create product",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/catalog": {
-      "get": {
-        "description": "Paginated, filterable product listing for a given subcategory.",
-        "operationId": "ProductController_getCatalog",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get catalog products",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/variants/slugs": {
-      "get": {
-        "description": "Returns minimal variant data for sitemap generation (slug and updatedAt).",
-        "operationId": "ProductController_getAllVariantSlugs",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get all variant slugs",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/variants/count": {
-      "get": {
-        "description": "Returns total number of product variants.",
-        "operationId": "ProductController_getVariantCount",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get variants count",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/by-slug/{slug}": {
-      "get": {
-        "description": "Returns full variant info, parent product, and sibling variants by variant slug.",
-        "operationId": "ProductController_getVariantBySlug",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get variant by slug",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/{id}": {
-      "get": {
-        "description": "Get a single product by id",
-        "operationId": "ProductController_findById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get product by id",
-        "tags": [
-          "/products"
-        ]
-      },
-      "patch": {
-        "description": "Update an existing product",
-        "operationId": "ProductController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProductDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update product",
-        "tags": [
-          "/products"
-        ]
-      },
-      "delete": {
-        "description": "Delete a product",
-        "operationId": "ProductController_delete",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete product",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/validate": {
-      "post": {
-        "description": "Check which slugs and SKUs are already taken. Returns arrays of taken values.",
-        "operationId": "ProductController_validate",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ValidateProductDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Validate slugs and SKUs",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/{id}/variants": {
-      "get": {
-        "description": "Get all variants belonging to a product.",
-        "operationId": "ProductController_getVariants",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get product variants",
-        "tags": [
-          "/products"
-        ]
-      },
-      "post": {
-        "description": "Create a new variant for an existing product.",
-        "operationId": "ProductController_addVariant",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddVariantDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Add variant to product",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/{id}/variants/{variantId}": {
-      "get": {
-        "description": "Get a single product variant by id.",
-        "operationId": "ProductController_getVariant",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "variantId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get variant by id",
-        "tags": [
-          "/products"
-        ]
-      },
-      "patch": {
-        "description": "Partially update a product variant (price, stock, status, etc.).",
-        "operationId": "ProductController_updateVariant",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "variantId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateVariantDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update variant",
-        "tags": [
-          "/products"
-        ]
-      },
-      "delete": {
-        "description": "Delete a specific product variant.",
-        "operationId": "ProductController_deleteVariant",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "variantId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete variant",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/products/{id}/variants/{variantId}/images": {
-      "patch": {
-        "description": "Replace the images array on a specific product variant.",
-        "operationId": "ProductController_setVariantImages",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "variantId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetVariantImagesDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Set variant images",
-        "tags": [
-          "/products"
-        ]
-      }
-    },
-    "/upload/presign": {
-      "post": {
-        "description": "Returns presigned S3 PUT URLs and public URLs for direct client-side upload. URLs expire in 15 minutes.",
-        "operationId": "UploadController_presign",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PresignUploadDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Generate presigned upload URLs",
-        "tags": [
-          "/upload"
-        ]
-      }
-    },
-    "/upload/confirm": {
-      "post": {
-        "description": "Verifies that files were successfully uploaded to S3 via headObject checks.",
-        "operationId": "UploadController_confirm",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfirmUploadDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Confirm uploaded files",
-        "tags": [
-          "/upload"
-        ]
-      }
-    },
-    "/upload": {
-      "delete": {
-        "description": "Permanently deletes one or more files from S3 by their keys.",
-        "operationId": "UploadController_delete",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteUploadDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete files from S3",
-        "tags": [
-          "/upload"
-        ]
-      }
-    },
-    "/cart": {
-      "get": {
-        "description": "Returns the current user's cart with populated variant data. Out-of-stock items are automatically removed and listed in removed_items.",
-        "operationId": "CartController_getCart",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get cart",
-        "tags": [
-          "/cart"
-        ]
-      },
-      "delete": {
-        "description": "Remove all items from the cart.",
-        "operationId": "CartController_clearCart",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Clear cart",
-        "tags": [
-          "/cart"
-        ]
-      }
-    },
-    "/cart/merge": {
-      "post": {
-        "description": "Called after login to sync the client-side cart. If the server cart is empty, client items are validated against stock and set. If the server cart already has items, it is returned as-is and the client-side cart is discarded.",
-        "operationId": "CartController_mergeCart",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MergeCartDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Merge cart",
-        "tags": [
-          "/cart"
-        ]
-      }
-    },
-    "/cart/items": {
-      "post": {
-        "description": "Add a variant to the cart. If the variant is already present, its quantity is incremented by the given amount. Stock is validated.",
-        "operationId": "CartController_addItem",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddCartItemDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Add item to cart",
-        "tags": [
-          "/cart"
-        ]
-      }
-    },
-    "/cart/items/{variantId}": {
-      "patch": {
-        "description": "Set the absolute quantity for a specific cart item. Stock is validated.",
-        "operationId": "CartController_updateItem",
-        "parameters": [
-          {
-            "name": "variantId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCartItemDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update cart item quantity",
-        "tags": [
-          "/cart"
-        ]
-      },
-      "delete": {
-        "description": "Remove a specific variant from the cart.",
-        "operationId": "CartController_removeItem",
-        "parameters": [
-          {
-            "name": "variantId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Remove item from cart",
-        "tags": [
-          "/cart"
-        ]
-      }
-    },
-    "/payment-details": {
-      "get": {
-        "description": "Get all payment details records",
-        "operationId": "PaymentDetailsController_findAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get all payment details",
-        "tags": [
-          "/payment-details"
-        ]
-      },
-      "post": {
-        "description": "Create a new payment details record",
-        "operationId": "PaymentDetailsController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreatePaymentDetailsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Create payment details",
-        "tags": [
-          "/payment-details"
-        ]
-      }
-    },
-    "/payment-details/active": {
-      "get": {
-        "description": "Returns the currently active payment details record",
-        "operationId": "PaymentDetailsController_findActive",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get active payment details",
-        "tags": [
-          "/payment-details"
-        ]
-      }
-    },
-    "/payment-details/{id}": {
-      "get": {
-        "description": "Get a single payment details record by id",
-        "operationId": "PaymentDetailsController_findById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get payment details by id",
-        "tags": [
-          "/payment-details"
-        ]
-      },
-      "patch": {
-        "description": "Update an existing payment details record",
-        "operationId": "PaymentDetailsController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePaymentDetailsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update payment details",
-        "tags": [
-          "/payment-details"
-        ]
-      },
-      "delete": {
-        "description": "Delete a payment details record",
-        "operationId": "PaymentDetailsController_delete",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete payment details",
-        "tags": [
-          "/payment-details"
-        ]
-      }
-    },
-    "/payment-details/{id}/activate": {
-      "patch": {
-        "description": "Sets the given record as active and deactivates all others. Only one record can be active at a time.",
-        "operationId": "PaymentDetailsController_activate",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Activate payment details",
-        "tags": [
-          "/payment-details"
-        ]
-      }
-    },
-    "/nova-post/sync": {
-      "get": {
-        "description": "Fetches all cities and warehouses from the Nova Post API and upserts them into the local database. Admin only. Returns counts of processed records.",
-        "operationId": "NovaPostController_sync",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Sync Nova Post data",
-        "tags": [
-          "/nova-post"
-        ]
-      }
-    },
-    "/nova-post/cities": {
-      "get": {
-        "description": "Case-insensitive search for Nova Post cities/settlements by name.",
-        "operationId": "NovaPostController_getCities",
-        "parameters": [
-          {
-            "name": "q",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Search cities",
-        "tags": [
-          "/nova-post"
-        ]
-      }
-    },
-    "/nova-post/warehouses": {
-      "get": {
-        "description": "Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), POST (поштове відділення), CARGO (вантажне відділення). Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.",
-        "operationId": "NovaPostController_getWarehouses",
-        "parameters": [
-          {
-            "name": "cityRef",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "PARCEL_LOCKER",
-                "POST",
-                "CARGO"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "description": "Optional search: warehouse number (substring on numeric №) and/or fragment of description / short address. Case-insensitive for text; trim and repeated spaces collapsed; word gaps match flexibly. Omit or leave blank for all warehouses in the city (and type).",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get warehouses by city",
-        "tags": [
-          "/nova-post"
-        ]
-      }
-    },
-    "/orders": {
-      "post": {
-        "description": "Place a new order. Validates stock for each variant, snapshots prices, and can apply a discount coupon by code. User can be authenticated or guest.",
-        "operationId": "OrderController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateOrderDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Create order",
-        "tags": [
-          "/orders"
-        ]
-      },
-      "get": {
-        "description": "Paginated list of all orders with optional filters by order_status and payment_status. Admin only.",
-        "operationId": "OrderController_findAll",
-        "parameters": [
-          {
-            "name": "order_status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "NEW",
-                "CONFIRMED",
-                "PROCESSING",
-                "SHIPPED",
-                "DELIVERED",
-                "COMPLETED",
-                "CANCELLED",
-                "RETURNED"
-              ]
-            }
-          },
-          {
-            "name": "payment_status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "PENDING",
-                "PAID",
-                "FAILED",
-                "REFUNDED"
-              ]
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderListResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get all orders",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/orders/me": {
-      "get": {
-        "description": "Paginated list of orders for the authenticated user with optional filters by order_status and payment_status.",
-        "operationId": "OrderController_findMyOrders",
-        "parameters": [
-          {
-            "name": "order_status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "NEW",
-                "CONFIRMED",
-                "PROCESSING",
-                "SHIPPED",
-                "DELIVERED",
-                "COMPLETED",
-                "CANCELLED",
-                "RETURNED"
-              ]
-            }
-          },
-          {
-            "name": "payment_status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "PENDING",
-                "PAID",
-                "FAILED",
-                "REFUNDED"
-              ]
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderListResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get my orders",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/orders/me/{id}": {
-      "get": {
-        "description": "Get full details of a single order that belongs to the authenticated user.",
-        "operationId": "OrderController_findMyOrderById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get my order by id",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/orders/{id}": {
-      "get": {
-        "description": "Get full order details by MongoDB id. Admin only.",
-        "operationId": "OrderController_findById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get order by id",
-        "tags": [
-          "/orders"
-        ]
-      },
-      "patch": {
-        "description": "Update editable order fields (items, customer, delivery, payment method, comment). Recalculates totals if items are changed. Admin only.",
-        "operationId": "OrderController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminUpdateOrderDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Update order",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/orders/{id}/status": {
-      "patch": {
-        "description": "Change the fulfillment status of an order. Admin only.",
-        "operationId": "OrderController_updateOrderStatus",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateOrderStatusDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update order status",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/orders/{id}/payment-status": {
-      "patch": {
-        "description": "Change the payment status of an order. Optionally record the payment transaction id. Admin only.",
-        "operationId": "OrderController_updatePaymentStatus",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePaymentStatusDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update payment status",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/orders/{id}/ttn": {
-      "patch": {
-        "description": "Attach the Nova Post tracking number (ТТН) to an order. Admin only.",
-        "operationId": "OrderController_setTtn",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetTtnDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Set Nova Post TTN",
-        "tags": [
-          "/orders"
-        ]
-      }
-    },
-    "/discount-coupons": {
-      "get": {
-        "description": "Get paginated discount coupons with optional filters by active flag and code search query. Admin only.",
-        "operationId": "DiscountCouponController_findAll",
-        "parameters": [
-          {
-            "name": "is_active",
-            "required": false,
-            "in": "query",
-            "description": "Filter by active flag",
-            "schema": {
-              "example": true,
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "description": "Search by coupon code substring",
-            "schema": {
-              "example": "ZY64",
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get all discount coupons",
-        "tags": [
-          "/discount-coupons"
-        ]
-      },
-      "post": {
-        "description": "Create a discount coupon with internal number in DIS-0000123 format and random 10-character code (A-Z, 0-9). Admin only.",
-        "operationId": "DiscountCouponController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDiscountCouponDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Create discount coupon",
-        "tags": [
-          "/discount-coupons"
-        ]
-      }
-    },
-    "/discount-coupons/{id}": {
-      "get": {
-        "description": "Get discount coupon details by MongoDB id. Admin only.",
-        "operationId": "DiscountCouponController_findById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get discount coupon by id",
-        "tags": [
-          "/discount-coupons"
-        ]
-      },
-      "patch": {
-        "description": "Update discount coupon fields (discount percent, expiration, active flag). Admin only.",
-        "operationId": "DiscountCouponController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDiscountCouponDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update discount coupon",
-        "tags": [
-          "/discount-coupons"
-        ]
-      },
-      "delete": {
-        "description": "Delete discount coupon by id. Admin only.",
-        "operationId": "DiscountCouponController_delete",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Delete discount coupon",
-        "tags": [
-          "/discount-coupons"
-        ]
-      }
-    },
-    "/discount-coupons/validate": {
-      "post": {
-        "description": "Validate coupon code for checkout. Returns validity, and for valid coupons returns discount details.",
-        "operationId": "DiscountCouponController_validate",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ValidateDiscountCouponDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Validate discount coupon",
-        "tags": [
-          "/discount-coupons"
-        ]
-      }
-    },
-    "/users": {
-      "get": {
-        "description": "Paginated list of all users with optional role filter. Admin only.",
-        "operationId": "UsersController_findAll",
-        "parameters": [
-          {
-            "name": "role",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "USER",
-                "ADMIN"
-              ]
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UsersListResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get all users",
-        "tags": [
-          "/users"
-        ]
-      }
-    },
-    "/users/me": {
-      "get": {
-        "description": "Returns the profile of the authenticated user",
-        "operationId": "UsersController_me",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get my profile",
-        "tags": [
-          "/users"
-        ]
-      },
-      "patch": {
-        "description": "Updates name, phone, or profile picture for the authenticated user",
-        "operationId": "UsersController_updateMe",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMeDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Update my profile",
-        "tags": [
-          "/users"
-        ]
-      }
-    }
-  },
-  "info": {
-    "title": "Urban Tab API",
-    "description": "API документація",
-    "version": "1.0",
-    "contact": {}
-  },
-  "tags": [],
-  "servers": [],
-  "components": {
-    "schemas": {
-      "LoginDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "example": "johndoe@example.com",
-            "description": "User email"
-          },
-          "password": {
-            "type": "string",
-            "example": "securepassword",
-            "description": "User password",
-            "minLength": 6
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ]
-      },
-      "RegisterDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "John Doe",
-            "description": "User full name"
-          },
-          "email": {
-            "type": "string",
-            "example": "johndoe@example.com",
-            "description": "User email"
-          },
-          "password": {
-            "type": "string",
-            "example": "securepassword",
-            "description": "User password",
-            "minLength": 6
-          },
-          "confirmPassword": {
-            "type": "string",
-            "example": "securepassword",
-            "description": "User password",
-            "minLength": 6
-          }
-        },
-        "required": [
-          "name",
-          "email",
-          "password",
-          "confirmPassword"
-        ]
-      },
-      "CreateVendorDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Fillando",
-            "description": "Vendor name"
-          },
-          "slug": {
-            "type": "string",
-            "example": "my-slug",
-            "description": "URL-friendly identifier"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ]
-      },
-      "UpdateVendorDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Fillando",
-            "description": "Vendor name"
-          },
-          "slug": {
-            "type": "string",
-            "example": "my-slug",
-            "description": "URL-friendly identifier"
-          }
-        }
-      },
-      "CreateCategoryDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Electronics",
-            "description": "Category name"
-          },
-          "slug": {
-            "type": "string",
-            "example": "my-slug",
-            "description": "URL-friendly identifier"
-          },
-          "image": {
-            "type": "string",
-            "example": "https://cdn.example.com/categories/abc123/uuid.webp",
-            "description": "Category image URL — either a direct link or the publicUrl returned from the S3 upload flow"
-          },
-          "order": {
-            "type": "number",
-            "example": 1,
-            "description": "Display order of the category in the UI — lower values appear first"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ]
-      },
-      "UpdateCategoryDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Electronics",
-            "description": "Category name"
-          },
-          "slug": {
-            "type": "string",
-            "example": "my-slug",
-            "description": "URL-friendly identifier"
-          },
-          "image": {
-            "type": "string",
-            "example": "https://cdn.example.com/categories/abc123/uuid.webp",
-            "description": "Category image URL — either a direct link or the publicUrl returned from the S3 upload flow"
-          },
-          "order": {
-            "type": "number",
-            "example": 1,
-            "description": "Display order of the category in the UI — lower values appear first"
-          }
-        }
-      },
-      "RequiredAttributeDto": {
-        "type": "object",
-        "properties": {
-          "label": {
-            "type": "string",
-            "example": "Виробник",
-            "description": "Attribute label (human-readable)"
-          },
-          "filter_type": {
-            "type": "string",
-            "example": "multi-select",
-            "enum": [
-              "multi-select",
-              "range"
-            ],
-            "description": "Filter UI type"
-          },
-          "unit": {
-            "type": "object",
-            "example": "мм",
-            "description": "Unit of measure",
-            "nullable": true
-          }
-        },
-        "required": [
-          "label",
-          "filter_type",
-          "unit"
-        ]
-      },
-      "CreateSubcategoryDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Smartphones",
-            "description": "Subcategory name"
-          },
-          "slug": {
-            "type": "string",
-            "example": "my-slug",
-            "description": "URL-friendly identifier"
-          },
-          "required_attributes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RequiredAttributeDto"
-            }
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ]
-      },
-      "ValidateProductDto": {
-        "type": "object",
-        "properties": {
-          "slugs": {
-            "example": [
-              "futbolka-bazova-chorna",
-              "futbolka-bazova-bila"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "skus": {
-            "example": [
-              "SKU-001",
-              "SKU-002"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "ProductDescriptionDto": {
-        "type": "object",
-        "properties": {
-          "json": {
-            "type": "object",
-            "example": {
-              "ops": [
-                {
-                  "insert": "Hello"
-                }
-              ]
-            },
-            "description": "Quill delta JSON"
-          },
-          "html": {
-            "type": "string",
-            "example": "<p>Hello</p>",
-            "description": "Rendered HTML"
-          }
-        },
-        "required": [
-          "json",
-          "html"
-        ]
-      },
-      "VariantTypeDto": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "example": "color",
-            "description": "Variant type key"
-          },
-          "label": {
-            "type": "string",
-            "example": "Color",
-            "description": "Variant type label"
-          }
-        },
-        "required": [
-          "key",
-          "label"
-        ]
-      },
-      "AttributeDto": {
-        "type": "object",
-        "properties": {
-          "l": {
-            "type": "string",
-            "example": "Виробник",
-            "description": "Attribute label (human-readable)"
-          },
-          "v": {
-            "type": "object",
-            "example": "Sony",
-            "description": "Attribute value (string, number, or boolean)"
-          }
-        },
-        "required": [
-          "l",
-          "v"
-        ]
-      },
-      "CreateVariantDto": {
-        "type": "object",
-        "properties": {
-          "v_value": {
-            "type": "object",
-            "example": "Червоний",
-            "description": "Variant distinguishing value (null for single-variant products)",
-            "nullable": true
-          },
-          "price": {
-            "type": "number",
-            "example": 440,
-            "description": "Price in minor units or base currency"
-          },
-          "stock": {
-            "type": "number",
-            "example": 100,
-            "description": "Available stock quantity"
-          },
-          "images": {
-            "description": "Image URLs",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "vendor_product_sku": {
-            "type": "string",
-            "example": "VENDOR-SKU-123",
-            "description": "Vendor-assigned SKU"
-          }
-        },
-        "required": [
-          "price"
-        ]
-      },
-      "CreateProductDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Wireless Headphones",
-            "description": "Product name"
-          },
-          "category_id": {
-            "type": "string",
-            "example": "64b1f2c3d4e5f6a7b8c9d0e1",
-            "description": "Category ObjectId"
-          },
-          "subcategory_id": {
-            "type": "string",
-            "example": "64b1f2c3d4e5f6a7b8c9d0e2",
-            "description": "Subcategory ObjectId"
-          },
-          "vendor_id": {
-            "type": "string",
-            "example": "64b1f2c3d4e5f6a7b8c9d0e3",
-            "description": "Vendor ObjectId"
-          },
-          "description": {
-            "$ref": "#/components/schemas/ProductDescriptionDto"
-          },
-          "variant_type": {
-            "$ref": "#/components/schemas/VariantTypeDto"
-          },
-          "attributes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AttributeDto"
-            }
-          },
-          "variants": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreateVariantDto"
-            }
-          }
-        },
-        "required": [
-          "name",
-          "category_id",
-          "subcategory_id",
-          "vendor_id"
-        ]
-      },
-      "AddVariantDto": {
-        "type": "object",
-        "properties": {
-          "price": {
-            "type": "number",
-            "example": 440,
-            "description": "Variant price"
-          },
-          "v_value": {
-            "type": "object",
-            "example": "Чорна",
-            "description": "Variant distinguishing value; omit for single-variant products",
-            "nullable": true
-          },
-          "stock": {
-            "type": "number",
-            "example": 100
-          },
-          "images": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "vendor_product_sku": {
-            "type": "string",
-            "example": "VENDOR-SKU-123"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "draft",
-              "active",
-              "archived"
-            ],
-            "default": "active"
-          }
-        },
-        "required": [
-          "price"
-        ]
-      },
-      "UpdateVariantDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Футболка базова — Чорна"
-          },
-          "price": {
-            "type": "number",
-            "example": 440
-          },
-          "stock": {
-            "type": "number",
-            "example": 100
-          },
-          "images": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "v_value": {
-            "type": "object",
-            "example": "Чорна",
-            "nullable": true
-          },
-          "vendor_product_sku": {
-            "type": "string",
-            "example": "VENDOR-SKU-123"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "draft",
-              "active",
-              "archived"
-            ]
-          }
-        }
-      },
-      "SetVariantImagesDto": {
-        "type": "object",
-        "properties": {
-          "images": {
-            "example": [
-              "https://cdn.example.com/img.webp"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "images"
-        ]
-      },
-      "UpdateProductDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Wireless Headphones",
-            "description": "Product name"
-          },
-          "category_id": {
-            "type": "string",
-            "example": "64b1f2c3d4e5f6a7b8c9d0e1"
-          },
-          "subcategory_id": {
-            "type": "string",
-            "example": "64b1f2c3d4e5f6a7b8c9d0e2"
-          },
-          "vendor_id": {
-            "type": "string",
-            "example": "64b1f2c3d4e5f6a7b8c9d0e3"
-          },
-          "description": {
-            "$ref": "#/components/schemas/ProductDescriptionDto"
-          },
-          "variant_type": {
-            "$ref": "#/components/schemas/VariantTypeDto"
-          },
-          "attributes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AttributeDto"
-            }
-          }
-        }
-      },
-      "FilePresignRequestDto": {
-        "type": "object",
-        "properties": {
-          "entityType": {
-            "type": "string",
-            "example": "product",
-            "description": "Entity type the file belongs to (product, user, or vendor)",
-            "enum": [
-              "product",
-              "user",
-              "vendor",
-              "category"
-            ]
-          },
-          "entityId": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011",
-            "description": "MongoDB ObjectId of the entity the file belongs to"
-          },
-          "contentType": {
-            "type": "string",
-            "example": "image/webp",
-            "description": "MIME type of the file to upload (image/jpeg, image/png, or image/webp)",
-            "enum": [
-              "image/jpeg",
-              "image/png",
-              "image/webp"
-            ]
-          }
-        },
-        "required": [
-          "entityType",
-          "entityId",
-          "contentType"
-        ]
-      },
-      "PresignUploadDto": {
-        "type": "object",
-        "properties": {
-          "files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FilePresignRequestDto"
-            }
-          }
-        },
-        "required": [
-          "files"
-        ]
-      },
-      "ConfirmUploadDto": {
-        "type": "object",
-        "properties": {
-          "keys": {
-            "example": "products/abc123/550e8400-e29b-41d4-a716-446655440000.webp",
-            "description": "S3 object key identifying the file in the bucket",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "keys"
-        ]
-      },
-      "DeleteUploadDto": {
-        "type": "object",
-        "properties": {
-          "keys": {
-            "example": "products/abc123/550e8400-e29b-41d4-a716-446655440000.webp",
-            "description": "S3 object key identifying the file in the bucket",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "keys"
-        ]
-      },
-      "MergeCartItemDto": {
-        "type": "object",
-        "properties": {
-          "variant_id": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011",
-            "description": "MongoDB ObjectId of the product variant"
-          },
-          "quantity": {
-            "type": "number",
-            "example": 2,
-            "description": "Number of units (minimum 1)",
-            "minimum": 1
-          }
-        },
-        "required": [
-          "variant_id",
-          "quantity"
-        ]
-      },
-      "MergeCartDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MergeCartItemDto"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "AddCartItemDto": {
-        "type": "object",
-        "properties": {
-          "variant_id": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011",
-            "description": "MongoDB ObjectId of the product variant"
-          },
-          "quantity": {
-            "type": "number",
-            "example": 2,
-            "description": "Number of units (minimum 1)",
-            "minimum": 1
-          }
-        },
-        "required": [
-          "variant_id",
-          "quantity"
-        ]
-      },
-      "UpdateCartItemDto": {
-        "type": "object",
-        "properties": {
-          "quantity": {
-            "type": "number",
-            "example": 2,
-            "description": "Number of units (minimum 1)",
-            "minimum": 1
-          }
-        },
-        "required": [
-          "quantity"
-        ]
-      },
-      "CreatePaymentDetailsDto": {
-        "type": "object",
-        "properties": {
-          "last_name": {
-            "type": "string",
-            "example": "Шевченко",
-            "description": "Recipient's last name"
-          },
-          "first_name": {
-            "type": "string",
-            "example": "Тарас",
-            "description": "Recipient's first name"
-          },
-          "middle_name": {
-            "type": "string",
-            "example": "Григорович",
-            "description": "Recipient's middle name"
-          },
-          "iban": {
-            "type": "string",
-            "example": "UA123456789012345678901234567",
-            "description": "International Bank Account Number (IBAN)"
-          },
-          "edrpou": {
-            "type": "string",
-            "example": "12345678",
-            "description": "Ukrainian state registry code (ЄДРПОУ)"
-          },
-          "bank_name": {
-            "type": "string",
-            "example": "ПриватБанк",
-            "description": "Name of the bank"
-          }
-        },
-        "required": [
-          "last_name",
-          "first_name",
-          "iban",
-          "edrpou",
-          "bank_name"
-        ]
-      },
-      "UpdatePaymentDetailsDto": {
-        "type": "object",
-        "properties": {
-          "last_name": {
-            "type": "string",
-            "example": "Шевченко",
-            "description": "Recipient's last name"
-          },
-          "first_name": {
-            "type": "string",
-            "example": "Тарас",
-            "description": "Recipient's first name"
-          },
-          "middle_name": {
-            "type": "string",
-            "example": "Григорович",
-            "description": "Recipient's middle name"
-          },
-          "iban": {
-            "type": "string",
-            "example": "UA123456789012345678901234567",
-            "description": "International Bank Account Number (IBAN)"
-          },
-          "edrpou": {
-            "type": "string",
-            "example": "12345678",
-            "description": "Ukrainian state registry code (ЄДРПОУ)"
-          },
-          "bank_name": {
-            "type": "string",
-            "example": "ПриватБанк",
-            "description": "Name of the bank"
-          }
-        }
-      },
-      "CreateOrderItemDto": {
-        "type": "object",
-        "properties": {
-          "variant_id": {
-            "type": "string",
-            "example": "664f1b2c3d4e5f6a7b8c9d0e"
-          },
-          "quantity": {
-            "type": "number",
-            "example": 2,
-            "minimum": 1
-          }
-        },
-        "required": [
-          "variant_id",
-          "quantity"
-        ]
-      },
-      "CreateOrderCustomerDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Іван Петренко"
-          },
-          "phone": {
-            "type": "string",
-            "example": "+380991234567"
-          },
-          "email": {
-            "type": "string",
-            "example": "ivan@example.com"
-          }
-        },
-        "required": [
-          "name",
-          "phone",
-          "email"
-        ]
-      },
-      "CreateOrderAddressDto": {
-        "type": "object",
-        "properties": {
-          "city_name": {
-            "type": "string",
-            "example": "Київ"
-          },
-          "warehouse_description": {
-            "type": "string",
-            "example": "Відділення №1: вул. Хрещатик, 1"
-          },
-          "warehouse_number": {
-            "type": "number",
-            "example": 1
-          },
-          "street": {
-            "type": "string",
-            "example": "вул. Хрещатик"
-          },
-          "building": {
-            "type": "string",
-            "example": "1А"
-          },
-          "apartment": {
-            "type": "string",
-            "example": "42"
-          }
-        },
-        "required": [
-          "city_name"
-        ]
-      },
-      "CreateOrderDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreateOrderItemDto"
-            }
-          },
-          "customer": {
-            "$ref": "#/components/schemas/CreateOrderCustomerDto"
-          },
-          "payment_method": {
-            "type": "string",
-            "enum": [
-              "CASH",
-              "IBAN",
-              "LIQPAY",
-              "MONOPAY"
-            ],
-            "example": "LIQPAY"
-          },
-          "delivery_method": {
-            "type": "string",
-            "enum": [
-              "NOVA_POST",
-              "COURIER",
-              "PICKUP"
-            ],
-            "example": "NOVA_POST"
-          },
-          "delivery_address": {
-            "$ref": "#/components/schemas/CreateOrderAddressDto"
-          },
-          "comment": {
-            "type": "string",
-            "example": "Зателефонуйте перед відправкою"
-          },
-          "coupon_code": {
-            "type": "string",
-            "example": "AB12CD34EF",
-            "description": "User-entered discount code"
-          }
-        },
-        "required": [
-          "items",
-          "customer",
-          "payment_method",
-          "delivery_method"
-        ]
-      },
-      "OrderResponseCustomerDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "Іван Петренко"
-          },
-          "phone": {
-            "type": "string",
-            "example": "+380991234567"
-          },
-          "email": {
-            "type": "string",
-            "example": "ivan@example.com"
-          }
-        },
-        "required": [
-          "name",
-          "phone",
-          "email"
-        ]
-      },
-      "OrderResponseItemDto": {
-        "type": "object",
-        "properties": {
-          "variant_id": {
-            "type": "string",
-            "example": "664f1b2c3d4e5f6a7b8c9d0e"
-          },
-          "product_id": {
-            "type": "string",
-            "example": "664f1b2c3d4e5f6a7b8c9d0f"
-          },
-          "name": {
-            "type": "string",
-            "example": "Стілець кухонний Fillando"
-          },
-          "sku": {
-            "type": "string",
-            "example": "FIL-CHAIR-001"
-          },
-          "vendor_sku": {
-            "type": "object",
-            "example": "VEND-CH-42",
-            "nullable": true
-          },
-          "price": {
-            "type": "number",
-            "example": 1299
-          },
-          "quantity": {
-            "type": "number",
-            "example": 2
-          },
-          "line_total": {
-            "type": "number",
-            "example": 2598
-          },
-          "image": {
-            "type": "object",
-            "example": "https://cdn.example.com/product/image.webp",
-            "nullable": true
-          }
-        },
-        "required": [
-          "variant_id",
-          "product_id",
-          "name",
-          "sku",
-          "vendor_sku",
-          "price",
-          "quantity",
-          "line_total",
-          "image"
-        ]
-      },
-      "OrderResponseDiscountDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "example": "AB12CD34EF"
-          },
-          "discount_percent": {
-            "type": "number",
-            "example": 10
-          },
-          "discount_amount": {
-            "type": "number",
-            "example": 125.5
-          }
-        },
-        "required": [
-          "code",
-          "discount_percent",
-          "discount_amount"
-        ]
-      },
-      "OrderResponseDeliveryAddressDto": {
-        "type": "object",
-        "properties": {
-          "city_name": {
-            "type": "string",
-            "example": "Київ"
-          },
-          "warehouse_description": {
-            "type": "object",
-            "example": "Відділення №1: вул. Хрещатик, 1",
-            "nullable": true
-          },
-          "warehouse_number": {
-            "type": "object",
-            "example": 1,
-            "nullable": true
-          },
-          "street": {
-            "type": "object",
-            "example": "вул. Хрещатик",
-            "nullable": true
-          },
-          "building": {
-            "type": "object",
-            "example": "1А",
-            "nullable": true
-          },
-          "apartment": {
-            "type": "object",
-            "example": "42",
-            "nullable": true
-          }
-        },
-        "required": [
-          "city_name",
-          "warehouse_description",
-          "warehouse_number",
-          "street",
-          "building",
-          "apartment"
-        ]
-      },
-      "OrderResponseDto": {
-        "type": "object",
-        "properties": {
-          "_id": {
-            "type": "string",
-            "example": "664f1b2c3d4e5f6a7b8c9d10"
-          },
-          "order_number": {
-            "type": "string",
-            "example": "FO-0000123"
-          },
-          "customer": {
-            "$ref": "#/components/schemas/OrderResponseCustomerDto"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrderResponseItemDto"
-            }
-          },
-          "subtotal_price": {
-            "type": "number",
-            "example": 2598
-          },
-          "total_price": {
-            "type": "number",
-            "example": 2338.2
-          },
-          "applied_discount": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/OrderResponseDiscountDto"
-              }
-            ]
-          },
-          "payment_method": {
-            "type": "string",
-            "enum": [
-              "CASH",
-              "IBAN",
-              "LIQPAY",
-              "MONOPAY"
-            ]
-          },
-          "payment_status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "PAID",
-              "FAILED",
-              "REFUNDED"
-            ]
-          },
-          "payment_transaction_id": {
-            "type": "object",
-            "example": "liqpay_tx_123",
-            "nullable": true
-          },
-          "delivery_method": {
-            "type": "string",
-            "enum": [
-              "NOVA_POST",
-              "COURIER",
-              "PICKUP"
-            ]
-          },
-          "delivery_address": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/OrderResponseDeliveryAddressDto"
-              }
-            ]
-          },
-          "nova_post_ttn": {
-            "type": "object",
-            "example": "59001000000000",
-            "nullable": true
-          },
-          "order_status": {
-            "type": "string",
-            "enum": [
-              "NEW",
-              "CONFIRMED",
-              "PROCESSING",
-              "SHIPPED",
-              "DELIVERED",
-              "COMPLETED",
-              "CANCELLED",
-              "RETURNED"
-            ]
-          },
-          "comment": {
-            "type": "object",
-            "example": "Зателефонуйте перед відправкою",
-            "nullable": true
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "_id",
-          "order_number",
-          "customer",
-          "items",
-          "subtotal_price",
-          "total_price",
-          "applied_discount",
-          "payment_method",
-          "payment_status",
-          "payment_transaction_id",
-          "delivery_method",
-          "delivery_address",
-          "nova_post_ttn",
-          "order_status",
-          "comment",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "OrderListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrderResponseDto"
-            }
-          },
-          "total": {
-            "type": "number",
-            "example": 137
-          },
-          "page": {
-            "type": "number",
-            "example": 1
-          },
-          "limit": {
-            "type": "number",
-            "example": 20
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ]
-      },
-      "UpdateOrderCustomerDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "UpdateOrderAddressDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "AdminUpdateOrderDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreateOrderItemDto"
-            }
-          },
-          "customer": {
-            "$ref": "#/components/schemas/UpdateOrderCustomerDto"
-          },
-          "payment_method": {
-            "type": "string",
-            "enum": [
-              "CASH",
-              "IBAN",
-              "LIQPAY",
-              "MONOPAY"
-            ],
-            "example": "LIQPAY"
-          },
-          "delivery_method": {
-            "type": "string",
-            "enum": [
-              "NOVA_POST",
-              "COURIER",
-              "PICKUP"
-            ],
-            "example": "NOVA_POST"
-          },
-          "delivery_address": {
-            "$ref": "#/components/schemas/UpdateOrderAddressDto"
-          },
-          "comment": {
-            "type": "string",
-            "example": "Зателефонуйте за 30 хв до доставки"
-          }
-        }
-      },
-      "UpdateOrderStatusDto": {
-        "type": "object",
-        "properties": {
-          "order_status": {
-            "type": "string",
-            "enum": [
-              "NEW",
-              "CONFIRMED",
-              "PROCESSING",
-              "SHIPPED",
-              "DELIVERED",
-              "COMPLETED",
-              "CANCELLED",
-              "RETURNED"
-            ],
-            "example": "CONFIRMED"
-          }
-        },
-        "required": [
-          "order_status"
-        ]
-      },
-      "UpdatePaymentStatusDto": {
-        "type": "object",
-        "properties": {
-          "payment_status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "PAID",
-              "FAILED",
-              "REFUNDED"
-            ],
-            "example": "PAID"
-          },
-          "payment_transaction_id": {
-            "type": "string",
-            "example": "liqpay_txn_abc123"
-          }
-        },
-        "required": [
-          "payment_status"
-        ]
-      },
-      "SetTtnDto": {
-        "type": "object",
-        "properties": {
-          "nova_post_ttn": {
-            "type": "string",
-            "example": "20450081729182"
-          }
-        },
-        "required": [
-          "nova_post_ttn"
-        ]
-      },
-      "CreateDiscountCouponDto": {
-        "type": "object",
-        "properties": {
-          "discount_percent": {
-            "type": "number",
-            "example": 15,
-            "minimum": 0,
-            "maximum": 100
-          },
-          "valid_until": {
-            "type": "string",
-            "example": "2026-12-31T23:59:59.000Z",
-            "description": "Coupon expiration datetime in ISO format"
-          },
-          "is_active": {
-            "type": "boolean",
-            "example": true,
-            "default": true
-          }
-        },
-        "required": [
-          "discount_percent",
-          "valid_until"
-        ]
-      },
-      "ValidateDiscountCouponDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "example": "ZY64GM08WT"
-          }
-        },
-        "required": [
-          "code"
-        ]
-      },
-      "UpdateDiscountCouponDto": {
-        "type": "object",
-        "properties": {
-          "discount_percent": {
-            "type": "number",
-            "example": 15,
-            "minimum": 0,
-            "maximum": 100
-          },
-          "valid_until": {
-            "type": "string",
-            "example": "2026-12-31T23:59:59.000Z",
-            "description": "Coupon expiration datetime in ISO format"
-          },
-          "is_active": {
-            "type": "boolean",
-            "example": true,
-            "default": true
-          }
-        }
-      },
-      "UserListItemDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "664f1b2c3d4e5f6a7b8c9d0e"
-          },
-          "email": {
-            "type": "string",
-            "example": "ivan@example.com"
-          },
-          "name": {
-            "type": "string",
-            "example": "Іван Петренко"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "USER",
-              "ADMIN"
-            ]
-          },
-          "phone": {
-            "type": "object",
-            "example": "+380991234567",
-            "nullable": true
-          },
-          "authMethod": {
-            "type": "string",
-            "enum": [
-              "EMAIL",
-              "GOOGLE",
-              "GITHUB"
-            ]
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "email",
-          "name",
-          "role",
-          "phone",
-          "authMethod",
-          "createdAt"
-        ]
-      },
-      "UsersListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UserListItemDto"
-            }
-          },
-          "total": {
-            "type": "number",
-            "example": 42
-          },
-          "page": {
-            "type": "number",
-            "example": 1
-          },
-          "limit": {
-            "type": "number",
-            "example": 20
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ]
-      },
-      "UpdateMeDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "example": "John Doe",
-            "description": "User full name"
-          },
-          "phone": {
-            "type": "object",
-            "example": "+380991112233",
-            "description": "User phone number in E.164 UA format",
-            "pattern": "^\\+380\\d{9}$",
-            "nullable": true
-          },
-          "picture": {
-            "type": "object",
-            "example": "https://cdn.example.com/users/avatar.webp",
-            "description": "Public URL of user profile picture",
-            "nullable": true
-          }
-        }
-      }
-    }
-  }
+	"openapi": "3.0.0",
+	"paths": {
+		"/auth/login": {
+			"post": {
+				"description": "Login user",
+				"operationId": "AuthController_login",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/LoginDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Login",
+				"tags": ["/auth"]
+			}
+		},
+		"/auth/register": {
+			"post": {
+				"description": "Register user",
+				"operationId": "AuthController_register",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RegisterDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Register",
+				"tags": ["/auth"]
+			}
+		},
+		"/auth/google": {
+			"get": {
+				"description": "Google login",
+				"operationId": "AuthController_googleLogin",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Google login",
+				"tags": ["/auth"]
+			}
+		},
+		"/auth/google/callback": {
+			"get": {
+				"description": "Google callback",
+				"operationId": "AuthController_googleAuthRedirect",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Google callback",
+				"tags": ["/auth"]
+			}
+		},
+		"/auth/logout": {
+			"post": {
+				"description": "Logout user",
+				"operationId": "AuthController_logout",
+				"parameters": [],
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Logout",
+				"tags": ["/auth"]
+			}
+		},
+		"/auth/refresh": {
+			"post": {
+				"description": "Refresh access token",
+				"operationId": "AuthController_refresh",
+				"parameters": [],
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Refresh access token",
+				"tags": ["/auth"]
+			}
+		},
+		"/auth/me": {
+			"get": {
+				"description": "Get user",
+				"operationId": "AuthController_me",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get me",
+				"tags": ["/auth"]
+			}
+		},
+		"/vendors": {
+			"get": {
+				"description": "Get all vendors",
+				"operationId": "VendorController_findAll",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get all vendors",
+				"tags": ["/vendors"]
+			},
+			"post": {
+				"description": "Create a new vendor",
+				"operationId": "VendorController_create",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateVendorDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Create vendor",
+				"tags": ["/vendors"]
+			}
+		},
+		"/vendors/check-availability": {
+			"get": {
+				"description": "Check if a vendor name or slug is available (not taken)",
+				"operationId": "VendorController_checkAvailability",
+				"parameters": [
+					{
+						"name": "slug",
+						"required": true,
+						"in": "query",
+						"description": "URL-friendly identifier",
+						"schema": {
+							"example": "my-slug",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Check vendor availability",
+				"tags": ["/vendors"]
+			}
+		},
+		"/vendors/{id}": {
+			"get": {
+				"description": "Get a single vendor by id",
+				"operationId": "VendorController_findById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get vendor by id",
+				"tags": ["/vendors"]
+			},
+			"patch": {
+				"description": "Update an existing vendor",
+				"operationId": "VendorController_update",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateVendorDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update vendor",
+				"tags": ["/vendors"]
+			},
+			"delete": {
+				"description": "Delete a vendor",
+				"operationId": "VendorController_delete",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete vendor",
+				"tags": ["/vendors"]
+			}
+		},
+		"/categories": {
+			"get": {
+				"description": "Get all categories",
+				"operationId": "CategoryController_findAll",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get all categories",
+				"tags": ["/categories"]
+			},
+			"post": {
+				"description": "Create a new category",
+				"operationId": "CategoryController_create",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateCategoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Create category",
+				"tags": ["/categories"]
+			}
+		},
+		"/categories/with-subcategories": {
+			"get": {
+				"description": "Get categories with subcategories",
+				"operationId": "CategoryController_findWithSubcategories",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get categories with subcategories",
+				"tags": ["/categories"]
+			}
+		},
+		"/categories/slug/{slug}": {
+			"get": {
+				"description": "Get a single category (with subcategories) by slug",
+				"operationId": "CategoryController_findBySlug",
+				"parameters": [
+					{
+						"name": "slug",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get category by slug",
+				"tags": ["/categories"]
+			}
+		},
+		"/categories/{id}": {
+			"get": {
+				"description": "Get a single category by id",
+				"operationId": "CategoryController_findById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get category by id",
+				"tags": ["/categories"]
+			},
+			"patch": {
+				"description": "Update an existing category",
+				"operationId": "CategoryController_update",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCategoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update category",
+				"tags": ["/categories"]
+			},
+			"put": {
+				"description": "Fully replace a category (all fields required)",
+				"operationId": "CategoryController_replace",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateCategoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Replace category",
+				"tags": ["/categories"]
+			},
+			"delete": {
+				"description": "Delete a category",
+				"operationId": "CategoryController_delete",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete category",
+				"tags": ["/categories"]
+			}
+		},
+		"/categories/{id}/subcategories": {
+			"get": {
+				"description": "Get all subcategories of a category",
+				"operationId": "CategoryController_findSubcategories",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get subcategories",
+				"tags": ["/categories"]
+			},
+			"post": {
+				"description": "Add a subcategory to a category",
+				"operationId": "CategoryController_addSubcategory",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateSubcategoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Add subcategory",
+				"tags": ["/categories"]
+			}
+		},
+		"/categories/{id}/subcategories/{subId}": {
+			"get": {
+				"description": "Get a specific subcategory by id",
+				"operationId": "CategoryController_findSubcategoryById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "subId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get subcategory by id",
+				"tags": ["/categories"]
+			},
+			"patch": {
+				"description": "Update an embedded subcategory",
+				"operationId": "CategoryController_updateSubcategory",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "subId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateSubcategoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update subcategory",
+				"tags": ["/categories"]
+			},
+			"put": {
+				"description": "Fully replace a subcategory (all fields required)",
+				"operationId": "CategoryController_replaceSubcategory",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "subId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateSubcategoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Replace subcategory",
+				"tags": ["/categories"]
+			},
+			"delete": {
+				"description": "Remove an embedded subcategory",
+				"operationId": "CategoryController_removeSubcategory",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "subId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Remove subcategory",
+				"tags": ["/categories"]
+			}
+		},
+		"/products": {
+			"get": {
+				"description": "Get all products",
+				"operationId": "ProductController_findAll",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get all products",
+				"tags": ["/products"]
+			},
+			"post": {
+				"description": "Create a new product",
+				"operationId": "ProductController_create",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateProductDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Create product",
+				"tags": ["/products"]
+			}
+		},
+		"/products/catalog": {
+			"get": {
+				"description": "Paginated, filterable product listing for a given subcategory.",
+				"operationId": "ProductController_getCatalog",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get catalog products",
+				"tags": ["/products"]
+			}
+		},
+		"/products/variants/slugs": {
+			"get": {
+				"description": "Returns minimal variant data for sitemap generation (slug and updatedAt).",
+				"operationId": "ProductController_getAllVariantSlugs",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get all variant slugs",
+				"tags": ["/products"]
+			}
+		},
+		"/products/variants/count": {
+			"get": {
+				"description": "Returns total number of product variants.",
+				"operationId": "ProductController_getVariantCount",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get variants count",
+				"tags": ["/products"]
+			}
+		},
+		"/products/by-slug/{slug}": {
+			"get": {
+				"description": "Returns full variant info, parent product, and sibling variants by variant slug.",
+				"operationId": "ProductController_getVariantBySlug",
+				"parameters": [
+					{
+						"name": "slug",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get variant by slug",
+				"tags": ["/products"]
+			}
+		},
+		"/products/{id}": {
+			"get": {
+				"description": "Get a single product by id",
+				"operationId": "ProductController_findById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get product by id",
+				"tags": ["/products"]
+			},
+			"patch": {
+				"description": "Update an existing product",
+				"operationId": "ProductController_update",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateProductDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update product",
+				"tags": ["/products"]
+			},
+			"delete": {
+				"description": "Delete a product",
+				"operationId": "ProductController_delete",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete product",
+				"tags": ["/products"]
+			}
+		},
+		"/products/validate": {
+			"post": {
+				"description": "Check which slugs and SKUs are already taken. Returns arrays of taken values.",
+				"operationId": "ProductController_validate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ValidateProductDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Validate slugs and SKUs",
+				"tags": ["/products"]
+			}
+		},
+		"/products/{id}/variants": {
+			"get": {
+				"description": "Get all variants belonging to a product.",
+				"operationId": "ProductController_getVariants",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get product variants",
+				"tags": ["/products"]
+			},
+			"post": {
+				"description": "Create a new variant for an existing product.",
+				"operationId": "ProductController_addVariant",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AddVariantDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Add variant to product",
+				"tags": ["/products"]
+			}
+		},
+		"/products/{id}/variants/{variantId}": {
+			"get": {
+				"description": "Get a single product variant by id.",
+				"operationId": "ProductController_getVariant",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "variantId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get variant by id",
+				"tags": ["/products"]
+			},
+			"patch": {
+				"description": "Partially update a product variant (price, stock, status, etc.).",
+				"operationId": "ProductController_updateVariant",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "variantId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateVariantDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update variant",
+				"tags": ["/products"]
+			},
+			"delete": {
+				"description": "Delete a specific product variant.",
+				"operationId": "ProductController_deleteVariant",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "variantId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete variant",
+				"tags": ["/products"]
+			}
+		},
+		"/products/{id}/variants/{variantId}/images": {
+			"patch": {
+				"description": "Replace the images array on a specific product variant.",
+				"operationId": "ProductController_setVariantImages",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "variantId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SetVariantImagesDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Set variant images",
+				"tags": ["/products"]
+			}
+		},
+		"/upload/presign": {
+			"post": {
+				"description": "Returns presigned S3 PUT URLs and public URLs for direct client-side upload. URLs expire in 15 minutes.",
+				"operationId": "UploadController_presign",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PresignUploadDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Generate presigned upload URLs",
+				"tags": ["/upload"]
+			}
+		},
+		"/upload/confirm": {
+			"post": {
+				"description": "Verifies that files were successfully uploaded to S3 via headObject checks.",
+				"operationId": "UploadController_confirm",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ConfirmUploadDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Confirm uploaded files",
+				"tags": ["/upload"]
+			}
+		},
+		"/upload": {
+			"delete": {
+				"description": "Permanently deletes one or more files from S3 by their keys.",
+				"operationId": "UploadController_delete",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/DeleteUploadDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete files from S3",
+				"tags": ["/upload"]
+			}
+		},
+		"/cart": {
+			"get": {
+				"description": "Returns the current user's cart with populated variant data. Out-of-stock items are automatically removed and listed in removed_items.",
+				"operationId": "CartController_getCart",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get cart",
+				"tags": ["/cart"]
+			},
+			"delete": {
+				"description": "Remove all items from the cart.",
+				"operationId": "CartController_clearCart",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Clear cart",
+				"tags": ["/cart"]
+			}
+		},
+		"/cart/merge": {
+			"post": {
+				"description": "Called after login to sync the client-side cart. If the server cart is empty, client items are validated against stock and set. If the server cart already has items, it is returned as-is and the client-side cart is discarded.",
+				"operationId": "CartController_mergeCart",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/MergeCartDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Merge cart",
+				"tags": ["/cart"]
+			}
+		},
+		"/cart/items": {
+			"post": {
+				"description": "Add a variant to the cart. If the variant is already present, its quantity is incremented by the given amount. Stock is validated.",
+				"operationId": "CartController_addItem",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AddCartItemDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Add item to cart",
+				"tags": ["/cart"]
+			}
+		},
+		"/cart/items/{variantId}": {
+			"patch": {
+				"description": "Set the absolute quantity for a specific cart item. Stock is validated.",
+				"operationId": "CartController_updateItem",
+				"parameters": [
+					{
+						"name": "variantId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateCartItemDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update cart item quantity",
+				"tags": ["/cart"]
+			},
+			"delete": {
+				"description": "Remove a specific variant from the cart.",
+				"operationId": "CartController_removeItem",
+				"parameters": [
+					{
+						"name": "variantId",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Remove item from cart",
+				"tags": ["/cart"]
+			}
+		},
+		"/payment-details": {
+			"get": {
+				"description": "Get all payment details records",
+				"operationId": "PaymentDetailsController_findAll",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get all payment details",
+				"tags": ["/payment-details"]
+			},
+			"post": {
+				"description": "Create a new payment details record",
+				"operationId": "PaymentDetailsController_create",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreatePaymentDetailsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Create payment details",
+				"tags": ["/payment-details"]
+			}
+		},
+		"/payment-details/active": {
+			"get": {
+				"description": "Returns the currently active payment details record",
+				"operationId": "PaymentDetailsController_findActive",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get active payment details",
+				"tags": ["/payment-details"]
+			}
+		},
+		"/payment-details/{id}": {
+			"get": {
+				"description": "Get a single payment details record by id",
+				"operationId": "PaymentDetailsController_findById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get payment details by id",
+				"tags": ["/payment-details"]
+			},
+			"patch": {
+				"description": "Update an existing payment details record",
+				"operationId": "PaymentDetailsController_update",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdatePaymentDetailsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update payment details",
+				"tags": ["/payment-details"]
+			},
+			"delete": {
+				"description": "Delete a payment details record",
+				"operationId": "PaymentDetailsController_delete",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete payment details",
+				"tags": ["/payment-details"]
+			}
+		},
+		"/payment-details/{id}/activate": {
+			"patch": {
+				"description": "Sets the given record as active and deactivates all others. Only one record can be active at a time.",
+				"operationId": "PaymentDetailsController_activate",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Activate payment details",
+				"tags": ["/payment-details"]
+			}
+		},
+		"/nova-post/sync": {
+			"get": {
+				"description": "Fetches all cities and warehouses from the Nova Post API and upserts them into the local database. Admin only. Returns counts of processed records.",
+				"operationId": "NovaPostController_sync",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Sync Nova Post data",
+				"tags": ["/nova-post"]
+			}
+		},
+		"/nova-post/cities": {
+			"get": {
+				"description": "Case-insensitive search for Nova Post cities/settlements by name.",
+				"operationId": "NovaPostController_getCities",
+				"parameters": [
+					{
+						"name": "q",
+						"required": true,
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Search cities",
+				"tags": ["/nova-post"]
+			}
+		},
+		"/nova-post/warehouses": {
+			"get": {
+				"description": "Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), POST (поштове відділення), CARGO (вантажне відділення). Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.",
+				"operationId": "NovaPostController_getWarehouses",
+				"parameters": [
+					{
+						"name": "cityRef",
+						"required": true,
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "type",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"enum": ["PARCEL_LOCKER", "POST", "CARGO"],
+							"type": "string"
+						}
+					},
+					{
+						"name": "q",
+						"required": false,
+						"in": "query",
+						"description": "Optional search: warehouse number (substring on numeric №) and/or fragment of description / short address. Case-insensitive for text; trim and repeated spaces collapsed; word gaps match flexibly. Omit or leave blank for all warehouses in the city (and type).",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get warehouses by city",
+				"tags": ["/nova-post"]
+			}
+		},
+		"/orders": {
+			"post": {
+				"description": "Place a new order. Validates stock for each variant, snapshots prices, and can apply a discount coupon by code. User can be authenticated or guest.",
+				"operationId": "OrderController_create",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateOrderDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Create order",
+				"tags": ["/orders"]
+			},
+			"get": {
+				"description": "Paginated list of all orders with optional filters by order_status and payment_status. Admin only.",
+				"operationId": "OrderController_findAll",
+				"parameters": [
+					{
+						"name": "order_status",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"NEW",
+								"CONFIRMED",
+								"PROCESSING",
+								"SHIPPED",
+								"DELIVERED",
+								"COMPLETED",
+								"CANCELLED",
+								"RETURNED"
+							]
+						}
+					},
+					{
+						"name": "payment_status",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["PENDING", "PAID", "FAILED", "REFUNDED"]
+						}
+					},
+					{
+						"name": "page",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 1,
+							"type": "number"
+						}
+					},
+					{
+						"name": "limit",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 20,
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrderListResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get all orders",
+				"tags": ["/orders"]
+			}
+		},
+		"/orders/me": {
+			"get": {
+				"description": "Paginated list of orders for the authenticated user with optional filters by order_status and payment_status.",
+				"operationId": "OrderController_findMyOrders",
+				"parameters": [
+					{
+						"name": "order_status",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"NEW",
+								"CONFIRMED",
+								"PROCESSING",
+								"SHIPPED",
+								"DELIVERED",
+								"COMPLETED",
+								"CANCELLED",
+								"RETURNED"
+							]
+						}
+					},
+					{
+						"name": "payment_status",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["PENDING", "PAID", "FAILED", "REFUNDED"]
+						}
+					},
+					{
+						"name": "page",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 1,
+							"type": "number"
+						}
+					},
+					{
+						"name": "limit",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 20,
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrderListResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get my orders",
+				"tags": ["/orders"]
+			}
+		},
+		"/orders/me/{id}": {
+			"get": {
+				"description": "Get full details of a single order that belongs to the authenticated user.",
+				"operationId": "OrderController_findMyOrderById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrderResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get my order by id",
+				"tags": ["/orders"]
+			}
+		},
+		"/orders/{id}": {
+			"get": {
+				"description": "Get full order details by MongoDB id. Admin only.",
+				"operationId": "OrderController_findById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrderResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get order by id",
+				"tags": ["/orders"]
+			},
+			"patch": {
+				"description": "Update editable order fields (items, customer, delivery, payment method, comment). Recalculates totals if items are changed. Admin only.",
+				"operationId": "OrderController_update",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AdminUpdateOrderDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrderResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Update order",
+				"tags": ["/orders"]
+			}
+		},
+		"/orders/{id}/status": {
+			"patch": {
+				"description": "Change the fulfillment status of an order. Admin only.",
+				"operationId": "OrderController_updateOrderStatus",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateOrderStatusDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update order status",
+				"tags": ["/orders"]
+			}
+		},
+		"/orders/{id}/payment-status": {
+			"patch": {
+				"description": "Change the payment status of an order. Optionally record the payment transaction id. Admin only.",
+				"operationId": "OrderController_updatePaymentStatus",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdatePaymentStatusDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update payment status",
+				"tags": ["/orders"]
+			}
+		},
+		"/orders/{id}/ttn": {
+			"patch": {
+				"description": "Attach the Nova Post tracking number (ТТН) to an order. Admin only.",
+				"operationId": "OrderController_setTtn",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SetTtnDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Set Nova Post TTN",
+				"tags": ["/orders"]
+			}
+		},
+		"/discount-coupons": {
+			"get": {
+				"description": "Get paginated discount coupons with optional filters by active flag and code search query. Admin only.",
+				"operationId": "DiscountCouponController_findAll",
+				"parameters": [
+					{
+						"name": "is_active",
+						"required": false,
+						"in": "query",
+						"description": "Filter by active flag",
+						"schema": {
+							"example": true,
+							"type": "boolean"
+						}
+					},
+					{
+						"name": "q",
+						"required": false,
+						"in": "query",
+						"description": "Search by coupon code substring",
+						"schema": {
+							"example": "ZY64",
+							"type": "string"
+						}
+					},
+					{
+						"name": "page",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 1,
+							"type": "number"
+						}
+					},
+					{
+						"name": "limit",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 20,
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get all discount coupons",
+				"tags": ["/discount-coupons"]
+			},
+			"post": {
+				"description": "Create a discount coupon with internal number in DIS-0000123 format and random 10-character code (A-Z, 0-9). Admin only.",
+				"operationId": "DiscountCouponController_create",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateDiscountCouponDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Create discount coupon",
+				"tags": ["/discount-coupons"]
+			}
+		},
+		"/discount-coupons/{id}": {
+			"get": {
+				"description": "Get discount coupon details by MongoDB id. Admin only.",
+				"operationId": "DiscountCouponController_findById",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get discount coupon by id",
+				"tags": ["/discount-coupons"]
+			},
+			"patch": {
+				"description": "Update discount coupon fields (discount percent, expiration, active flag). Admin only.",
+				"operationId": "DiscountCouponController_update",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateDiscountCouponDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update discount coupon",
+				"tags": ["/discount-coupons"]
+			},
+			"delete": {
+				"description": "Delete discount coupon by id. Admin only.",
+				"operationId": "DiscountCouponController_delete",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Delete discount coupon",
+				"tags": ["/discount-coupons"]
+			}
+		},
+		"/discount-coupons/validate": {
+			"post": {
+				"description": "Validate coupon code for checkout. Returns validity, and for valid coupons returns discount details.",
+				"operationId": "DiscountCouponController_validate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ValidateDiscountCouponDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": ""
+					}
+				},
+				"summary": "Validate discount coupon",
+				"tags": ["/discount-coupons"]
+			}
+		},
+		"/users": {
+			"get": {
+				"description": "Paginated list of all users with optional role filter. Admin only.",
+				"operationId": "UsersController_findAll",
+				"parameters": [
+					{
+						"name": "role",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["USER", "ADMIN"]
+						}
+					},
+					{
+						"name": "page",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 1,
+							"type": "number"
+						}
+					},
+					{
+						"name": "limit",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"minimum": 1,
+							"default": 20,
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UsersListResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get all users",
+				"tags": ["/users"]
+			}
+		},
+		"/users/me": {
+			"get": {
+				"description": "Returns the profile of the authenticated user",
+				"operationId": "UsersController_me",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get my profile",
+				"tags": ["/users"]
+			},
+			"patch": {
+				"description": "Updates name, phone, or profile picture for the authenticated user",
+				"operationId": "UsersController_updateMe",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateMeDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Update my profile",
+				"tags": ["/users"]
+			}
+		}
+	},
+	"info": {
+		"title": "Urban Tab API",
+		"description": "API документація",
+		"version": "1.0",
+		"contact": {}
+	},
+	"tags": [],
+	"servers": [],
+	"components": {
+		"schemas": {
+			"LoginDto": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"example": "johndoe@example.com",
+						"description": "User email"
+					},
+					"password": {
+						"type": "string",
+						"example": "securepassword",
+						"description": "User password",
+						"minLength": 6
+					}
+				},
+				"required": ["email", "password"]
+			},
+			"RegisterDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "John Doe",
+						"description": "User full name"
+					},
+					"email": {
+						"type": "string",
+						"example": "johndoe@example.com",
+						"description": "User email"
+					},
+					"password": {
+						"type": "string",
+						"example": "securepassword",
+						"description": "User password",
+						"minLength": 6
+					},
+					"confirmPassword": {
+						"type": "string",
+						"example": "securepassword",
+						"description": "User password",
+						"minLength": 6
+					}
+				},
+				"required": ["name", "email", "password", "confirmPassword"]
+			},
+			"CreateVendorDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Fillando",
+						"description": "Vendor name"
+					},
+					"slug": {
+						"type": "string",
+						"example": "my-slug",
+						"description": "URL-friendly identifier"
+					}
+				},
+				"required": ["name", "slug"]
+			},
+			"UpdateVendorDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Fillando",
+						"description": "Vendor name"
+					},
+					"slug": {
+						"type": "string",
+						"example": "my-slug",
+						"description": "URL-friendly identifier"
+					}
+				}
+			},
+			"CreateCategoryDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Electronics",
+						"description": "Category name"
+					},
+					"slug": {
+						"type": "string",
+						"example": "my-slug",
+						"description": "URL-friendly identifier"
+					},
+					"image": {
+						"type": "string",
+						"example": "https://cdn.example.com/categories/abc123/uuid.webp",
+						"description": "Category image URL — either a direct link or the publicUrl returned from the S3 upload flow"
+					},
+					"order": {
+						"type": "number",
+						"example": 1,
+						"description": "Display order of the category in the UI — lower values appear first"
+					}
+				},
+				"required": ["name", "slug"]
+			},
+			"UpdateCategoryDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Electronics",
+						"description": "Category name"
+					},
+					"slug": {
+						"type": "string",
+						"example": "my-slug",
+						"description": "URL-friendly identifier"
+					},
+					"image": {
+						"type": "string",
+						"example": "https://cdn.example.com/categories/abc123/uuid.webp",
+						"description": "Category image URL — either a direct link or the publicUrl returned from the S3 upload flow"
+					},
+					"order": {
+						"type": "number",
+						"example": 1,
+						"description": "Display order of the category in the UI — lower values appear first"
+					}
+				}
+			},
+			"RequiredAttributeDto": {
+				"type": "object",
+				"properties": {
+					"label": {
+						"type": "string",
+						"example": "Виробник",
+						"description": "Attribute label (human-readable)"
+					},
+					"filter_type": {
+						"type": "string",
+						"example": "multi-select",
+						"enum": ["multi-select", "range"],
+						"description": "Filter UI type"
+					},
+					"unit": {
+						"type": "object",
+						"example": "мм",
+						"description": "Unit of measure",
+						"nullable": true
+					}
+				},
+				"required": ["label", "filter_type", "unit"]
+			},
+			"CreateSubcategoryDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Smartphones",
+						"description": "Subcategory name"
+					},
+					"slug": {
+						"type": "string",
+						"example": "my-slug",
+						"description": "URL-friendly identifier"
+					},
+					"required_attributes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/RequiredAttributeDto"
+						}
+					}
+				},
+				"required": ["name", "slug"]
+			},
+			"ValidateProductDto": {
+				"type": "object",
+				"properties": {
+					"slugs": {
+						"example": ["futbolka-bazova-chorna", "futbolka-bazova-bila"],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"skus": {
+						"example": ["SKU-001", "SKU-002"],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			},
+			"ProductDescriptionDto": {
+				"type": "object",
+				"properties": {
+					"json": {
+						"type": "object",
+						"example": {
+							"ops": [
+								{
+									"insert": "Hello"
+								}
+							]
+						},
+						"description": "Quill delta JSON"
+					},
+					"html": {
+						"type": "string",
+						"example": "<p>Hello</p>",
+						"description": "Rendered HTML"
+					}
+				},
+				"required": ["json", "html"]
+			},
+			"VariantTypeDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string",
+						"example": "color",
+						"description": "Variant type key"
+					},
+					"label": {
+						"type": "string",
+						"example": "Color",
+						"description": "Variant type label"
+					}
+				},
+				"required": ["key", "label"]
+			},
+			"AttributeDto": {
+				"type": "object",
+				"properties": {
+					"l": {
+						"type": "string",
+						"example": "Виробник",
+						"description": "Attribute label (human-readable)"
+					},
+					"v": {
+						"type": "object",
+						"example": "Sony",
+						"description": "Attribute value (string, number, or boolean)"
+					}
+				},
+				"required": ["l", "v"]
+			},
+			"CreateVariantDto": {
+				"type": "object",
+				"properties": {
+					"v_value": {
+						"type": "object",
+						"example": "Червоний",
+						"description": "Variant distinguishing value (null for single-variant products)",
+						"nullable": true
+					},
+					"price": {
+						"type": "number",
+						"example": 440,
+						"description": "Price in minor units or base currency"
+					},
+					"stock": {
+						"type": "number",
+						"example": 100,
+						"description": "Available stock quantity"
+					},
+					"images": {
+						"description": "Image URLs",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"vendor_product_sku": {
+						"type": "string",
+						"example": "VENDOR-SKU-123",
+						"description": "Vendor-assigned SKU"
+					}
+				},
+				"required": ["price"]
+			},
+			"CreateProductDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Wireless Headphones",
+						"description": "Product name"
+					},
+					"category_id": {
+						"type": "string",
+						"example": "64b1f2c3d4e5f6a7b8c9d0e1",
+						"description": "Category ObjectId"
+					},
+					"subcategory_id": {
+						"type": "string",
+						"example": "64b1f2c3d4e5f6a7b8c9d0e2",
+						"description": "Subcategory ObjectId"
+					},
+					"vendor_id": {
+						"type": "string",
+						"example": "64b1f2c3d4e5f6a7b8c9d0e3",
+						"description": "Vendor ObjectId"
+					},
+					"description": {
+						"$ref": "#/components/schemas/ProductDescriptionDto"
+					},
+					"variant_type": {
+						"$ref": "#/components/schemas/VariantTypeDto"
+					},
+					"attributes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AttributeDto"
+						}
+					},
+					"variants": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CreateVariantDto"
+						}
+					}
+				},
+				"required": ["name", "category_id", "subcategory_id", "vendor_id"]
+			},
+			"AddVariantDto": {
+				"type": "object",
+				"properties": {
+					"price": {
+						"type": "number",
+						"example": 440,
+						"description": "Variant price"
+					},
+					"v_value": {
+						"type": "object",
+						"example": "Чорна",
+						"description": "Variant distinguishing value; omit for single-variant products",
+						"nullable": true
+					},
+					"stock": {
+						"type": "number",
+						"example": 100
+					},
+					"images": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"vendor_product_sku": {
+						"type": "string",
+						"example": "VENDOR-SKU-123"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["draft", "active", "archived"],
+						"default": "active"
+					}
+				},
+				"required": ["price"]
+			},
+			"UpdateVariantDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Футболка базова — Чорна"
+					},
+					"price": {
+						"type": "number",
+						"example": 440
+					},
+					"stock": {
+						"type": "number",
+						"example": 100
+					},
+					"images": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"v_value": {
+						"type": "object",
+						"example": "Чорна",
+						"nullable": true
+					},
+					"vendor_product_sku": {
+						"type": "string",
+						"example": "VENDOR-SKU-123"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["draft", "active", "archived"]
+					}
+				}
+			},
+			"SetVariantImagesDto": {
+				"type": "object",
+				"properties": {
+					"images": {
+						"example": ["https://cdn.example.com/img.webp"],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["images"]
+			},
+			"UpdateProductDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Wireless Headphones",
+						"description": "Product name"
+					},
+					"category_id": {
+						"type": "string",
+						"example": "64b1f2c3d4e5f6a7b8c9d0e1"
+					},
+					"subcategory_id": {
+						"type": "string",
+						"example": "64b1f2c3d4e5f6a7b8c9d0e2"
+					},
+					"vendor_id": {
+						"type": "string",
+						"example": "64b1f2c3d4e5f6a7b8c9d0e3"
+					},
+					"description": {
+						"$ref": "#/components/schemas/ProductDescriptionDto"
+					},
+					"variant_type": {
+						"$ref": "#/components/schemas/VariantTypeDto"
+					},
+					"attributes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AttributeDto"
+						}
+					}
+				}
+			},
+			"FilePresignRequestDto": {
+				"type": "object",
+				"properties": {
+					"entityType": {
+						"type": "string",
+						"example": "product",
+						"description": "Entity type the file belongs to (product, user, or vendor)",
+						"enum": ["product", "user", "vendor", "category"]
+					},
+					"entityId": {
+						"type": "string",
+						"example": "507f1f77bcf86cd799439011",
+						"description": "MongoDB ObjectId of the entity the file belongs to"
+					},
+					"contentType": {
+						"type": "string",
+						"example": "image/webp",
+						"description": "MIME type of the file to upload (image/jpeg, image/png, or image/webp)",
+						"enum": ["image/jpeg", "image/png", "image/webp"]
+					}
+				},
+				"required": ["entityType", "entityId", "contentType"]
+			},
+			"PresignUploadDto": {
+				"type": "object",
+				"properties": {
+					"files": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/FilePresignRequestDto"
+						}
+					}
+				},
+				"required": ["files"]
+			},
+			"ConfirmUploadDto": {
+				"type": "object",
+				"properties": {
+					"keys": {
+						"example": "products/abc123/550e8400-e29b-41d4-a716-446655440000.webp",
+						"description": "S3 object key identifying the file in the bucket",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["keys"]
+			},
+			"DeleteUploadDto": {
+				"type": "object",
+				"properties": {
+					"keys": {
+						"example": "products/abc123/550e8400-e29b-41d4-a716-446655440000.webp",
+						"description": "S3 object key identifying the file in the bucket",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["keys"]
+			},
+			"MergeCartItemDto": {
+				"type": "object",
+				"properties": {
+					"variant_id": {
+						"type": "string",
+						"example": "507f1f77bcf86cd799439011",
+						"description": "MongoDB ObjectId of the product variant"
+					},
+					"quantity": {
+						"type": "number",
+						"example": 2,
+						"description": "Number of units (minimum 1)",
+						"minimum": 1
+					}
+				},
+				"required": ["variant_id", "quantity"]
+			},
+			"MergeCartDto": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MergeCartItemDto"
+						}
+					}
+				},
+				"required": ["items"]
+			},
+			"AddCartItemDto": {
+				"type": "object",
+				"properties": {
+					"variant_id": {
+						"type": "string",
+						"example": "507f1f77bcf86cd799439011",
+						"description": "MongoDB ObjectId of the product variant"
+					},
+					"quantity": {
+						"type": "number",
+						"example": 2,
+						"description": "Number of units (minimum 1)",
+						"minimum": 1
+					}
+				},
+				"required": ["variant_id", "quantity"]
+			},
+			"UpdateCartItemDto": {
+				"type": "object",
+				"properties": {
+					"quantity": {
+						"type": "number",
+						"example": 2,
+						"description": "Number of units (minimum 1)",
+						"minimum": 1
+					}
+				},
+				"required": ["quantity"]
+			},
+			"CreatePaymentDetailsDto": {
+				"type": "object",
+				"properties": {
+					"last_name": {
+						"type": "string",
+						"example": "Шевченко",
+						"description": "Recipient's last name"
+					},
+					"first_name": {
+						"type": "string",
+						"example": "Тарас",
+						"description": "Recipient's first name"
+					},
+					"middle_name": {
+						"type": "string",
+						"example": "Григорович",
+						"description": "Recipient's middle name"
+					},
+					"iban": {
+						"type": "string",
+						"example": "UA123456789012345678901234567",
+						"description": "International Bank Account Number (IBAN)"
+					},
+					"edrpou": {
+						"type": "string",
+						"example": "12345678",
+						"description": "Ukrainian state registry code (ЄДРПОУ)"
+					},
+					"bank_name": {
+						"type": "string",
+						"example": "ПриватБанк",
+						"description": "Name of the bank"
+					}
+				},
+				"required": ["last_name", "first_name", "iban", "edrpou", "bank_name"]
+			},
+			"UpdatePaymentDetailsDto": {
+				"type": "object",
+				"properties": {
+					"last_name": {
+						"type": "string",
+						"example": "Шевченко",
+						"description": "Recipient's last name"
+					},
+					"first_name": {
+						"type": "string",
+						"example": "Тарас",
+						"description": "Recipient's first name"
+					},
+					"middle_name": {
+						"type": "string",
+						"example": "Григорович",
+						"description": "Recipient's middle name"
+					},
+					"iban": {
+						"type": "string",
+						"example": "UA123456789012345678901234567",
+						"description": "International Bank Account Number (IBAN)"
+					},
+					"edrpou": {
+						"type": "string",
+						"example": "12345678",
+						"description": "Ukrainian state registry code (ЄДРПОУ)"
+					},
+					"bank_name": {
+						"type": "string",
+						"example": "ПриватБанк",
+						"description": "Name of the bank"
+					}
+				}
+			},
+			"CreateOrderItemDto": {
+				"type": "object",
+				"properties": {
+					"variant_id": {
+						"type": "string",
+						"example": "664f1b2c3d4e5f6a7b8c9d0e"
+					},
+					"quantity": {
+						"type": "number",
+						"example": 2,
+						"minimum": 1
+					}
+				},
+				"required": ["variant_id", "quantity"]
+			},
+			"CreateOrderCustomerDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Іван Петренко"
+					},
+					"phone": {
+						"type": "string",
+						"example": "+380991234567"
+					},
+					"email": {
+						"type": "string",
+						"example": "ivan@example.com"
+					}
+				},
+				"required": ["name", "phone", "email"]
+			},
+			"CreateOrderAddressDto": {
+				"type": "object",
+				"properties": {
+					"city_name": {
+						"type": "string",
+						"example": "Київ"
+					},
+					"warehouse_description": {
+						"type": "string",
+						"example": "Відділення №1: вул. Хрещатик, 1"
+					},
+					"warehouse_number": {
+						"type": "number",
+						"example": 1
+					},
+					"street": {
+						"type": "string",
+						"example": "вул. Хрещатик"
+					},
+					"building": {
+						"type": "string",
+						"example": "1А"
+					},
+					"apartment": {
+						"type": "string",
+						"example": "42"
+					}
+				},
+				"required": ["city_name"]
+			},
+			"CreateOrderDto": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CreateOrderItemDto"
+						}
+					},
+					"customer": {
+						"$ref": "#/components/schemas/CreateOrderCustomerDto"
+					},
+					"payment_method": {
+						"type": "string",
+						"enum": ["CASH", "IBAN", "LIQPAY", "MONOPAY"],
+						"example": "LIQPAY"
+					},
+					"delivery_method": {
+						"type": "string",
+						"enum": ["NOVA_POST", "COURIER", "PICKUP"],
+						"example": "NOVA_POST"
+					},
+					"delivery_address": {
+						"$ref": "#/components/schemas/CreateOrderAddressDto"
+					},
+					"comment": {
+						"type": "string",
+						"example": "Зателефонуйте перед відправкою"
+					},
+					"coupon_code": {
+						"type": "string",
+						"example": "AB12CD34EF",
+						"description": "User-entered discount code"
+					}
+				},
+				"required": ["items", "customer", "payment_method", "delivery_method"]
+			},
+			"OrderResponseCustomerDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "Іван Петренко"
+					},
+					"phone": {
+						"type": "string",
+						"example": "+380991234567"
+					},
+					"email": {
+						"type": "string",
+						"example": "ivan@example.com"
+					}
+				},
+				"required": ["name", "phone", "email"]
+			},
+			"OrderResponseItemDto": {
+				"type": "object",
+				"properties": {
+					"variant_id": {
+						"type": "string",
+						"example": "664f1b2c3d4e5f6a7b8c9d0e"
+					},
+					"product_id": {
+						"type": "string",
+						"example": "664f1b2c3d4e5f6a7b8c9d0f"
+					},
+					"name": {
+						"type": "string",
+						"example": "Стілець кухонний Fillando"
+					},
+					"sku": {
+						"type": "string",
+						"example": "FIL-CHAIR-001"
+					},
+					"vendor_sku": {
+						"type": "object",
+						"example": "VEND-CH-42",
+						"nullable": true
+					},
+					"price": {
+						"type": "number",
+						"example": 1299
+					},
+					"quantity": {
+						"type": "number",
+						"example": 2
+					},
+					"line_total": {
+						"type": "number",
+						"example": 2598
+					},
+					"image": {
+						"type": "object",
+						"example": "https://cdn.example.com/product/image.webp",
+						"nullable": true
+					}
+				},
+				"required": [
+					"variant_id",
+					"product_id",
+					"name",
+					"sku",
+					"vendor_sku",
+					"price",
+					"quantity",
+					"line_total",
+					"image"
+				]
+			},
+			"OrderResponseDiscountDto": {
+				"type": "object",
+				"properties": {
+					"code": {
+						"type": "string",
+						"example": "AB12CD34EF"
+					},
+					"discount_percent": {
+						"type": "number",
+						"example": 10
+					},
+					"discount_amount": {
+						"type": "number",
+						"example": 125.5
+					}
+				},
+				"required": ["code", "discount_percent", "discount_amount"]
+			},
+			"OrderResponseDeliveryAddressDto": {
+				"type": "object",
+				"properties": {
+					"city_name": {
+						"type": "string",
+						"example": "Київ"
+					},
+					"warehouse_description": {
+						"type": "object",
+						"example": "Відділення №1: вул. Хрещатик, 1",
+						"nullable": true
+					},
+					"warehouse_number": {
+						"type": "object",
+						"example": 1,
+						"nullable": true
+					},
+					"street": {
+						"type": "object",
+						"example": "вул. Хрещатик",
+						"nullable": true
+					},
+					"building": {
+						"type": "object",
+						"example": "1А",
+						"nullable": true
+					},
+					"apartment": {
+						"type": "object",
+						"example": "42",
+						"nullable": true
+					}
+				},
+				"required": [
+					"city_name",
+					"warehouse_description",
+					"warehouse_number",
+					"street",
+					"building",
+					"apartment"
+				]
+			},
+			"OrderResponseDto": {
+				"type": "object",
+				"properties": {
+					"_id": {
+						"type": "string",
+						"example": "664f1b2c3d4e5f6a7b8c9d10"
+					},
+					"order_number": {
+						"type": "string",
+						"example": "FO-0000123"
+					},
+					"customer": {
+						"$ref": "#/components/schemas/OrderResponseCustomerDto"
+					},
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/OrderResponseItemDto"
+						}
+					},
+					"subtotal_price": {
+						"type": "number",
+						"example": 2598
+					},
+					"total_price": {
+						"type": "number",
+						"example": 2338.2
+					},
+					"applied_discount": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/OrderResponseDiscountDto"
+							}
+						]
+					},
+					"payment_method": {
+						"type": "string",
+						"enum": ["CASH", "IBAN", "LIQPAY", "MONOPAY"]
+					},
+					"payment_status": {
+						"type": "string",
+						"enum": ["PENDING", "PAID", "FAILED", "REFUNDED"]
+					},
+					"payment_transaction_id": {
+						"type": "object",
+						"example": "liqpay_tx_123",
+						"nullable": true
+					},
+					"delivery_method": {
+						"type": "string",
+						"enum": ["NOVA_POST", "COURIER", "PICKUP"]
+					},
+					"delivery_address": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/OrderResponseDeliveryAddressDto"
+							}
+						]
+					},
+					"nova_post_ttn": {
+						"type": "object",
+						"example": "59001000000000",
+						"nullable": true
+					},
+					"order_status": {
+						"type": "string",
+						"enum": [
+							"NEW",
+							"CONFIRMED",
+							"PROCESSING",
+							"SHIPPED",
+							"DELIVERED",
+							"COMPLETED",
+							"CANCELLED",
+							"RETURNED"
+						]
+					},
+					"comment": {
+						"type": "object",
+						"example": "Зателефонуйте перед відправкою",
+						"nullable": true
+					},
+					"createdAt": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"updatedAt": {
+						"format": "date-time",
+						"type": "string"
+					}
+				},
+				"required": [
+					"_id",
+					"order_number",
+					"customer",
+					"items",
+					"subtotal_price",
+					"total_price",
+					"applied_discount",
+					"payment_method",
+					"payment_status",
+					"payment_transaction_id",
+					"delivery_method",
+					"delivery_address",
+					"nova_post_ttn",
+					"order_status",
+					"comment",
+					"createdAt",
+					"updatedAt"
+				]
+			},
+			"OrderListResponseDto": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/OrderResponseDto"
+						}
+					},
+					"total": {
+						"type": "number",
+						"example": 137
+					},
+					"page": {
+						"type": "number",
+						"example": 1
+					},
+					"limit": {
+						"type": "number",
+						"example": 20
+					}
+				},
+				"required": ["items", "total", "page", "limit"]
+			},
+			"UpdateOrderCustomerDto": {
+				"type": "object",
+				"properties": {}
+			},
+			"UpdateOrderAddressDto": {
+				"type": "object",
+				"properties": {}
+			},
+			"AdminUpdateOrderDto": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CreateOrderItemDto"
+						}
+					},
+					"customer": {
+						"$ref": "#/components/schemas/UpdateOrderCustomerDto"
+					},
+					"payment_method": {
+						"type": "string",
+						"enum": ["CASH", "IBAN", "LIQPAY", "MONOPAY"],
+						"example": "LIQPAY"
+					},
+					"delivery_method": {
+						"type": "string",
+						"enum": ["NOVA_POST", "COURIER", "PICKUP"],
+						"example": "NOVA_POST"
+					},
+					"delivery_address": {
+						"$ref": "#/components/schemas/UpdateOrderAddressDto"
+					},
+					"comment": {
+						"type": "string",
+						"example": "Зателефонуйте за 30 хв до доставки"
+					}
+				}
+			},
+			"UpdateOrderStatusDto": {
+				"type": "object",
+				"properties": {
+					"order_status": {
+						"type": "string",
+						"enum": [
+							"NEW",
+							"CONFIRMED",
+							"PROCESSING",
+							"SHIPPED",
+							"DELIVERED",
+							"COMPLETED",
+							"CANCELLED",
+							"RETURNED"
+						],
+						"example": "CONFIRMED"
+					}
+				},
+				"required": ["order_status"]
+			},
+			"UpdatePaymentStatusDto": {
+				"type": "object",
+				"properties": {
+					"payment_status": {
+						"type": "string",
+						"enum": ["PENDING", "PAID", "FAILED", "REFUNDED"],
+						"example": "PAID"
+					},
+					"payment_transaction_id": {
+						"type": "string",
+						"example": "liqpay_txn_abc123"
+					}
+				},
+				"required": ["payment_status"]
+			},
+			"SetTtnDto": {
+				"type": "object",
+				"properties": {
+					"nova_post_ttn": {
+						"type": "string",
+						"example": "20450081729182"
+					}
+				},
+				"required": ["nova_post_ttn"]
+			},
+			"CreateDiscountCouponDto": {
+				"type": "object",
+				"properties": {
+					"discount_percent": {
+						"type": "number",
+						"example": 15,
+						"minimum": 0,
+						"maximum": 100
+					},
+					"valid_until": {
+						"type": "string",
+						"example": "2026-12-31T23:59:59.000Z",
+						"description": "Coupon expiration datetime in ISO format"
+					},
+					"is_active": {
+						"type": "boolean",
+						"example": true,
+						"default": true
+					}
+				},
+				"required": ["discount_percent", "valid_until"]
+			},
+			"ValidateDiscountCouponDto": {
+				"type": "object",
+				"properties": {
+					"code": {
+						"type": "string",
+						"example": "ZY64GM08WT"
+					}
+				},
+				"required": ["code"]
+			},
+			"UpdateDiscountCouponDto": {
+				"type": "object",
+				"properties": {
+					"discount_percent": {
+						"type": "number",
+						"example": 15,
+						"minimum": 0,
+						"maximum": 100
+					},
+					"valid_until": {
+						"type": "string",
+						"example": "2026-12-31T23:59:59.000Z",
+						"description": "Coupon expiration datetime in ISO format"
+					},
+					"is_active": {
+						"type": "boolean",
+						"example": true,
+						"default": true
+					}
+				}
+			},
+			"UserListItemDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"example": "664f1b2c3d4e5f6a7b8c9d0e"
+					},
+					"email": {
+						"type": "string",
+						"example": "ivan@example.com"
+					},
+					"name": {
+						"type": "string",
+						"example": "Іван Петренко"
+					},
+					"role": {
+						"type": "string",
+						"enum": ["USER", "ADMIN"]
+					},
+					"phone": {
+						"type": "object",
+						"example": "+380991234567",
+						"nullable": true
+					},
+					"authMethod": {
+						"type": "string",
+						"enum": ["EMAIL", "GOOGLE", "GITHUB"]
+					},
+					"createdAt": {
+						"format": "date-time",
+						"type": "string"
+					}
+				},
+				"required": ["id", "email", "name", "role", "phone", "authMethod", "createdAt"]
+			},
+			"UsersListResponseDto": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/UserListItemDto"
+						}
+					},
+					"total": {
+						"type": "number",
+						"example": 42
+					},
+					"page": {
+						"type": "number",
+						"example": 1
+					},
+					"limit": {
+						"type": "number",
+						"example": 20
+					}
+				},
+				"required": ["items", "total", "page", "limit"]
+			},
+			"UpdateMeDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"example": "John Doe",
+						"description": "User full name"
+					},
+					"phone": {
+						"type": "object",
+						"example": "+380991112233",
+						"description": "User phone number in E.164 UA format",
+						"pattern": "^\\+380\\d{9}$",
+						"nullable": true
+					},
+					"picture": {
+						"type": "object",
+						"example": "https://cdn.example.com/users/avatar.webp",
+						"description": "Public URL of user profile picture",
+						"nullable": true
+					}
+				}
+			}
+		}
+	}
 }

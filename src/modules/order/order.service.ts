@@ -6,6 +6,8 @@ import { ProductVariantRepository } from 'src/database/mongoose/repositories/pro
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
 import { EmailService } from 'src/modules/email/email.service'
 import { DeliveryMethod, PaymentMethod } from 'src/common/types/enums'
+import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
+import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto'
@@ -23,7 +25,8 @@ export class OrderService {
 		private readonly numbersRepository: NumbersRepository,
 		private readonly productVariantRepository: ProductVariantRepository,
 		private readonly discountCouponRepository: DiscountCouponRepository,
-		private readonly emailService: EmailService
+		private readonly emailService: EmailService,
+		private readonly invoicePdfProvider: InvoicePdfProvider
 	) {}
 
 	private formatOrderNumber(sequence: number): string {
@@ -374,7 +377,11 @@ export class OrderService {
 		}
 
 		if (dto.customer) {
-			updateSet.customer = { ...order.customer, ...dto.customer }
+			updateSet.customer = {
+				name: dto.customer.name ?? order.customer.name,
+				phone: dto.customer.phone ?? order.customer.phone,
+				email: dto.customer.email ?? order.customer.email
+			}
 		}
 
 		if (dto.payment_method) {
@@ -442,5 +449,52 @@ export class OrderService {
 		)
 		if (!order) throw new NotFoundException('Order not found')
 		return order
+	}
+
+	async generateInvoice(
+		id: string,
+		adminComment?: string
+	): Promise<{ buffer: Buffer; orderNumber: string }> {
+		const order = await this.findById(id)
+
+		const invoiceData: InvoiceData = {
+			orderNumber: order.order_number,
+			createdAt: order.createdAt,
+			orderStatus: order.order_status,
+			paymentMethod: order.payment_method,
+			paymentStatus: order.payment_status,
+			customer: {
+				name: order.customer.name,
+				phone: order.customer.phone,
+				email: order.customer.email
+			},
+			items: order.items.map((item: any) => ({
+				name: item.name,
+				sku: item.sku,
+				vendor_sku: item.vendor_sku ?? null,
+				price: item.price,
+				quantity: item.quantity,
+				image: item.image ?? null
+			})),
+			subtotalPrice: order.subtotal_price,
+			totalPrice: order.total_price,
+			appliedDiscount: order.applied_discount
+				? {
+						code: order.applied_discount.code,
+						discount_percent: order.applied_discount.discount_percent,
+						discount_amount: order.applied_discount.discount_amount
+					}
+				: null,
+			deliveryMethod: order.delivery_method,
+			deliveryAddress: order.delivery_address ?? null,
+			novaPostTtn: order.nova_post_ttn ?? null,
+			orderComment: order.comment ?? null,
+			adminComment: adminComment ?? null
+		}
+
+		const html = invoiceTemplate(invoiceData)
+		const buffer = await this.invoicePdfProvider.generatePdf(html)
+
+		return { buffer, orderNumber: order.order_number }
 	}
 }

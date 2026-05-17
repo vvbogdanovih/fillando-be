@@ -12,6 +12,7 @@ import { ProductModule } from 'src/modules/product/product.module'
 import { EmailModule } from 'src/modules/email/email.module'
 import { OrderService } from './order.service'
 import { OrderController } from './order.controller'
+import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 
 @Module({
 	imports: [
@@ -24,6 +25,6 @@ import { OrderController } from './order.controller'
 		EmailModule
 	],
 	controllers: [OrderController],
-	providers: [OrderService, OrderRepository, DiscountCouponRepository]
+	providers: [OrderService, OrderRepository, DiscountCouponRepository, InvoicePdfProvider]
 })
 export class OrderModule {}

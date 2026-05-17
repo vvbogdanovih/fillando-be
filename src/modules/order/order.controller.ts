@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
+import type { Request, Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
 import { OptionalJwtAuthGuard } from 'src/common/guards/optional-jwt-auth.guard'
@@ -15,6 +15,7 @@ import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto'
 import { SetTtnDto } from './dto/set-ttn.dto'
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
 import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
+import { GenerateInvoiceDto } from './dto/generate-invoice.dto'
 import { OrderListResponseDto, OrderResponseDto } from './dto/order-response.dto'
 
 @Controller(ENDPOINTS.ORDERS.BASE)
@@ -97,5 +98,26 @@ export class OrderController {
 	@ApiOperation(API_OPERATION.ORDERS.SET_TTN)
 	setTtn(@Param('id') id: string, @Body() dto: SetTtnDto) {
 		return this.orderService.setTtn(id, dto)
+	}
+
+	@Post(ENDPOINTS.ORDERS.GENERATE_INVOICE)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.GENERATE_INVOICE)
+	async generateInvoice(
+		@Param('id') id: string,
+		@Body() dto: GenerateInvoiceDto,
+		@Res() res: Response
+	) {
+		const { buffer, orderNumber } = await this.orderService.generateInvoice(
+			id,
+			dto.admin_comment
+		)
+		res.set({
+			'Content-Type': 'application/pdf',
+			'Content-Disposition': `attachment; filename="${orderNumber}.pdf"`,
+			'Content-Length': buffer.length.toString()
+		})
+		res.end(buffer)
 	}
 }

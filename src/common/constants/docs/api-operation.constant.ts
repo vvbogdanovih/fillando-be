@@ -307,6 +307,11 @@ export const API_OPERATION = {
 		SET_TTN: {
 			summary: 'Set Nova Post TTN',
 			description: 'Attach the Nova Post tracking number (ТТН) to an order. Admin only.'
+		},
+		GENERATE_INVOICE: {
+			summary: 'Generate order invoice PDF',
+			description:
+				'Generates and returns a PDF invoice for an order. Accepts an optional admin comment. Admin only.'
 		}
 	},
 	PAYMENT_DETAILS: {

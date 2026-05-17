@@ -88,7 +88,8 @@ export const ENDPOINTS = {
 		UPDATE: '/:id',
 		UPDATE_ORDER_STATUS: '/:id/status',
 		UPDATE_PAYMENT_STATUS: '/:id/payment-status',
-		SET_TTN: '/:id/ttn'
+		SET_TTN: '/:id/ttn',
+		GENERATE_INVOICE: '/:id/invoice'
 	},
 	PAYMENT_DETAILS: {
 		BASE: '/payment-details',

@@ -130,4 +130,8 @@ export class EmailService {
 
 		await Promise.all([customerEmail, serviceEmail])
 	}
+
+	async sendVendorOrderEmail(to: string, subject: string, body: string): Promise<void> {
+		await this.send({ to, subject, html: body })
+	}
 }

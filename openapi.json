@@ -2043,6 +2043,41 @@
         ]
       }
     },
+    "/orders/{id}/vendor-email": {
+      "post": {
+        "description": "Sends an email to a vendor regarding an order. Admin only.",
+        "operationId": "OrderController_sendVendorEmail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendVendorEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Send email to vendor",
+        "tags": [
+          "/orders"
+        ]
+      }
+    },
     "/discount-coupons": {
       "get": {
         "description": "Get paginated discount coupons with optional filters by active flag and code search query. Admin only.",
@@ -3600,6 +3635,22 @@
             "example": "Перевірено адміном"
           }
         }
+      },
+      "SendVendorEmailDto": {
+        "type": "object",
+        "properties": {
+          "vendor_email": {
+            "type": "string",
+            "example": "vendor@example.com"
+          },
+          "admin_comment": {
+            "type": "string",
+            "example": "Перевірено адміном"
+          }
+        },
+        "required": [
+          "vendor_email"
+        ]
       },
       "CreateDiscountCouponDto": {
         "type": "object",

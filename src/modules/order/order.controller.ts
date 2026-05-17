@@ -16,6 +16,7 @@ import { SetTtnDto } from './dto/set-ttn.dto'
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
 import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
 import { GenerateInvoiceDto } from './dto/generate-invoice.dto'
+import { SendVendorEmailDto } from './dto/send-vendor-email.dto'
 import { OrderListResponseDto, OrderResponseDto } from './dto/order-response.dto'
 
 @Controller(ENDPOINTS.ORDERS.BASE)
@@ -119,5 +120,13 @@ export class OrderController {
 			'Content-Length': buffer.length.toString()
 		})
 		res.end(buffer)
+	}
+
+	@Post(ENDPOINTS.ORDERS.SEND_VENDOR_EMAIL)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.SEND_VENDOR_EMAIL)
+	sendVendorEmail(@Param('id') id: string, @Body() dto: SendVendorEmailDto) {
+		return this.orderService.sendVendorEmail(id, dto.vendor_email, dto.admin_comment)
 	}
 }

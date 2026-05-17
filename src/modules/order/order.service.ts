@@ -451,13 +451,8 @@ export class OrderService {
 		return order
 	}
 
-	async generateInvoice(
-		id: string,
-		adminComment?: string
-	): Promise<{ buffer: Buffer; orderNumber: string }> {
-		const order = await this.findById(id)
-
-		const invoiceData: InvoiceData = {
+	private buildInvoiceData(order: any, adminComment?: string): InvoiceData {
+		return {
 			orderNumber: order.order_number,
 			createdAt: order.createdAt,
 			orderStatus: order.order_status,
@@ -491,10 +486,27 @@ export class OrderService {
 			orderComment: order.comment ?? null,
 			adminComment: adminComment ?? null
 		}
+	}
 
-		const html = invoiceTemplate(invoiceData)
+	async generateInvoice(
+		id: string,
+		adminComment?: string
+	): Promise<{ buffer: Buffer; orderNumber: string }> {
+		const order = await this.findById(id)
+		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment))
 		const buffer = await this.invoicePdfProvider.generatePdf(html)
-
 		return { buffer, orderNumber: order.order_number }
+	}
+
+	async sendVendorEmail(id: string, vendorEmail: string, adminComment?: string) {
+		const order = await this.findById(id)
+		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment))
+		const subject = `Замовлення ${order.order_number}`
+
+		await this.emailService.sendVendorOrderEmail(vendorEmail, subject, html)
+
+		this.logger.log(
+			`Vendor email sent to ${vendorEmail} for order ${order.order_number}`
+		)
 	}
 }

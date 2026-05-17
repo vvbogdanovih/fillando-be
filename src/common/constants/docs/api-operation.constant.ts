@@ -312,6 +312,11 @@ export const API_OPERATION = {
 			summary: 'Generate order invoice PDF',
 			description:
 				'Generates and returns a PDF invoice for an order. Accepts an optional admin comment. Admin only.'
+		},
+		SEND_VENDOR_EMAIL: {
+			summary: 'Send email to vendor',
+			description:
+				'Sends an email to a vendor regarding an order. Admin only.'
 		}
 	},
 	PAYMENT_DETAILS: {

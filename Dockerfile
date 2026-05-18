@@ -9,6 +9,19 @@ RUN yarn build
 # Stage 2: Production
 FROM node:24-alpine
 WORKDIR /app
+
+# Chromium dependencies for Puppeteer PDF generation
+RUN apk add --no-cache \
+	chromium \
+	nss \
+	freetype \
+	harfbuzz \
+	ca-certificates \
+	ttf-freefont
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 COPY --from=builder /app/package.json /app/yarn.lock ./
 RUN yarn install --frozen-lockfile --production
 COPY --from=builder /app/dist ./dist

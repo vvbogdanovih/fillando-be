@@ -16,6 +16,7 @@ async function bootstrap() {
 	app.useLogger(app.get(Logger))
 	app.useGlobalFilters(new MongooseExceptionFilter())
 	app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
+	app.useBodyParser('json', { limit: '10mb' })
 	app.use(cookieParser())
 	app.enableCors({
 		origin: ENV.FRONTEND_URL || 'http://localhost:9000',

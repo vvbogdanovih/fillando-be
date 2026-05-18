@@ -498,12 +498,22 @@ export class OrderService {
 		return { buffer, orderNumber: order.order_number }
 	}
 
-	async sendVendorEmail(id: string, vendorEmail: string, adminComment?: string) {
+	async sendVendorEmail(
+		id: string,
+		vendorEmail: string,
+		adminComment?: string,
+		attachments?: { filename: string; content: string }[]
+	) {
 		const order = await this.findById(id)
 		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment))
 		const subject = `Замовлення ${order.order_number}`
 
-		await this.emailService.sendVendorOrderEmail(vendorEmail, subject, html)
+		const emailAttachments = attachments?.map(a => ({
+			filename: a.filename,
+			content: Buffer.from(a.content, 'base64')
+		}))
+
+		await this.emailService.sendVendorOrderEmail(vendorEmail, subject, html, emailAttachments)
 
 		this.logger.log(
 			`Vendor email sent to ${vendorEmail} for order ${order.order_number}`

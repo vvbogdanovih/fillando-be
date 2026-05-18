@@ -3636,6 +3636,23 @@
           }
         }
       },
+      "AttachmentDto": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "example": "invoice.pdf"
+          },
+          "content": {
+            "type": "string",
+            "description": "Base64-encoded file content"
+          }
+        },
+        "required": [
+          "filename",
+          "content"
+        ]
+      },
       "SendVendorEmailDto": {
         "type": "object",
         "properties": {
@@ -3646,6 +3663,12 @@
           "admin_comment": {
             "type": "string",
             "example": "Перевірено адміном"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentDto"
+            }
           }
         },
         "required": [

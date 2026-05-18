@@ -127,6 +127,11 @@ export class OrderController {
 	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.ORDERS.SEND_VENDOR_EMAIL)
 	sendVendorEmail(@Param('id') id: string, @Body() dto: SendVendorEmailDto) {
-		return this.orderService.sendVendorEmail(id, dto.vendor_email, dto.admin_comment)
+		return this.orderService.sendVendorEmail(
+			id,
+			dto.vendor_email,
+			dto.admin_comment,
+			dto.attachments
+		)
 	}
 }

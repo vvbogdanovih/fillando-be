@@ -24,8 +24,9 @@ export class EmailService {
 		subject: string
 		html: string
 		from?: string
+		attachments?: { content: Buffer; filename: string }[]
 	}) {
-		const { to, subject, html, from = 'Fillando <noreply@fillando.com>' } = options
+		const { to, subject, html, from = 'Fillando <noreply@fillando.com>', attachments } = options
 		if (!ENV.ALLOW_EMAIL_SENDING) {
 			this.logger.debug(
 				{ to, subject },
@@ -33,7 +34,13 @@ export class EmailService {
 			)
 			return { id: 'skipped' }
 		}
-		const { data, error } = await this.resend.emails.send({ from, to, subject, html })
+		const { data, error } = await this.resend.emails.send({
+			from,
+			to,
+			subject,
+			html,
+			attachments
+		})
 		if (error) {
 			this.logger.error({ error }, 'Failed to send email')
 			throw new Error(error.message)
@@ -131,7 +138,12 @@ export class EmailService {
 		await Promise.all([customerEmail, serviceEmail])
 	}
 
-	async sendVendorOrderEmail(to: string, subject: string, body: string): Promise<void> {
-		await this.send({ to, subject, html: body })
+	async sendVendorOrderEmail(
+		to: string,
+		subject: string,
+		body: string,
+		attachments?: { content: Buffer; filename: string }[]
+	): Promise<void> {
+		await this.send({ to, subject, html: body, attachments })
 	}
 }

@@ -90,7 +90,8 @@ export const ENDPOINTS = {
 		UPDATE_PAYMENT_STATUS: '/:id/payment-status',
 		SET_TTN: '/:id/ttn',
 		GENERATE_INVOICE: '/:id/invoice',
-		SEND_VENDOR_EMAIL: '/:id/vendor-email'
+		SEND_VENDOR_EMAIL: '/:id/vendor-email',
+		GENERATE_REPORT: '/report'
 	},
 	PAYMENT_DETAILS: {
 		BASE: '/payment-details',

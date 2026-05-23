@@ -21,7 +21,7 @@ if (!DATABASE_URL) {
 	console.error('DATABASE_URL is not set. Check your .env file.')
 	process.exit(1)
 }
-const DELAY_MS = 1500 // delay between HTTP requests to the vendor site
+const DELAY_MS = 1000 // delay between HTTP requests to the vendor site
 const DRY_RUN = false // set to true to print results without writing to the database
 const SKIP_IF_UPDATED_WITHIN_MS = 12 * 60 * 60 * 1000 // skip variant if stock was updated less than 12 hours ago
 

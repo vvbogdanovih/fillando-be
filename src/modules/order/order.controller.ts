@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
+import {
+	Body,
+	Controller,
+	Get,
+	Param,
+	Patch,
+	Post,
+	Query,
+	Req,
+	Res,
+	UseGuards
+} from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
@@ -16,6 +27,7 @@ import { SetTtnDto } from './dto/set-ttn.dto'
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
 import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
 import { GenerateInvoiceDto } from './dto/generate-invoice.dto'
+import { GenerateReportDto } from './dto/generate-report.dto'
 import { SendVendorEmailDto } from './dto/send-vendor-email.dto'
 import { OrderListResponseDto, OrderResponseDto } from './dto/order-response.dto'
 
@@ -39,6 +51,20 @@ export class OrderController {
 	@ApiOkResponse({ type: OrderListResponseDto })
 	findAll(@Query() query: GetOrdersQueryDto) {
 		return this.orderService.findAll(query)
+	}
+
+	@Post(ENDPOINTS.ORDERS.GENERATE_REPORT)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.GENERATE_REPORT)
+	async generateReport(@Body() dto: GenerateReportDto, @Res() res: Response) {
+		const { buffer, filename } = await this.orderService.generateReport(dto)
+		res.set({
+			'Content-Type': 'application/pdf',
+			'Content-Disposition': `attachment; filename="${filename}"`,
+			'Content-Length': buffer.length.toString()
+		})
+		res.end(buffer)
 	}
 
 	@Get(ENDPOINTS.ORDERS.MY)

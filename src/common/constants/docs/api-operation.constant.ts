@@ -315,8 +315,12 @@ export const API_OPERATION = {
 		},
 		SEND_VENDOR_EMAIL: {
 			summary: 'Send email to vendor',
+			description: 'Sends an email to a vendor regarding an order. Admin only.'
+		},
+		GENERATE_REPORT: {
+			summary: 'Generate orders report',
 			description:
-				'Sends an email to a vendor regarding an order. Admin only.'
+				'Generates a PDF report containing invoices for all orders in the given date range with optional status filters. Each order is rendered as a full invoice page. Admin only.'
 		}
 	},
 	PAYMENT_DETAILS: {

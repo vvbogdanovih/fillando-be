@@ -8,12 +8,14 @@ import { EmailService } from 'src/modules/email/email.service'
 import { DeliveryMethod, PaymentMethod } from 'src/common/types/enums'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
+import { ReportProvider } from './report/report.provider'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto'
 import { SetTtnDto } from './dto/set-ttn.dto'
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
 import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
+import { GenerateReportDto } from './dto/generate-report.dto'
 
 @Injectable()
 export class OrderService {
@@ -26,7 +28,8 @@ export class OrderService {
 		private readonly productVariantRepository: ProductVariantRepository,
 		private readonly discountCouponRepository: DiscountCouponRepository,
 		private readonly emailService: EmailService,
-		private readonly invoicePdfProvider: InvoicePdfProvider
+		private readonly invoicePdfProvider: InvoicePdfProvider,
+		private readonly reportProvider: ReportProvider
 	) {}
 
 	private formatOrderNumber(sequence: number): string {
@@ -515,8 +518,34 @@ export class OrderService {
 
 		await this.emailService.sendVendorOrderEmail(vendorEmail, subject, html, emailAttachments)
 
-		this.logger.log(
-			`Vendor email sent to ${vendorEmail} for order ${order.order_number}`
-		)
+		this.logger.log(`Vendor email sent to ${vendorEmail} for order ${order.order_number}`)
+	}
+
+	async generateReport(
+		dto: GenerateReportDto
+	): Promise<{ buffer: Buffer; filename: string }> {
+		const filter: Record<string, unknown> = {}
+		if (dto.order_status) filter.order_status = dto.order_status
+		if (dto.payment_status) filter.payment_status = dto.payment_status
+
+		const dateFrom = new Date(dto.date_from)
+		const dateTo = new Date(dto.date_to)
+		dateTo.setHours(23, 59, 59, 999)
+
+		const orders = await this.orderRepository.findAllByDateRange(filter, dateFrom, dateTo)
+
+		if (orders.length === 0) {
+			throw new BadRequestException('Немає замовлень за обраний період')
+		}
+
+		const mappedOrders = orders.map(order => this.mapOrderResponse(order))
+		const invoices = mappedOrders.map(order => this.buildInvoiceData(order))
+		const buffer = await this.reportProvider.generateBatchPdf(invoices)
+
+		const dateFromStr = dto.date_from.replace(/-/g, '')
+		const dateToStr = dto.date_to.replace(/-/g, '')
+		const filename = `report_${dateFromStr}_${dateToStr}.pdf`
+
+		return { buffer, filename }
 	}
 }

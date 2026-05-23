@@ -26,7 +26,5 @@ export class DiscountCoupon {
 }
 
 export const DiscountCouponSchema = SchemaFactory.createForClass(DiscountCoupon)
-DiscountCouponSchema.index({ number: 1 }, { unique: true })
-DiscountCouponSchema.index({ code: 1 }, { unique: true })
 DiscountCouponSchema.index({ valid_until: 1, is_active: 1 })
 export type DiscountCouponDocument = HydratedDocument<DiscountCoupon>

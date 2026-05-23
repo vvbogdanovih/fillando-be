@@ -1723,6 +1723,32 @@
         ]
       }
     },
+    "/orders/report": {
+      "post": {
+        "description": "Generates a PDF report containing invoices for all orders in the given date range with optional status filters. Each order is rendered as a full invoice page. Admin only.",
+        "operationId": "OrderController_generateReport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Generate orders report",
+        "tags": [
+          "/orders"
+        ]
+      }
+    },
     "/orders/me": {
       "get": {
         "description": "Paginated list of orders for the authenticated user with optional filters by order_status and payment_status.",
@@ -3521,6 +3547,45 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "GenerateReportDto": {
+        "type": "object",
+        "properties": {
+          "date_from": {
+            "type": "string",
+            "example": "2025-01-01"
+          },
+          "date_to": {
+            "type": "string",
+            "example": "2025-12-31"
+          },
+          "order_status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "CONFIRMED",
+              "PROCESSING",
+              "SHIPPED",
+              "DELIVERED",
+              "COMPLETED",
+              "CANCELLED",
+              "RETURNED"
+            ]
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PAID",
+              "FAILED",
+              "REFUNDED"
+            ]
+          }
+        },
+        "required": [
+          "date_from",
+          "date_to"
         ]
       },
       "UpdateOrderCustomerDto": {

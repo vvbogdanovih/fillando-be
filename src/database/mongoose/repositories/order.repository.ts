@@ -44,4 +44,13 @@ export class OrderRepository extends BaseRepository<Order> {
 	countDocuments(filter: Record<string, unknown>) {
 		return this.model.countDocuments(filter).exec()
 	}
+
+	findAllByDateRange(filter: Record<string, unknown>, dateFrom: Date, dateTo: Date) {
+		return this.model
+			.find({ ...filter, createdAt: { $gte: dateFrom, $lte: dateTo } })
+			.sort({ createdAt: -1 })
+			.limit(10000)
+			.lean()
+			.exec()
+	}
 }

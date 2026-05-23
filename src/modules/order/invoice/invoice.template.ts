@@ -1,9 +1,13 @@
+import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
 import {
-	DeliveryMethod,
-	OrderStatus,
-	PaymentMethod,
-	PaymentStatus
-} from 'src/common/types/enums'
+	formatOrderStatus,
+	formatPaymentStatus,
+	formatPaymentMethod,
+	formatDeliveryMethod,
+	formatPrice,
+	formatDate,
+	formatDeliveryAddress
+} from '../helpers/format.helpers'
 
 export interface InvoiceData {
 	orderNumber: string
@@ -39,72 +43,6 @@ export interface InvoiceData {
 	novaPostTtn: string | null
 	orderComment: string | null
 	adminComment: string | null
-}
-
-function formatOrderStatus(status: OrderStatus): string {
-	if (status === OrderStatus.NEW) return 'Нове'
-	if (status === OrderStatus.CONFIRMED) return 'Підтверджене'
-	if (status === OrderStatus.PROCESSING) return 'В обробці'
-	if (status === OrderStatus.SHIPPED) return 'Відправлене'
-	if (status === OrderStatus.DELIVERED) return 'Доставлене'
-	if (status === OrderStatus.COMPLETED) return 'Виконане'
-	if (status === OrderStatus.CANCELLED) return 'Скасоване'
-	if (status === OrderStatus.RETURNED) return 'Повернене'
-	return '—'
-}
-
-function formatPaymentStatus(status: PaymentStatus): string {
-	if (status === PaymentStatus.PENDING) return 'Очікує оплату'
-	if (status === PaymentStatus.PAID) return 'Оплачено'
-	if (status === PaymentStatus.FAILED) return 'Оплата неуспішна'
-	if (status === PaymentStatus.REFUNDED) return 'Кошти повернено'
-	return '—'
-}
-
-function formatPaymentMethod(method: PaymentMethod): string {
-	if (method === PaymentMethod.CASH) return 'Готівка'
-	if (method === PaymentMethod.IBAN) return 'IBAN (банківський переказ)'
-	if (method === PaymentMethod.LIQPAY) return 'LiqPay'
-	if (method === PaymentMethod.MONOPAY) return 'MonoPay'
-	return '—'
-}
-
-function formatDeliveryMethod(method: DeliveryMethod): string {
-	if (method === DeliveryMethod.NOVA_POST) return 'Нова Пошта'
-	if (method === DeliveryMethod.COURIER) return "Кур'єр"
-	if (method === DeliveryMethod.PICKUP) return 'Самовивіз'
-	return '—'
-}
-
-function formatPrice(value: number): string {
-	return (
-		value.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
-		' ₴'
-	)
-}
-
-function formatDate(date: Date): string {
-	return new Date(date).toLocaleString('uk-UA', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit'
-	})
-}
-
-function formatDeliveryAddress(data: InvoiceData): string {
-	if (data.deliveryMethod === DeliveryMethod.PICKUP) return 'Самовивіз'
-	if (!data.deliveryAddress) return '—'
-
-	const { city_name, warehouse_description, street, building, apartment } = data.deliveryAddress
-
-	if (data.deliveryMethod === DeliveryMethod.NOVA_POST) {
-		return `${city_name}, ${warehouse_description ?? ''}`
-	}
-
-	const apt = apartment ? `, кв. ${apartment}` : ''
-	return `${city_name}, вул. ${street} ${building}${apt}`
 }
 
 export function invoiceTemplate(data: InvoiceData): string {
@@ -150,11 +88,15 @@ export function invoiceTemplate(data: InvoiceData): string {
 		</div>`)
 	}
 
-	const LBL = 'color:#555;white-space:nowrap;padding:1px 12px 1px 0;vertical-align:top;font-family:Courier New,Courier,monospace;font-size:13px;'
-	const VAL = 'padding:1px 0;vertical-align:top;font-family:Courier New,Courier,monospace;font-size:13px;'
+	const LBL =
+		'color:#555;white-space:nowrap;padding:1px 12px 1px 0;vertical-align:top;font-family:Courier New,Courier,monospace;font-size:13px;'
+	const VAL =
+		'padding:1px 0;vertical-align:top;font-family:Courier New,Courier,monospace;font-size:13px;'
 	const SECTION = 'border-bottom:1px dashed #999;padding-bottom:12px;margin-bottom:16px;'
-	const SECTION_TITLE = 'font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:2px;color:#555;margin:0 0 8px;font-family:Courier New,Courier,monospace;'
-	const TH = 'border:1px solid #999;padding:6px 8px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;background:#f5f5f5;font-family:Courier New,Courier,monospace;'
+	const SECTION_TITLE =
+		'font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:2px;color:#555;margin:0 0 8px;font-family:Courier New,Courier,monospace;'
+	const TH =
+		'border:1px solid #999;padding:6px 8px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;background:#f5f5f5;font-family:Courier New,Courier,monospace;'
 
 	return `<!DOCTYPE html>
 <html lang="uk">

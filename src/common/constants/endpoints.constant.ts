@@ -47,6 +47,7 @@ export const ENDPOINTS = {
 		SEARCH: '/search',
 		VARIANT_SLUGS: '/variants/slugs',
 		VARIANT_COUNT: '/variants/count',
+		PRICE_SHEET: '/price-sheet',
 		BY_SLUG: '/by-slug/:slug',
 		GET_BY_ID: '/:id',
 		CREATE: '/',
@@ -77,6 +78,10 @@ export const ENDPOINTS = {
 		SYNC: '/sync',
 		CITIES: '/cities',
 		WAREHOUSES: '/warehouses'
+	},
+	PROM: {
+		BASE: '/prom',
+		SYNC_AVAILABILITY: '/sync-availability'
 	},
 	ORDERS: {
 		BASE: '/orders',

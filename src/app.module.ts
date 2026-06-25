@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
+import { ScheduleModule } from '@nestjs/schedule'
 import { LoggerModule } from 'nestjs-pino'
 
 import { AuthModule } from './modules/auth/auth.module'
@@ -12,6 +13,7 @@ import { CartModule } from './modules/cart/cart.module'
 import { EmailModule } from './modules/email/email.module'
 import { PaymentDetailsModule } from './modules/payment-details/payment-details.module'
 import { NovaPostModule } from './modules/nova-post/nova-post.module'
+import { PromModule } from './modules/prom/prom.module'
 import { OrderModule } from './modules/order/order.module'
 import { DiscountCouponModule } from './modules/discount-coupon/discount-coupon.module'
 import { UsersModule } from './modules/users/users.module'
@@ -30,6 +32,7 @@ import { ENV } from './common/constants'
 			}
 		}),
 		MongooseModule.forRoot(ENV.DATABASE_URL),
+		ScheduleModule.forRoot(),
 		AuthModule,
 		VendorModule,
 		CategoryModule,
@@ -40,6 +43,7 @@ import { ENV } from './common/constants'
 		EmailModule,
 		PaymentDetailsModule,
 		NovaPostModule,
+		PromModule,
 		OrderModule,
 		DiscountCouponModule,
 		UsersModule

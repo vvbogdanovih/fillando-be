@@ -72,6 +72,15 @@ export class CreateVariantDto {
 	@IsOptional()
 	@IsString()
 	vendor_product_sku?: string
+
+	@ApiProperty({
+		example: '3012625429',
+		description: 'Prom (npshop) product id taken from the product URL',
+		required: false
+	})
+	@IsOptional()
+	@IsString()
+	prom_id?: string
 }
 
 export class CreateProductDto {

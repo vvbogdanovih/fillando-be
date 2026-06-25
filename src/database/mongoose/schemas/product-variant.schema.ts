@@ -34,6 +34,9 @@ export class ProductVariant {
 	@Prop()
 	vendor_product_sku?: string
 
+	@Prop()
+	prom_id?: string
+
 	@Prop({ type: Date, default: null })
 	price_updated_at: Date | null
 

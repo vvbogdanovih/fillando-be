@@ -9,6 +9,7 @@ import { ValidateProductDto } from './dto/validate-product.dto'
 import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
+import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
 
 @Controller(ENDPOINTS.PRODUCTS.BASE)
 @ApiTags(ENDPOINTS.PRODUCTS.BASE)
@@ -43,6 +44,12 @@ export class ProductController {
 	@ApiOperation(API_OPERATION.PRODUCTS.VARIANT_COUNT)
 	getVariantCount() {
 		return this.productService.getVariantCount()
+	}
+
+	@Get(ENDPOINTS.PRODUCTS.PRICE_SHEET)
+	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_SHEET)
+	getPriceSheet(@Query() query: GetPriceSheetQueryDto) {
+		return this.productService.getPriceSheet(query)
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.BY_SLUG)

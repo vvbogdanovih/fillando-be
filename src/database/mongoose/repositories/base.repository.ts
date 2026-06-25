@@ -24,7 +24,7 @@ export abstract class BaseRepository<T> {
 		filter: mongoose.QueryFilter<T>,
 		data: mongoose.UpdateQuery<T>
 	): Promise<HydratedDocument<T> | null> {
-		return this.model.findOneAndUpdate(filter, data, { new: true }).exec()
+		return this.model.findOneAndUpdate(filter, data, { returnDocument: 'after' }).exec()
 	}
 
 	async delete(filter: mongoose.QueryFilter<T>): Promise<boolean> {

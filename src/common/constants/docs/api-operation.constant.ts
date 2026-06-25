@@ -198,6 +198,11 @@ export const API_OPERATION = {
 			summary: 'Get variants count',
 			description: 'Returns total number of product variants.'
 		},
+		PRICE_SHEET: {
+			summary: 'Price sheet (flat variant list)',
+			description:
+				'Public paginated flat list of all product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, vendor article, SKU or attribute value.'
+		},
 		BY_SLUG: {
 			summary: 'Get variant by slug',
 			description:
@@ -263,6 +268,13 @@ export const API_OPERATION = {
 			summary: 'Get warehouses by city',
 			description:
 				'Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), POST (поштове відділення), CARGO (вантажне відділення). Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.'
+		}
+	},
+	PROM: {
+		SYNC_AVAILABILITY: {
+			summary: 'Sync product availability from Prom',
+			description:
+				'SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `quantity_in_stock` (falling back to presence/in_stock). Emits progress events and a final summary. Admin only.'
 		}
 	},
 	ORDERS: {

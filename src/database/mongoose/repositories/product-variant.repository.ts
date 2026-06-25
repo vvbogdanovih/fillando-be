@@ -31,6 +31,10 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		return this.findAll({ _id: { $in: ids } })
 	}
 
+	findAllWithPromId(): Promise<ProductVariant[]> {
+		return this.findAll({ prom_id: { $exists: true, $nin: [null, ''] } })
+	}
+
 	findAllSlugs(): Promise<Array<{ slug: string; updatedAt: Date }>> {
 		return this.model
 			.find({}, { slug: 1, updatedAt: 1, _id: 0 })
@@ -85,6 +89,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				images: variant.images,
 				v_value: variant.v_value,
 				vendor_product_sku: variant.vendor_product_sku,
+				prom_id: variant.prom_id,
 				status: variant.status
 			},
 			product: {
@@ -196,6 +201,95 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		return {
 			items,
 			pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+		}
+	}
+
+	async findPriceSheet(params: { q?: string; page: number; limit: number }) {
+		const { q, page, limit } = params
+		const skip = (page - 1) * limit
+
+		const pipeline: any[] = [
+			{
+				$lookup: {
+					from: 'products',
+					localField: 'product_id',
+					foreignField: '_id',
+					as: 'product'
+				}
+			},
+			{ $unwind: '$product' }
+		]
+
+		const term = (q ?? '').trim()
+		if (term.length > 0) {
+			const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+			const rx = { $regex: escaped, $options: 'i' }
+			pipeline.push({
+				$match: {
+					$or: [
+						{ 'product.name': rx },
+						{ vendor_product_sku: rx },
+						{ sku: rx },
+						{ 'product.attributes.v': rx }
+					]
+				}
+			})
+		}
+
+		pipeline.push(
+			{ $addFields: { _hasStock: { $cond: [{ $gt: ['$stock', 0] }, 1, 0] } } },
+			// Product-level availability flag so a product's variants stay grouped together
+			// even when only some of them are in stock.
+			{
+				$setWindowFields: {
+					partitionBy: '$product_id',
+					output: { _productHasStock: { $max: '$_hasStock' } }
+				}
+			},
+			// Products with any stock first; variants of the same product kept together
+			// (by product name, then product id), in-stock variants first within a product.
+			{
+				$sort: {
+					_productHasStock: -1,
+					'product.name': 1,
+					product_id: 1,
+					_hasStock: -1,
+					name: 1
+				} as Record<string, 1 | -1>
+			},
+			{
+				$facet: {
+					items: [
+						{ $skip: skip },
+						{ $limit: limit },
+						{
+							$project: {
+								_id: 0,
+								id: { $toString: '$_id' },
+								product_name: '$product.name',
+								slug: 1,
+								v_value: 1,
+								sku: 1,
+								vendor_product_sku: 1,
+								prom_id: 1,
+								price: 1,
+								stock: 1,
+								stock_updated_at: 1,
+								image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
+								attributes: '$product.attributes',
+								variant_type: '$product.variant_type'
+							}
+						}
+					],
+					meta: [{ $count: 'total' }]
+				}
+			}
+		)
+
+		const [result] = await this.model.aggregate(pipeline).exec()
+		return {
+			items: result?.items ?? [],
+			total: result?.meta?.[0]?.total ?? 0
 		}
 	}
 

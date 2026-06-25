@@ -817,6 +817,56 @@
         ]
       }
     },
+    "/products/price-sheet": {
+      "get": {
+        "description": "Public paginated flat list of all product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, vendor article, SKU or attribute value.",
+        "operationId": "ProductController_getPriceSheet",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search by product name, vendor article, SKU or attribute value",
+            "schema": {
+              "example": "PLA",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "example": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Price sheet (flat variant list)",
+        "tags": [
+          "/products"
+        ]
+      }
+    },
     "/products/by-slug/{slug}": {
       "get": {
         "description": "Returns full variant info, parent product, and sibling variants by variant slug.",
@@ -1620,6 +1670,22 @@
         "summary": "Get warehouses by city",
         "tags": [
           "/nova-post"
+        ]
+      }
+    },
+    "/prom/sync-availability": {
+      "get": {
+        "description": "SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `quantity_in_stock` (falling back to presence/in_stock). Emits progress events and a final summary. Admin only.",
+        "operationId": "PromController_syncAvailability",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Sync product availability from Prom",
+        "tags": [
+          "/prom"
         ]
       }
     },
@@ -2713,6 +2779,11 @@
             "type": "string",
             "example": "VENDOR-SKU-123",
             "description": "Vendor-assigned SKU"
+          },
+          "prom_id": {
+            "type": "string",
+            "example": "3012625429",
+            "description": "Prom (npshop) product id taken from the product URL"
           }
         },
         "required": [
@@ -2796,6 +2867,10 @@
             "type": "string",
             "example": "VENDOR-SKU-123"
           },
+          "prom_id": {
+            "type": "string",
+            "example": "3012625429"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -2839,6 +2914,10 @@
           "vendor_product_sku": {
             "type": "string",
             "example": "VENDOR-SKU-123"
+          },
+          "prom_id": {
+            "type": "string",
+            "example": "3012625429"
           },
           "status": {
             "type": "string",

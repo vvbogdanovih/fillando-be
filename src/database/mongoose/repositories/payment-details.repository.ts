@@ -21,7 +21,7 @@ export class PaymentDetailsRepository extends BaseRepository<PaymentDetails> {
 	async activate(id: string) {
 		await this.model.updateMany({}, { $set: { is_available: false } }).exec()
 		return this.model
-			.findByIdAndUpdate(id, { $set: { is_available: true } }, { new: true })
+			.findByIdAndUpdate(id, { $set: { is_available: true } }, { returnDocument: 'after' })
 			.exec()
 	}
 }

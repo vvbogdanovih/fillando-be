@@ -10,6 +10,25 @@ import { ValidateProductDto, ValidateProductResponseDto } from './dto/validate-p
 import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
+import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
+
+type AttrLike = { k?: string; l?: string; v?: string | number | boolean }
+
+interface PriceSheetRaw {
+	id: string
+	product_name: string
+	slug: string
+	v_value: string | null
+	sku: string
+	vendor_product_sku?: string
+	prom_id?: string
+	price: number
+	stock?: number
+	stock_updated_at?: Date | null
+	image?: string | null
+	attributes?: AttrLike[]
+	variant_type?: { key?: string; label?: string } | null
+}
 
 @Injectable()
 export class ProductService {
@@ -47,6 +66,63 @@ export class ProductService {
 
 	findAll() {
 		return this.productRepository.findAll({})
+	}
+
+	/** Flat, paginated variant list for the public price-sheet table. */
+	async getPriceSheet(query: GetPriceSheetQueryDto) {
+		const { q, page = 1, limit = 50 } = query
+		const { items, total } = await this.productVariantRepository.findPriceSheet({
+			q,
+			page,
+			limit
+		})
+
+		const rows = (items as PriceSheetRaw[]).map(item => {
+			const attributes = Array.isArray(item.attributes) ? item.attributes : []
+			return {
+				id: item.id,
+				slug: item.slug,
+				image: item.image ?? null,
+				name: item.product_name,
+				manufacturer: this.pickAttr(attributes, [
+					/виробник/i,
+					/manufactur/i,
+					/бренд/i,
+					/brand/i
+				]),
+				material: this.pickAttr(attributes, [/матер/i, /material/i]),
+				color: this.pickColor(item.v_value, attributes, item.variant_type),
+				article: item.sku || null,
+				price: item.price,
+				in_stock: (item.stock ?? 0) > 0,
+				stock: item.stock ?? 0,
+				synced_at: item.stock_updated_at ?? null
+			}
+		})
+
+		return { items: rows, total, page, limit }
+	}
+
+	/** First attribute whose label matches any of the given patterns → its value as string. */
+	private pickAttr(attributes: AttrLike[], patterns: RegExp[]): string | null {
+		const found = attributes.find(a => a?.l && patterns.some(rx => rx.test(a.l as string)))
+		return found?.v != null ? String(found.v) : null
+	}
+
+	private pickColor(
+		vValue: string | null | undefined,
+		attributes: AttrLike[],
+		variantType?: { key?: string; label?: string } | null
+	): string | null {
+		const colorPatterns = [/колір/i, /цвіт/i, /color/i]
+		const variantIsColor = variantType?.label
+			? colorPatterns.some(rx => rx.test(variantType.label as string))
+			: false
+
+		// If the product's variant axis is colour, the variant value IS the colour.
+		if (variantIsColor && vValue) return vValue
+		// Otherwise look for a colour attribute, then fall back to the variant value.
+		return this.pickAttr(attributes, colorPatterns) ?? vValue ?? null
 	}
 
 	getAllVariantSlugs(): Promise<Array<{ slug: string; updatedAt: Date }>> {

@@ -34,6 +34,11 @@ export class UpdateVariantDto {
 	@IsString()
 	vendor_product_sku?: string
 
+	@ApiProperty({ example: '3012625429', required: false })
+	@IsOptional()
+	@IsString()
+	prom_id?: string
+
 	@ApiProperty({ enum: ProductStatus, required: false })
 	@IsOptional()
 	@IsEnum(ProductStatus)
@@ -70,6 +75,11 @@ export class AddVariantDto {
 	@IsOptional()
 	@IsString()
 	vendor_product_sku?: string
+
+	@ApiProperty({ example: '3012625429', required: false })
+	@IsOptional()
+	@IsString()
+	prom_id?: string
 
 	@ApiProperty({ enum: ProductStatus, default: ProductStatus.ACTIVE, required: false })
 	@IsOptional()

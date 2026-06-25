@@ -208,6 +208,7 @@ Schema: `src/database/mongoose/schemas/product.schema.ts`
 | `price`              | number   | optional — overrides product base price                                     |
 | `stock`              | number   | optional — used for Fillando vendor; overwritten at read time for NicePrice |
 | `vendor_product_sku` | string   | optional — external SKU used to fetch stock from NicePrice                  |
+| `prom_id`            | string   | optional — NicePrice (Prom) product id from the product URL (`/p<id>-…`)    |
 | `images`             | string[] | variant-level images                                                        |
 
 #### Embedded: `Attribute` (`_id: false`)

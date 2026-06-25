@@ -17,7 +17,7 @@ export class CartRepository extends BaseRepository<Cart> {
 	upsertByUserId(userId: string, update: UpdateQuery<Cart>) {
 		return this.model
 			.findOneAndUpdate({ user_id: new Types.ObjectId(userId) }, update, {
-				new: true,
+				returnDocument: 'after',
 				upsert: true
 			})
 			.exec()

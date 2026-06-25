@@ -38,7 +38,7 @@ export class CategoryRepository extends BaseRepository<Category> {
 			.findOneAndUpdate(
 				{ _id: categoryId, 'subcategories._id': new Types.ObjectId(subcategoryId) },
 				{ $set: updateFields },
-				{ new: true }
+				{ returnDocument: 'after' }
 			)
 			.exec()
 	}
@@ -73,7 +73,7 @@ export class CategoryRepository extends BaseRepository<Category> {
 				{
 					$set: { 'subcategories.$': { _id: new Types.ObjectId(subcategoryId), ...data } }
 				},
-				{ new: true }
+				{ returnDocument: 'after' }
 			)
 			.exec()
 	}
@@ -86,7 +86,7 @@ export class CategoryRepository extends BaseRepository<Category> {
 			.findOneAndUpdate(
 				{ _id: categoryId },
 				{ $pull: { subcategories: { _id: new Types.ObjectId(subcategoryId) } } },
-				{ new: true }
+				{ returnDocument: 'after' }
 			)
 			.exec()
 	}

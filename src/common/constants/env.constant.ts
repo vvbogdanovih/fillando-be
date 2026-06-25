@@ -27,6 +27,8 @@ const envSchema = z.object({
 
 	NOVA_POS_API_KEY: z.string().min(1),
 
+	PROM_API_KEY: z.string().min(1),
+
 	RESEND_API_KEY: z.string().min(1),
 	SERVICE_EMAIL: z.string().email(),
 	ALLOW_EMAIL_SENDING: z.coerce.boolean().default(true),
@@ -35,7 +37,14 @@ const envSchema = z.object({
 	PORT: z.coerce.number(),
 
 	NODE_ENV: z.enum(['development', 'production']).default('development'),
-	LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info')
+	LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+
+	// Enables in-process scheduled jobs (e.g. Prom availability sync). Keep `true`
+	// on a single instance only when running multiple replicas. Defaults to off.
+	RUN_CRON: z
+		.string()
+		.optional()
+		.transform(v => v === 'true' || v === '1')
 })
 
 type EnvSchema = z.infer<typeof envSchema>
@@ -59,13 +68,15 @@ const getParsedEnv = (): EnvSchema => {
 		AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
 		AWS_S3_PUBLIC_URL: process.env.AWS_S3_PUBLIC_URL,
 		NOVA_POS_API_KEY: process.env.NOVA_POS_API_KEY,
+		PROM_API_KEY: process.env.PROM_API_KEY,
 		RESEND_API_KEY: process.env.RESEND_API_KEY,
 		SERVICE_EMAIL: process.env.SERVICE_EMAIL,
 		ALLOW_EMAIL_SENDING: process.env.ALLOW_EMAIL_SENDING,
 		FRONTEND_URL: process.env.FRONTEND_URL,
 		PORT: process.env.PORT,
 		NODE_ENV: process.env.NODE_ENV,
-		LOG_LEVEL: process.env.LOG_LEVEL
+		LOG_LEVEL: process.env.LOG_LEVEL,
+		RUN_CRON: process.env.RUN_CRON
 	})
 	if (!result.success) {
 		console.log('error', result.error)
@@ -94,11 +105,13 @@ export const ENV = {
 	AWS_S3_BUCKET_NAME: validatedEnv.AWS_S3_BUCKET_NAME,
 	AWS_S3_PUBLIC_URL: validatedEnv.AWS_S3_PUBLIC_URL,
 	NOVA_POS_API_KEY: validatedEnv.NOVA_POS_API_KEY,
+	PROM_API_KEY: validatedEnv.PROM_API_KEY,
 	RESEND_API_KEY: validatedEnv.RESEND_API_KEY,
 	SERVICE_EMAIL: validatedEnv.SERVICE_EMAIL,
 	ALLOW_EMAIL_SENDING: validatedEnv.ALLOW_EMAIL_SENDING,
 	FRONTEND_URL: validatedEnv.FRONTEND_URL,
 	PORT: validatedEnv.PORT,
 	NODE_ENV: validatedEnv.NODE_ENV,
-	LOG_LEVEL: validatedEnv.LOG_LEVEL
+	LOG_LEVEL: validatedEnv.LOG_LEVEL,
+	RUN_CRON: validatedEnv.RUN_CRON
 } as const

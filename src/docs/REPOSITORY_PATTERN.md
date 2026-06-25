@@ -61,7 +61,7 @@ abstract class BaseRepository<T> {
 | `findById` | `(id: string)`                                   | `HydratedDocument<T> \| null` | Single doc, not lean                    |
 | `findOne`  | `(filter: QueryFilter<T>)`                       | `HydratedDocument<T> \| null` | Single doc, not lean                    |
 | `findAll`  | `(filter?: QueryFilter<T>)`                      | `T[]`                         | **Lean** — no document methods          |
-| `update`   | `(filter: QueryFilter<T>, data: UpdateQuery<T>)` | `HydratedDocument<T> \| null` | `findOneAndUpdate` with `{ new: true }` |
+| `update`   | `(filter: QueryFilter<T>, data: UpdateQuery<T>)` | `HydratedDocument<T> \| null` | `findOneAndUpdate` with `{ returnDocument: 'after' }` |
 | `delete`   | `(filter: QueryFilter<T>)`                       | `boolean`                     | `deleteOne`, returns `deletedCount > 0` |
 
 Single-record reads (`findById`, `findOne`) return hydrated documents so callers can use virtuals like `.id`.
@@ -151,7 +151,7 @@ When a schema embeds sub-documents (e.g. `Category` embeds `Subcategory[]`), sta
 ```ts
 addSubcategory(categoryId: string, data: Partial<Subcategory>) {
   return this.model
-    .findOneAndUpdate({ _id: categoryId }, { $push: { subcategories: data } }, { new: true })
+    .findOneAndUpdate({ _id: categoryId }, { $push: { subcategories: data } }, { returnDocument: 'after' })
     .exec()
 }
 ```
@@ -164,7 +164,7 @@ removeSubcategory(categoryId: string, subcategoryId: string) {
     .findOneAndUpdate(
       { _id: categoryId },
       { $pull: { subcategories: { _id: new Types.ObjectId(subcategoryId) } } },
-      { new: true }
+      { returnDocument: 'after' }
     )
     .exec()
 }
@@ -185,7 +185,7 @@ updateSubcategory(categoryId: string, subcategoryId: string, data: Partial<Subca
     .findOneAndUpdate(
       { _id: categoryId, 'subcategories._id': new Types.ObjectId(subcategoryId) },
       { $set: updateFields },
-      { new: true }
+      { returnDocument: 'after' }
     )
     .exec()
 }

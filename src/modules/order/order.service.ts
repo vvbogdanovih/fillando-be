@@ -521,9 +521,7 @@ export class OrderService {
 		this.logger.log(`Vendor email sent to ${vendorEmail} for order ${order.order_number}`)
 	}
 
-	async generateReport(
-		dto: GenerateReportDto
-	): Promise<{ buffer: Buffer; filename: string }> {
+	async generateReport(dto: GenerateReportDto): Promise<{ buffer: Buffer; filename: string }> {
 		const filter: Record<string, unknown> = {}
 		if (dto.order_status) filter.order_status = dto.order_status
 		if (dto.payment_status) filter.payment_status = dto.payment_status

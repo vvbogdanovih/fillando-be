@@ -55,14 +55,14 @@ abstract class BaseRepository<T> {
 
 ### Available methods
 
-| Method     | Signature                                        | Returns                       | Notes                                   |
-| ---------- | ------------------------------------------------ | ----------------------------- | --------------------------------------- |
-| `create`   | `(data: Partial<T>)`                             | `HydratedDocument<T>`         | Full document — caller needs `.id` etc. |
-| `findById` | `(id: string)`                                   | `HydratedDocument<T> \| null` | Single doc, not lean                    |
-| `findOne`  | `(filter: QueryFilter<T>)`                       | `HydratedDocument<T> \| null` | Single doc, not lean                    |
-| `findAll`  | `(filter?: QueryFilter<T>)`                      | `T[]`                         | **Lean** — no document methods          |
+| Method     | Signature                                        | Returns                       | Notes                                                 |
+| ---------- | ------------------------------------------------ | ----------------------------- | ----------------------------------------------------- |
+| `create`   | `(data: Partial<T>)`                             | `HydratedDocument<T>`         | Full document — caller needs `.id` etc.               |
+| `findById` | `(id: string)`                                   | `HydratedDocument<T> \| null` | Single doc, not lean                                  |
+| `findOne`  | `(filter: QueryFilter<T>)`                       | `HydratedDocument<T> \| null` | Single doc, not lean                                  |
+| `findAll`  | `(filter?: QueryFilter<T>)`                      | `T[]`                         | **Lean** — no document methods                        |
 | `update`   | `(filter: QueryFilter<T>, data: UpdateQuery<T>)` | `HydratedDocument<T> \| null` | `findOneAndUpdate` with `{ returnDocument: 'after' }` |
-| `delete`   | `(filter: QueryFilter<T>)`                       | `boolean`                     | `deleteOne`, returns `deletedCount > 0` |
+| `delete`   | `(filter: QueryFilter<T>)`                       | `boolean`                     | `deleteOne`, returns `deletedCount > 0`               |
 
 Single-record reads (`findById`, `findOne`) return hydrated documents so callers can use virtuals like `.id`.
 List reads (`findAll`) return lean plain objects for performance.

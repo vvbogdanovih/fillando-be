@@ -27,25 +27,25 @@ first, then by name. Fixed server-side. Requires MongoDB 5.0+ (`$setWindowFields
 
 ```jsonc
 {
-  "items": [
-    {
-      "id": "…",                       // variant id (used for add-to-cart)
-      "slug": "…",                     // variant slug (cart line / product link)
-      "image": "https://… | null",   // first variant image
-      "name": "…",                    // base product name
-      "manufacturer": "SUNLU | null",
-      "material": "PLA | null",
-      "color": "Червоний | null",
-      "article": "FL-000123 | null",  // internal system sku
-      "price": 1235,
-      "in_stock": true,
-      "stock": 48,                     // available quantity
-      "synced_at": "ISO | null"        // stock_updated_at
-    }
-  ],
-  "total": 1234,
-  "page": 1,
-  "limit": 50
+	"items": [
+		{
+			"id": "…", // variant id (used for add-to-cart)
+			"slug": "…", // variant slug (cart line / product link)
+			"image": "https://… | null", // first variant image
+			"name": "…", // base product name
+			"manufacturer": "SUNLU | null",
+			"material": "PLA | null",
+			"color": "Червоний | null",
+			"article": "FL-000123 | null", // internal system sku
+			"price": 1235,
+			"in_stock": true,
+			"stock": 48, // available quantity
+			"synced_at": "ISO | null" // stock_updated_at
+		}
+	],
+	"total": 1234,
+	"page": 1,
+	"limit": 50
 }
 ```
 

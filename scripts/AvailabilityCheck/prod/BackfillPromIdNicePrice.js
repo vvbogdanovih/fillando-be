@@ -178,7 +178,10 @@ async function main() {
 
 		if (changed) {
 			if (!DRY_RUN) {
-				await ProductVariant.updateOne({ _id: variant._id }, { $set: { prom_id: result.promId } })
+				await ProductVariant.updateOne(
+					{ _id: variant._id },
+					{ $set: { prom_id: result.promId } }
+				)
 			}
 			results.updated++
 		} else {

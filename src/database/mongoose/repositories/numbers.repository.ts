@@ -14,7 +14,11 @@ export class NumbersRepository extends BaseRepository<Numbers> {
 		field: keyof Pick<Numbers, 'sku' | 'order' | 'discount_coupon'>
 	): Promise<number> {
 		const doc = await this.model
-			.findOneAndUpdate({}, { $inc: { [field]: 1 } }, { returnDocument: 'after', upsert: true })
+			.findOneAndUpdate(
+				{},
+				{ $inc: { [field]: 1 } },
+				{ returnDocument: 'after', upsert: true }
+			)
 			.exec()
 		return doc[field]
 	}

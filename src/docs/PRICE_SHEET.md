@@ -15,10 +15,12 @@ projections that omit these fields).
 
 **Query** (`GetPriceSheetQueryDto`): `q?` (search), `page?=1`, `limit?=50` (max 200).
 
-**Sorting:** variants are **grouped by parent product** so a product's variants never get split
-apart. Ordering: products that have any in-stock variant first (`$setWindowFields` computes a
-per-product `_productHasStock`), then by product name / id; within a product, in-stock variants
-first, then by name. Fixed server-side. Requires MongoDB 5.0+ (`$setWindowFields`).
+**Sorting:** availability first — **in-stock variants before out-of-stock** (`_hasStock`). Within
+each availability bucket, variants are **grouped by parent product** (by product name, then product
+id) so a product's variants stay together and don't scatter when they were added at different times,
+then by variant name. Fixed server-side. (A product with mixed availability therefore has its
+in-stock variants in the top bucket and its out-of-stock ones in the bottom bucket — by design,
+since in-stock items must come first.)
 
 **Search (`q`):** case-insensitive regex over `product.name`, `vendor_product_sku`, `sku`, and
 `product.attributes.v` (mirrors the storefront search fields; substring rather than `$text`).

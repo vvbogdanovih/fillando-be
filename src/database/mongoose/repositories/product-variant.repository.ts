@@ -238,22 +238,14 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 		pipeline.push(
 			{ $addFields: { _hasStock: { $cond: [{ $gt: ['$stock', 0] }, 1, 0] } } },
-			// Product-level availability flag so a product's variants stay grouped together
-			// even when only some of them are in stock.
-			{
-				$setWindowFields: {
-					partitionBy: '$product_id',
-					output: { _productHasStock: { $max: '$_hasStock' } }
-				}
-			},
-			// Products with any stock first; variants of the same product kept together
-			// (by product name, then product id), in-stock variants first within a product.
+			// Availability first (in-stock variants before out-of-stock), then within each
+			// availability bucket group a product's variants together (by product name, then
+			// product id) so they don't scatter when variants were added at different times.
 			{
 				$sort: {
-					_productHasStock: -1,
+					_hasStock: -1,
 					'product.name': 1,
 					product_id: 1,
-					_hasStock: -1,
 					name: 1
 				} as Record<string, 1 | -1>
 			},

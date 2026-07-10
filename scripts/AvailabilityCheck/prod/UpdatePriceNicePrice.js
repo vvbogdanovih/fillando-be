@@ -1,12 +1,15 @@
 /**
  * Batch price update for NicePrice (npshop.com.ua) vendor.
  *
- * Fetches all product variants belonging to the NicePrice vendor that have
- * a `vendor_product_sku`, scrapes the current price on the vendor site,
- * and updates the `price` field in MongoDB using a fixed tiered markup
- * (+30 ₴ for 0-200, +35 for 200-400, +40 for 400-600, +45 for 600-800,
- * +50 for 800-1000, +100 for 1000-1500, +110 for 1500-2500, +120 for 2500+),
- * rounded to a whole number — no kopecks.
+ * Fetches all product variants that have a `prom_id` (populated by
+ * BackfillPromIdNicePrice.js), opens the vendor product page directly by that
+ * id — `https://npshop.com.ua/ua/p<prom_id>-x.html` (Prom redirects to the
+ * canonical slug) — scrapes the current price, and updates the `price` field in
+ * MongoDB using a fixed tiered markup (+30 ₴ for 0-200, +35 for 200-400,
+ * +40 for 400-600, +45 for 600-800, +50 for 800-1000, +100 for 1000-1500,
+ * +110 for 1500-2500, +120 for 2500+), rounded to a whole number — no kopecks.
+ * No search-by-SKU step: matching is done purely by `prom_id`. Variants without
+ * a `prom_id` are not touched (run BackfillPromIdNicePrice.js first).
  *
  * Usage:
  *   node scripts/AvailabilityCheck/prod/UpdatePriceNicePrice.js
@@ -29,7 +32,6 @@ const DRY_RUN = false // set to true to print results without writing to the dat
 const SKIP_IF_UPDATED_WITHIN_MS = 12 * 60 * 60 * 1000 // skip variant if price was updated less than 12 hours ago
 
 const BASE_URL = 'https://npshop.com.ua'
-const SEARCH_BASE = `${BASE_URL}/ua/site_search`
 const HTTP_TIMEOUT_MS = 20000
 const USER_AGENT =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -50,25 +52,15 @@ function getMarkupAmount(vendorPrice) {
 
 // ── Scraping helpers ─────────────────────────────────────────────────────────
 
-const RE_FIRST_GALLERY_HREF = /b-product-gallery__image-link["'][^>]*href="([^"]+)"/
-
 function normalizeSku(s) {
 	return String(s || '')
 		.replace(/\s+/g, ' ')
 		.trim()
 }
 
-function absoluteUrl(href) {
-	if (!href) return null
-	return href.startsWith('http') ? href : new URL(href, BASE_URL).href
-}
-
-function decodeAttrJson(raw) {
-	return String(raw)
-		.replace(/&quot;/g, '"')
-		.replace(/&#34;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/&amp;/g, '&')
+/** Product page URL built straight from a Prom id (slug is ignored on redirect). */
+function productUrlFromPromId(promId) {
+	return `${BASE_URL}/ua/p${encodeURIComponent(String(promId))}-x.html`
 }
 
 async function fetchHtml(url) {
@@ -79,11 +71,6 @@ async function fetchHtml(url) {
 		validateStatus: s => s >= 200 && s < 400
 	})
 	return typeof data === 'string' ? data : String(data)
-}
-
-function firstProductUrlFromSearchHtml(html) {
-	const m = html.match(RE_FIRST_GALLERY_HREF)
-	return m ? absoluteUrl(m[1]) : null
 }
 
 function scrapeProductFromHtml(html) {
@@ -105,23 +92,27 @@ function scrapeProductFromHtml(html) {
 	return { price, skuOnPage, productName }
 }
 
-/** Fetch price for a single SKU. Returns { ok, vendorPrice, ...details } */
-async function fetchVendorPrice(sku) {
-	const expectedSku = normalizeSku(sku)
+/**
+ * Fetch price for a single variant by its Prom id.
+ * `expectedSku` (optional) is used only as a sanity guard against a stale prom_id.
+ * Returns { ok, vendorPrice, ...details }.
+ */
+async function fetchVendorPrice(promId, expectedSku) {
+	const productUrl = productUrlFromPromId(promId)
 
-	const searchHtml = await fetchHtml(
-		`${SEARCH_BASE}?search_term=${encodeURIComponent(expectedSku)}`
-	)
-	const productUrl = firstProductUrlFromSearchHtml(searchHtml)
-
-	if (!productUrl) {
-		return { ok: false, error: 'no_search_results', vendorPrice: null }
+	let productHtml
+	try {
+		productHtml = await fetchHtml(productUrl)
+	} catch (err) {
+		if (axios.isAxiosError(err) && err.response?.status === 404) {
+			return { ok: false, error: 'not_found', productUrl, vendorPrice: null }
+		}
+		throw err
 	}
 
-	const productHtml = await fetchHtml(productUrl)
 	const dom = scrapeProductFromHtml(productHtml)
 
-	if (dom.skuOnPage && normalizeSku(dom.skuOnPage) !== expectedSku) {
+	if (expectedSku && dom.skuOnPage && normalizeSku(dom.skuOnPage) !== normalizeSku(expectedSku)) {
 		return {
 			ok: false,
 			error: 'sku_mismatch',
@@ -159,6 +150,7 @@ function sleep(ms) {
 const ProductVariantSchema = new mongoose.Schema(
 	{
 		product_id: mongoose.Schema.Types.ObjectId,
+		prom_id: String,
 		vendor_product_sku: String,
 		price: Number,
 		price_updated_at: Date,
@@ -178,13 +170,13 @@ async function main() {
 	const ProductVariant = mongoose.model('ProductVariant', ProductVariantSchema)
 
 	const variants = await ProductVariant.find(
-		{ vendor_product_sku: { $exists: true, $ne: '' } },
-		'_id vendor_product_sku price price_updated_at'
+		{ prom_id: { $exists: true, $nin: [null, ''] } },
+		'_id prom_id vendor_product_sku price price_updated_at'
 	).lean()
-	console.log(`Found ${variants.length} variants with vendor_product_sku.\n`)
+	console.log(`Found ${variants.length} variants with prom_id.\n`)
 
 	if (variants.length === 0) {
-		console.log('Nothing to update.')
+		console.log('Nothing to update. Run BackfillPromIdNicePrice.js to populate prom_id first.')
 		await mongoose.disconnect()
 		return
 	}
@@ -194,8 +186,9 @@ async function main() {
 
 	for (let i = 0; i < variants.length; i++) {
 		const variant = variants[i]
-		const sku = variant.vendor_product_sku
-		const prefix = `[${i + 1}/${variants.length}] ${sku}`
+		const promId = variant.prom_id
+		const label = variant.vendor_product_sku || promId
+		const prefix = `[${i + 1}/${variants.length}] ${label} (prom_id ${promId})`
 
 		if (
 			variant.price_updated_at &&
@@ -210,7 +203,7 @@ async function main() {
 
 		let result
 		try {
-			result = await fetchVendorPrice(sku)
+			result = await fetchVendorPrice(promId, variant.vendor_product_sku)
 		} catch (err) {
 			console.error(`${prefix} → ERROR: ${err.message}`)
 			results.errors++

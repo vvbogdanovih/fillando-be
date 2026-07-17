@@ -1,33 +1,49 @@
-const { chromium } = require('playwright')
+/**
+ * Photo scraper for NicePrice (npshop.com.ua / Prom) products.
+ *
+ * For each Prom product id in articles.txt (one id per line):
+ *   1. Fetches the product from the Prom public API
+ *      (`GET https://my.prom.ua/api/v1/products/<prom_id>`, Bearer PROM_API_KEY)
+ *      and collects full-resolution image URLs from `images` / `main_image`.
+ *   2. Downloads the images into OUTPUT_DIR/<sku>/ (falls back to the prom id
+ *      when the product has no sku).
+ *
+ * Requires PROM_API_KEY in the repo root .env.
+ *
+ * Usage:
+ *   node scripts/scraper/scraper.js
+ */
+
 const axios = require('axios')
 const fs = require('fs').promises
 const path = require('path')
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') })
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const ARTICLES_FILE = 'scripts/scraper/articles.txt'
-const OUTPUT_DIR = '/Users/vladyslav/Desktop/AssetsFilando/Filaments/Sunlu/PLA_Rainbow'
-const REPORT_FILE = 'scripts/scraper/report.json'
+const ARTICLES_FILE = path.resolve(__dirname, 'articles.txt')
+const OUTPUT_DIR = '/Users/vladyslav/Desktop/AssetsFilando/Filaments/Bambu Lab/ABS-GF'
+const REPORT_FILE = path.resolve(__dirname, 'report.json')
 
-const CONCURRENCY = 3
-const DELAY_MIN = 2000
-const DELAY_MAX = 3000
-const PAGE_TIMEOUT = 30000
+const PROM_API_KEY = process.env.PROM_API_KEY
+if (!PROM_API_KEY) {
+	console.error('PROM_API_KEY is not set. Check your .env file.')
+	process.exit(1)
+}
+
+const PROM_API_BASE = 'https://my.prom.ua/api/v1'
+const MAX_RETRIES = 10
+const RETRY_DELAY_MS = 3000
+
+const DELAY_MIN = 1000
+const DELAY_MAX = 2000
+const HTTP_TIMEOUT_MS = 20000
 const DOWNLOAD_TIMEOUT = 20000
 
-const BASE_URL = 'https://npshop.com.ua'
-const SEARCH_BASE = `${BASE_URL}/ua/site_search`
+const BASE_URL = 'https://npshop.com.ua' // used only as Referer for image downloads
 
 const USER_AGENT =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-const LOCALE = 'uk-UA'
-const VIEWPORT = { width: 1440, height: 900 }
-
-// CSS selectors on the search results page — first link to a product
-const SELECTOR_PRODUCT_LINK = 'a.b-product-gallery__image-link, a.b-goods-title'
-// CSS selectors on the product page — gallery images
-const SELECTOR_MAIN_IMAGE = 'img.b-product-image__img'
-const SELECTOR_THUMBNAILS = 'img.b-images__img'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -54,78 +70,62 @@ function fullSizeUrl(url) {
 	return url.replace(/_w\d+_h\d+_/, '_')
 }
 
-// ─── Browser scraping ────────────────────────────────────────────────────────
+// ─── Prom API ─────────────────────────────────────────────────────────────────
 
-async function scrapeArticle(browser, article) {
-	const context = await browser.newContext({
-		userAgent: USER_AGENT,
-		viewport: VIEWPORT,
-		locale: LOCALE
-	})
+/**
+ * Fetch a product from the Prom public API by its Prom id.
+ * Returns null when the product does not exist (404). Retries on 429 / 5xx /
+ * network errors with a linear backoff (same as PromService in the backend).
+ */
+async function fetchPromProduct(promId) {
+	for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+		try {
+			const { data } = await axios.get(`${PROM_API_BASE}/products/${promId}`, {
+				headers: { Authorization: `Bearer ${PROM_API_KEY}` },
+				timeout: HTTP_TIMEOUT_MS
+			})
+			return data?.product ?? null
+		} catch (err) {
+			const status = axios.isAxiosError(err) ? err.response?.status : undefined
 
-	const page = await context.newPage()
+			if (status === 404) return null
 
-	try {
-		// 1. Open search results
-		const searchUrl = `${SEARCH_BASE}?search_term=${encodeURIComponent(article)}`
-		await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT })
+			const retriable =
+				status === 429 || status === undefined || (status !== undefined && status >= 500)
 
-		// 2. Find first product link
-		const firstLink = page.locator(SELECTOR_PRODUCT_LINK).first()
-		const href = await firstLink.getAttribute('href').catch(() => null)
+			if (retriable && attempt < MAX_RETRIES) {
+				console.warn(
+					`  [prom api] fetch ${promId} failed (status ${status ?? 'network'}), retry ${attempt}/${MAX_RETRIES}`
+				)
+				await sleep(RETRY_DELAY_MS * attempt)
+				continue
+			}
 
-		if (!href) {
-			return { article, status: 'no_results', imageUrls: [] }
+			throw err
 		}
-
-		// 3. Navigate to product page
-		const productUrl = new URL(href, BASE_URL).href
-		await page.goto(productUrl, { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT })
-
-		// 4. Scroll to trigger any lazy-loading
-		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-		await sleep(1000)
-
-		// 5. Collect image URLs (selectors passed as args because page.evaluate is sandboxed)
-		const imageUrls = await page.evaluate(
-			([mainSel, thumbSel]) => {
-				const seen = new Set()
-
-				// Main large image (already full-res, no size suffix)
-				document.querySelectorAll(mainSel).forEach(img => {
-					if (img.src) seen.add(img.src)
-				})
-
-				// Thumbnail strip — strip size suffix to get full-res
-				document.querySelectorAll(thumbSel).forEach(img => {
-					const src = img.src || img.dataset.src
-					if (src) seen.add(src)
-				})
-
-				return [...seen]
-			},
-			[SELECTOR_MAIN_IMAGE, SELECTOR_THUMBNAILS]
-		)
-
-		// Strip size hints from thumbnails to get full-resolution URLs
-		const resolved = [...new Set(imageUrls.map(fullSizeUrl))]
-
-		if (!resolved.length) {
-			return { article, status: 'no_images', imageUrls: [] }
-		}
-
-		return { article, status: 'found', imageUrls: resolved }
-	} catch (err) {
-		return { article, status: 'error', error: err.message, imageUrls: [] }
-	} finally {
-		await context.close()
 	}
+
+	return null
+}
+
+/** Collect full-resolution image URLs from a Prom API product payload. */
+function imageUrlsFromProduct(product) {
+	const seen = new Set()
+
+	if (product.main_image) seen.add(fullSizeUrl(product.main_image))
+
+	for (const img of product.images || []) {
+		const url = img?.url || img?.thumbnail_url
+		if (url) seen.add(fullSizeUrl(url))
+	}
+
+	return [...seen]
 }
 
 // ─── Image download ───────────────────────────────────────────────────────────
 
-async function downloadImages(article, imageUrls) {
-	const dirName = safeArticle(article)
+async function downloadImages(name, imageUrls) {
+	const dirName = safeArticle(name)
 	const dir = path.join(OUTPUT_DIR, dirName)
 	await fs.mkdir(dir, { recursive: true })
 
@@ -158,31 +158,40 @@ async function downloadImages(article, imageUrls) {
 	return downloaded
 }
 
-// ─── Per-article orchestration ───────────────────────────────────────────────
+// ─── Per-product orchestration ───────────────────────────────────────────────
 
-async function processArticle(browser, article) {
-	console.log(`\n→ ${article}`)
+async function processProduct(promId) {
+	console.log(`\n→ prom_id ${promId}`)
 
-	const scraped = await scrapeArticle(browser, article)
-
-	if (!scraped.imageUrls.length) {
-		const note = scraped.error ? ` (${scraped.error})` : ''
-		console.log(`  status: ${scraped.status}${note}`)
-		return {
-			article,
-			status: scraped.status,
-			images: [],
-			...(scraped.error && { error: scraped.error })
-		}
+	let product
+	try {
+		product = await fetchPromProduct(promId)
+	} catch (err) {
+		console.log(`  status: error (${err.message})`)
+		return { promId, status: 'error', images: [], error: err.message }
 	}
 
-	console.log(`  found ${scraped.imageUrls.length} image(s), downloading...`)
-	const images = await downloadImages(article, scraped.imageUrls)
+	if (!product) {
+		console.log('  status: not_found (prom api 404)')
+		return { promId, status: 'not_found', images: [] }
+	}
+
+	// Directory is named after the product sku; fall back to the prom id
+	const dirName = product.sku ? String(product.sku) : String(promId)
+	console.log(`  sku: ${product.sku || '(none)'} | ${product.name || ''}`)
+
+	const imageUrls = imageUrlsFromProduct(product)
+
+	if (!imageUrls.length) {
+		console.log('  status: no_images')
+		return { promId, sku: product.sku, status: 'no_images', images: [] }
+	}
+
+	console.log(`  found ${imageUrls.length} image(s), downloading...`)
+	const images = await downloadImages(dirName, imageUrls)
 	console.log(`\n  ✓ ${images.length} saved`)
 
-	await randomDelay()
-
-	return { article, status: 'success', images }
+	return { promId, sku: product.sku, status: 'success', images }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -192,40 +201,36 @@ async function main() {
 	try {
 		raw = await fs.readFile(ARTICLES_FILE, 'utf-8')
 	} catch {
-		console.error(`${ARTICLES_FILE} not found. Create it with one article per line.`)
+		console.error(`${ARTICLES_FILE} not found. Create it with one Prom product id per line.`)
 		process.exit(1)
 	}
 
-	const articles = raw
+	const promIds = raw
 		.split('\n')
 		.map(a => a.trim())
 		.filter(Boolean)
 
-	if (!articles.length) {
+	if (!promIds.length) {
 		console.error(`${ARTICLES_FILE} is empty.`)
 		process.exit(1)
 	}
 
-	console.log(`Loaded ${articles.length} article(s). Concurrency: ${CONCURRENCY}\n`)
+	console.log(`Loaded ${promIds.length} Prom product id(s).`)
 
-	const browser = await chromium.launch({ headless: true })
 	const report = {}
 
-	// Process in batches of CONCURRENCY
-	for (let i = 0; i < articles.length; i += CONCURRENCY) {
-		const batch = articles.slice(i, i + CONCURRENCY)
-		const results = await Promise.all(batch.map(a => processArticle(browser, a)))
+	for (let i = 0; i < promIds.length; i++) {
+		const r = await processProduct(promIds[i])
 
-		for (const r of results) {
-			report[r.article] = {
-				status: r.status,
-				images: r.images,
-				...(r.error && { error: r.error })
-			}
+		report[r.promId] = {
+			status: r.status,
+			...(r.sku && { sku: r.sku }),
+			images: r.images,
+			...(r.error && { error: r.error })
 		}
-	}
 
-	await browser.close()
+		if (i < promIds.length - 1) await randomDelay()
+	}
 
 	await fs.writeFile(REPORT_FILE, JSON.stringify(report, null, 2), 'utf-8')
 	console.log(`\n\nDone. Report saved to ${REPORT_FILE}`)

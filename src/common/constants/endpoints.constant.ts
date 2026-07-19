@@ -17,19 +17,12 @@ export const ENDPOINTS = {
 	CATEGORIES: {
 		BASE: '/categories',
 		GET_ALL: '/',
-		GET_WITH_SUBCATEGORIES: '/with-subcategories',
 		GET_BY_SLUG: '/slug/:slug',
 		GET_BY_ID: '/:id',
 		CREATE: '/',
 		UPDATE: '/:id',
 		REPLACE: '/:id',
-		DELETE: '/:id',
-		GET_SUBCATEGORIES: '/:id/subcategories',
-		GET_SUBCATEGORY_BY_ID: '/:id/subcategories/:subId',
-		ADD_SUBCATEGORY: '/:id/subcategories',
-		UPDATE_SUBCATEGORY: '/:id/subcategories/:subId',
-		REPLACE_SUBCATEGORY: '/:id/subcategories/:subId',
-		REMOVE_SUBCATEGORY: '/:id/subcategories/:subId'
+		DELETE: '/:id'
 	},
 	VENDORS: {
 		BASE: '/vendors',

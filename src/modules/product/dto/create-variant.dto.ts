@@ -8,9 +8,9 @@ export class CreateVariantDto {
 	@IsMongoId()
 	product_id: string
 
-	@ApiProperty({ example: '64b1f2c3d4e5f6a7b8c9d0e2', description: 'Subcategory ObjectId' })
+	@ApiProperty({ example: '64b1f2c3d4e5f6a7b8c9d0e2', description: 'Category ObjectId' })
 	@IsMongoId()
-	subcategory_id: string
+	category_id: string
 
 	@ApiProperty({ example: 'Футболка базова — Чорна', description: 'Full variant name' })
 	@IsString()

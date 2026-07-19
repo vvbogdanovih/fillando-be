@@ -152,17 +152,13 @@ Schema: `src/database/mongoose/schemas/category.schema.ts`
 | `slug`                    | string          | required, unique                                                |
 | `image`                   | string \| null  | optional — public URL of the category image; `null` when absent |
 | `order`                   | number          | UI display order — lower values appear first; default: `0`      |
-| `subcategories`           | `Subcategory[]` | **embedded**, default: `[]`                                     |
+| `required_attributes`     | `RequiredAttribute[]` | **embedded**, default: `[]`                               |
 | `createdAt` / `updatedAt` | Date            | auto-managed (timestamps)                                       |
 
-#### Embedded: `Subcategory` (`_id: true`)
-
-| Field                 | Type                  | Notes                                                 |
-| --------------------- | --------------------- | ----------------------------------------------------- |
-| `_id`                 | ObjectId              | auto-generated — used as `subcategory_id` on products |
-| `name`                | string                | required                                              |
-| `slug`                | string                | required                                              |
-| `required_attributes` | `RequiredAttribute[]` | **embedded**, default: `[]`                           |
+Categories are a single flat level. The former two-level structure (category → embedded
+subcategories) was flattened by `scripts/migrations/flatten-categories.js`: each subcategory
+was promoted to a top-level category keeping its `_id`, so existing product references
+survived the migration.
 
 #### Embedded: `RequiredAttribute` (`_id: false`)
 
@@ -174,7 +170,7 @@ Schema: `src/database/mongoose/schemas/category.schema.ts`
 | `unit`        | string \| null              | nullable — e.g. `'мм'`, `'кг'`; `null` when not applicable                       |
 
 `RequiredAttribute` has `_id: false` because it has no identity of its own; it only describes
-what attributes a product in this subcategory must have. `key` is never supplied by the
+what attributes a product in this category must have. `key` is never supplied by the
 client — it is derived from `label` in the service layer using `generateAttrKey`.
 
 ---
@@ -187,8 +183,7 @@ Schema: `src/database/mongoose/schemas/product.schema.ts`
 | ------------------------- | ----------------------- | ---------------------------------------------------------------- |
 | `name`                    | string                  | required                                                         |
 | `slug`                    | string                  | required, unique                                                 |
-| `category_id`             | ObjectId → `categories` | required                                                         |
-| `subcategory_id`          | string                  | required — stringified `_id` of the embedded `Subcategory`       |
+| `category_id`             | ObjectId → `categories` | required — denormalized onto each variant as well                |
 | `images`                  | string[]                | product-level images                                             |
 | `price`                   | number                  | required — base price                                            |
 | `attributes`              | `Attribute[]`           | **embedded**, default: `[]`                                      |
@@ -268,10 +263,9 @@ vendors
   └── products (vendor_id → vendors._id)
 
 categories
-  └── subcategories[]          ← embedded, _id: true
-        └── required_attributes[]  ← embedded, _id: false
+  └── required_attributes[]  ← embedded, _id: false
   └── products (category_id → categories._id)
-              (subcategory_id = subcategories[]._id as string)
+  └── product_variants (category_id → categories._id, denormalized from product)
 
 products
   └── attributes[]      ← embedded, _id: false
@@ -287,7 +281,6 @@ nova_post_cities
 
 | Case                              | Decision       | Reason                                                                              |
 | --------------------------------- | -------------- | ----------------------------------------------------------------------------------- |
-| `Subcategory` in `Category`       | **Embedded**   | Always read together; subcategories have no independent lifecycle                   |
 | `ProductVariant` in `Product`     | **Embedded**   | Variants are meaningless without their parent product                               |
 | `Attribute` / `RequiredAttribute` | **Embedded**   | Pure value objects; no independent identity needed                                  |
 | `Vendor` on `Product`             | **Referenced** | Vendors are shared across products; queried independently                           |

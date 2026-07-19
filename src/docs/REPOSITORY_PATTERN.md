@@ -142,9 +142,11 @@ and do include virtuals like `.id`.
 
 ## 6. Embedded document mutations
 
-When a schema embeds sub-documents (e.g. `Category` embeds `Subcategory[]`), standard
-`BaseRepository.update` is not expressive enough. The concrete repository calls
-`this.model.findOneAndUpdate` directly using MongoDB array operators.
+When a schema embeds sub-documents with their own identity, standard `BaseRepository.update`
+is not expressive enough. The concrete repository calls `this.model.findOneAndUpdate` directly
+using MongoDB array operators. The examples below are illustrative — they show the former
+`Category`/`Subcategory[]` embedding, removed when categories were flattened; no current
+repository uses this pattern, but it is the template to follow when one does.
 
 ### $push — add to array
 

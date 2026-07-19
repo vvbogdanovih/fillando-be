@@ -63,9 +63,6 @@ They should be restricted to `ADMIN` once RBAC is wired up:
 | `POST /api/categories`                            | CategoryModule |
 | `PATCH /api/categories/:id`                       | CategoryModule |
 | `DELETE /api/categories/:id`                      | CategoryModule |
-| `POST /api/categories/:id/subcategories`          | CategoryModule |
-| `PATCH /api/categories/:id/subcategories/:subId`  | CategoryModule |
-| `DELETE /api/categories/:id/subcategories/:subId` | CategoryModule |
 | `POST /api/products`                              | ProductModule  |
 | `PATCH /api/products/:id`                         | ProductModule  |
 | `DELETE /api/products/:id`                        | ProductModule  |

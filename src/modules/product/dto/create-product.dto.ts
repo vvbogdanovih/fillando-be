@@ -92,10 +92,6 @@ export class CreateProductDto {
 	@IsMongoId()
 	category_id: string
 
-	@ApiProperty({ example: '64b1f2c3d4e5f6a7b8c9d0e2', description: 'Subcategory ObjectId' })
-	@IsMongoId()
-	subcategory_id: string
-
 	@ApiProperty({ example: '64b1f2c3d4e5f6a7b8c9d0e3', description: 'Vendor ObjectId' })
 	@IsMongoId()
 	vendor_id: string

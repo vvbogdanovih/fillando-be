@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsInt, IsOptional, IsString, Min } from 'class-validator'
+import { Type } from 'class-transformer'
+import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator'
 import { API_PROPERTY } from 'src/common/constants/docs'
+import { RequiredAttributeDto } from './create-category.dto'
 
 export class UpdateCategoryDto {
 	@ApiProperty({ ...API_PROPERTY.CATEGORY_NAME, required: false })
@@ -23,4 +25,11 @@ export class UpdateCategoryDto {
 	@IsInt()
 	@Min(0)
 	order?: number
+
+	@ApiProperty({ type: [RequiredAttributeDto], required: false })
+	@IsOptional()
+	@IsArray()
+	@ValidateNested({ each: true })
+	@Type(() => RequiredAttributeDto)
+	required_attributes?: RequiredAttributeDto[]
 }

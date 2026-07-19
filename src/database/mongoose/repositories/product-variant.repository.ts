@@ -23,12 +23,17 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		return this.findAll({ product_id: new Types.ObjectId(productId) })
 	}
 
-	findBySubcategoryId(subcategoryId: string): Promise<ProductVariant[]> {
-		return this.findAll({ subcategory_id: new Types.ObjectId(subcategoryId) })
-	}
-
 	findByIds(ids: Types.ObjectId[]): Promise<ProductVariant[]> {
 		return this.findAll({ _id: { $in: ids } })
+	}
+
+	async updateCategoryByProductId(productId: string, categoryId: string): Promise<void> {
+		await this.model
+			.updateMany(
+				{ product_id: new Types.ObjectId(productId) },
+				{ $set: { category_id: new Types.ObjectId(categoryId) } }
+			)
+			.exec()
 	}
 
 	findAllWithPromId(): Promise<ProductVariant[]> {
@@ -66,17 +71,10 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				.exec(),
 			this.model.db
 				.collection('categories')
-				.findOne(
-					{ 'subcategories._id': variant.subcategory_id },
-					{ projection: { slug: 1, subcategories: 1 } }
-				)
+				.findOne({ _id: variant.category_id }, { projection: { slug: 1, name: 1 } })
 		])
 
 		if (!product) return null
-
-		const subcategory = (category?.subcategories as any[])?.find(
-			s => String(s._id) === String(variant.subcategory_id)
-		)
 
 		return {
 			variant: {
@@ -109,7 +107,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				images: s.images
 			})),
 			category_slug: (category as any)?.slug ?? null,
-			subcategory_slug: subcategory?.slug ?? null
+			category_name: (category as any)?.name ?? null
 		}
 	}
 
@@ -286,7 +284,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	}
 
 	async findCatalogItems(params: {
-		subcategory_id: string
+		category_id: string
 		page: number
 		limit: number
 		price_min?: number
@@ -294,11 +292,11 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		sort: string
 		attrFilters: Record<string, string[]>
 	}) {
-		const { subcategory_id, page, limit, price_min, price_max, sort, attrFilters } = params
+		const { category_id, page, limit, price_min, price_max, sort, attrFilters } = params
 		const skip = (page - 1) * limit
 
 		const variantMatch: Record<string, any> = {
-			subcategory_id: new Types.ObjectId(subcategory_id),
+			category_id: new Types.ObjectId(category_id),
 			status: 'active'
 		}
 		if (price_min !== undefined || price_max !== undefined) {
@@ -367,15 +365,15 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			}
 		)
 
-		const subcategoryObjectId = new Types.ObjectId(subcategory_id)
+		const categoryObjectId = new Types.ObjectId(category_id)
 
 		const priceRangePipeline: any[] = [
-			{ $match: { subcategory_id: subcategoryObjectId, status: 'active' } },
+			{ $match: { category_id: categoryObjectId, status: 'active' } },
 			{ $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' } } }
 		]
 
 		const filterOptionsPipeline: any[] = [
-			{ $match: { subcategory_id: subcategoryObjectId, status: 'active' } },
+			{ $match: { category_id: categoryObjectId, status: 'active' } },
 			{
 				$lookup: {
 					from: 'products',

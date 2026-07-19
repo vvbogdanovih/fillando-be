@@ -45,9 +45,6 @@ export class Product {
 	@Prop({ type: Types.ObjectId, ref: 'Category', required: true })
 	category_id: Types.ObjectId
 
-	@Prop({ type: Types.ObjectId, required: true })
-	subcategory_id: Types.ObjectId
-
 	@Prop({ type: Types.ObjectId, ref: 'Vendor', required: true })
 	vendor_id: Types.ObjectId
 

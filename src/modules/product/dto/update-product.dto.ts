@@ -15,11 +15,6 @@ export class UpdateProductDto {
 	@IsMongoId()
 	category_id?: string
 
-	@ApiProperty({ example: '64b1f2c3d4e5f6a7b8c9d0e2', required: false })
-	@IsOptional()
-	@IsMongoId()
-	subcategory_id?: string
-
 	@ApiProperty({ example: '64b1f2c3d4e5f6a7b8c9d0e3', required: false })
 	@IsOptional()
 	@IsMongoId()

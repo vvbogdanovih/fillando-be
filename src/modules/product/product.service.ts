@@ -135,12 +135,12 @@ export class ProductService {
 	}
 
 	async getCatalog(rawQuery: Record<string, string>) {
-		const { subcategory_id, page, limit, price_min, price_max, sort, ...rest } = rawQuery
+		const { category_id, page, limit, price_min, price_max, sort, ...rest } = rawQuery
 
-		if (!subcategory_id) throw new BadRequestException('subcategory_id is required')
+		if (!category_id) throw new BadRequestException('category_id is required')
 
 		const knownKeys = new Set([
-			'subcategory_id',
+			'category_id',
 			'page',
 			'limit',
 			'price_min',
@@ -158,7 +158,7 @@ export class ProductService {
 		}
 
 		return this.productVariantRepository.findCatalogItems({
-			subcategory_id,
+			category_id,
 			page: page ? Math.max(1, parseInt(page, 10)) : 1,
 			limit: limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20,
 			price_min: price_min !== undefined ? parseFloat(price_min) : undefined,
@@ -202,9 +202,7 @@ export class ProductService {
 							sku: systemSku,
 							vendor_product_sku: variant.vendor_product_sku ?? systemSku,
 							product_id: product._id,
-							subcategory_id: new Types.ObjectId(
-								String((product as any).subcategory_id)
-							),
+							category_id: new Types.ObjectId(String(product.category_id)),
 							name: variant.v_value
 								? `${product.name} — ${variant.v_value}`
 								: product.name,
@@ -233,6 +231,14 @@ export class ProductService {
 			}
 		)
 		if (!updated) throw new NotFoundException('Product not found')
+
+		// Variants denormalize category_id — keep them in sync when the product is moved.
+		if (dto.category_id) {
+			await this.productVariantRepository.updateCategoryByProductId(
+				id,
+				String(dto.category_id)
+			)
+		}
 
 		if (dto.name) {
 			const variants = await this.productVariantRepository.findByProductId(id)
@@ -299,7 +305,7 @@ export class ProductService {
 			sku: systemSku,
 			vendor_product_sku: dto.vendor_product_sku ?? systemSku,
 			product_id: product._id,
-			subcategory_id: new Types.ObjectId(String((product as any).subcategory_id)),
+			category_id: new Types.ObjectId(String(product.category_id)),
 			name: dto.v_value ? `${product.name} — ${dto.v_value}` : product.name,
 			slug: generateSlug(dto.v_value ? `${product.name} ${dto.v_value}` : product.name),
 			stock: dto.stock ?? 0,

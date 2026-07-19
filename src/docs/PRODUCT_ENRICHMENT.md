@@ -77,8 +77,8 @@ Product
        └─ stock               ──►  Used directly for all other vendors
 ```
 
-`subcategory_id` on `Product` is a string matching the `_id` of an embedded `Subcategory`
-document inside the referenced `Category`. It is **not** a top-level collection reference.
+`category_id` on `Product` references the flat `categories` collection and is denormalized
+onto each `ProductVariant` for indexed catalog queries.
 
 ---
 

@@ -52,13 +52,9 @@ export const API_OPERATION = {
 			summary: 'Get all categories',
 			description: 'Get all categories'
 		},
-		GET_WITH_SUBCATEGORIES: {
-			summary: 'Get categories with subcategories',
-			description: 'Get categories with subcategories'
-		},
 		GET_BY_SLUG: {
 			summary: 'Get category by slug',
-			description: 'Get a single category (with subcategories) by slug'
+			description: 'Get a single category (with its filter attributes) by slug'
 		},
 		GET_BY_ID: {
 			summary: 'Get category by id',
@@ -79,30 +75,6 @@ export const API_OPERATION = {
 		REPLACE: {
 			summary: 'Replace category',
 			description: 'Fully replace a category (all fields required)'
-		},
-		GET_SUBCATEGORIES: {
-			summary: 'Get subcategories',
-			description: 'Get all subcategories of a category'
-		},
-		GET_SUBCATEGORY_BY_ID: {
-			summary: 'Get subcategory by id',
-			description: 'Get a specific subcategory by id'
-		},
-		ADD_SUBCATEGORY: {
-			summary: 'Add subcategory',
-			description: 'Add a subcategory to a category'
-		},
-		UPDATE_SUBCATEGORY: {
-			summary: 'Update subcategory',
-			description: 'Update an embedded subcategory'
-		},
-		REPLACE_SUBCATEGORY: {
-			summary: 'Replace subcategory',
-			description: 'Fully replace a subcategory (all fields required)'
-		},
-		REMOVE_SUBCATEGORY: {
-			summary: 'Remove subcategory',
-			description: 'Remove an embedded subcategory'
 		}
 	},
 	VENDORS: {
@@ -183,7 +155,7 @@ export const API_OPERATION = {
 		},
 		CATALOG: {
 			summary: 'Get catalog products',
-			description: 'Paginated, filterable product listing for a given subcategory.'
+			description: 'Paginated, filterable product listing for a given category.'
 		},
 		SEARCH: {
 			summary: 'Search products',

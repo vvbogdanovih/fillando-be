@@ -14,10 +14,6 @@ export class ProductRepository extends BaseRepository<Product> {
 		return this.findAll({ category_id: new Types.ObjectId(categoryId) })
 	}
 
-	findBySubcategoryId(subcategoryId: string): Promise<Product[]> {
-		return this.findAll({ subcategory_id: new Types.ObjectId(subcategoryId) })
-	}
-
 	findByVendorId(vendorId: string): Promise<Product[]> {
 		return this.findAll({ vendor_id: new Types.ObjectId(vendorId) })
 	}

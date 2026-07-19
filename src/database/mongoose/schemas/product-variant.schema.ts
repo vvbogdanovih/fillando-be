@@ -7,8 +7,8 @@ export class ProductVariant {
 	@Prop({ type: Types.ObjectId, ref: 'Product', required: true })
 	product_id: Types.ObjectId
 
-	@Prop({ type: Types.ObjectId, required: true })
-	subcategory_id: Types.ObjectId
+	@Prop({ type: Types.ObjectId, ref: 'Category', required: true })
+	category_id: Types.ObjectId
 
 	@Prop({ required: true })
 	name: string
@@ -49,7 +49,7 @@ export class ProductVariant {
 
 export const ProductVariantSchema = SchemaFactory.createForClass(ProductVariant)
 ProductVariantSchema.index({ product_id: 1 })
-ProductVariantSchema.index({ subcategory_id: 1, status: 1 })
+ProductVariantSchema.index({ category_id: 1, status: 1 })
 ProductVariantSchema.index({ slug: 1 }, { unique: true })
 ProductVariantSchema.index({ sku: 1 }, { unique: true })
 export type ProductVariantDocument = HydratedDocument<ProductVariant>

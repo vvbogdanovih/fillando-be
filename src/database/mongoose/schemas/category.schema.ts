@@ -18,20 +18,6 @@ export class RequiredAttribute {
 
 export const RequiredAttributeSchema = SchemaFactory.createForClass(RequiredAttribute)
 
-@Schema({ _id: true })
-export class Subcategory {
-	@Prop({ required: true })
-	name: string
-
-	@Prop({ required: true })
-	slug: string
-
-	@Prop({ type: [RequiredAttributeSchema], default: [] })
-	required_attributes: RequiredAttribute[]
-}
-
-export const SubcategorySchema = SchemaFactory.createForClass(Subcategory)
-
 @Schema({ collection: 'categories', timestamps: true })
 export class Category {
 	@Prop({ required: true, unique: true })
@@ -40,8 +26,8 @@ export class Category {
 	@Prop({ required: true, unique: true })
 	slug: string
 
-	@Prop({ type: [SubcategorySchema], default: [] })
-	subcategories: Subcategory[]
+	@Prop({ type: [RequiredAttributeSchema], default: [] })
+	required_attributes: RequiredAttribute[]
 
 	@Prop({ type: String, default: null })
 	image: string | null
@@ -51,5 +37,4 @@ export class Category {
 }
 
 export const CategorySchema = SchemaFactory.createForClass(Category)
-CategorySchema.index({ 'subcategories._id': 1 })
 export type CategoryDocument = HydratedDocument<Category>

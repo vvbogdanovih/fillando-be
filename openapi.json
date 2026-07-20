@@ -2233,6 +2233,121 @@
           "/users"
         ]
       }
+    },
+    "/wholesale-inquiries": {
+      "post": {
+        "description": "Submit a wholesale/bulk purchase inquiry form. Public endpoint — no authentication required.",
+        "operationId": "WholesaleInquiryController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWholesaleInquiryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Submit wholesale inquiry",
+        "tags": [
+          "/wholesale-inquiries"
+        ]
+      },
+      "get": {
+        "description": "Paginated list of wholesale inquiries with optional status filter. Admin only.",
+        "operationId": "WholesaleInquiryController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "NEW",
+                "PROCESSED"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WholesaleInquiriesListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get all wholesale inquiries",
+        "tags": [
+          "/wholesale-inquiries"
+        ]
+      }
+    },
+    "/wholesale-inquiries/{id}/status": {
+      "patch": {
+        "description": "Update the processing status of a wholesale inquiry. Admin only.",
+        "operationId": "WholesaleInquiryController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWholesaleInquiryStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Update wholesale inquiry status",
+        "tags": [
+          "/wholesale-inquiries"
+        ]
+      }
     }
   },
   "info": {
@@ -3735,6 +3850,143 @@
             "nullable": true
           }
         }
+      },
+      "CreateWholesaleInquiryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Іван Петренко",
+            "description": "Contact person full name"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+380991112233",
+            "description": "Contact phone number in E.164 UA format",
+            "pattern": "^\\+380\\d{9}$"
+          },
+          "email": {
+            "type": "string",
+            "example": "ivan@company.com",
+            "description": "Contact email address"
+          },
+          "quantity": {
+            "type": "string",
+            "example": "20 кг на місяць",
+            "description": "Desired plastic quantity (free-form text)"
+          },
+          "comment": {
+            "type": "string",
+            "example": "Цікавить PETG та PLA, потрібна відстрочка платежу",
+            "description": "Additional comment or details"
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "email",
+          "quantity"
+        ]
+      },
+      "WholesaleInquiryItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "664f1b2c3d4e5f6a7b8c9d0e"
+          },
+          "name": {
+            "type": "string",
+            "example": "Іван Петренко",
+            "description": "Contact person full name"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+380991112233",
+            "description": "Contact phone number in E.164 UA format",
+            "pattern": "^\\+380\\d{9}$"
+          },
+          "email": {
+            "type": "string",
+            "example": "ivan@company.com",
+            "description": "Contact email address"
+          },
+          "quantity": {
+            "type": "string",
+            "example": "20 кг на місяць",
+            "description": "Desired plastic quantity (free-form text)"
+          },
+          "comment": {
+            "type": "object",
+            "example": "Цікавить PETG та PLA, потрібна відстрочка платежу",
+            "description": "Additional comment or details",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "PROCESSED"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "phone",
+          "email",
+          "quantity",
+          "status",
+          "createdAt"
+        ]
+      },
+      "WholesaleInquiriesListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WholesaleInquiryItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "UpdateWholesaleInquiryStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "PROCESSED"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
       }
     }
   }

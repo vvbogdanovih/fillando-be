@@ -41,6 +41,11 @@ export enum NovaPostWarehouseType {
 	CARGO = 'CARGO'
 }
 
+export enum WholesaleInquiryStatus {
+	NEW = 'NEW',
+	PROCESSED = 'PROCESSED'
+}
+
 export enum OrderStatus {
 	NEW = 'NEW',
 	CONFIRMED = 'CONFIRMED',

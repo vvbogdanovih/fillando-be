@@ -101,6 +101,12 @@ export const ENDPOINTS = {
 		DELETE: '/:id',
 		ACTIVATE: '/:id/activate'
 	},
+	WHOLESALE_INQUIRIES: {
+		BASE: '/wholesale-inquiries',
+		CREATE: '/',
+		GET_ALL: '/',
+		UPDATE_STATUS: '/:id/status'
+	},
 	DISCOUNT_COUPONS: {
 		BASE: '/discount-coupons',
 		GET_ALL: '/',

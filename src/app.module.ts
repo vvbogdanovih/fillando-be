@@ -17,6 +17,7 @@ import { PromModule } from './modules/prom/prom.module'
 import { OrderModule } from './modules/order/order.module'
 import { DiscountCouponModule } from './modules/discount-coupon/discount-coupon.module'
 import { UsersModule } from './modules/users/users.module'
+import { WholesaleInquiryModule } from './modules/wholesale-inquiry/wholesale-inquiry.module'
 import { ENV } from './common/constants'
 
 @Module({
@@ -46,7 +47,8 @@ import { ENV } from './common/constants'
 		PromModule,
 		OrderModule,
 		DiscountCouponModule,
-		UsersModule
+		UsersModule,
+		WholesaleInquiryModule
 	],
 	controllers: [],
 	providers: [],

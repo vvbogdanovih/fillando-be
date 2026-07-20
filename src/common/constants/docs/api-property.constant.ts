@@ -114,5 +114,27 @@ export const API_PROPERTY = {
 	PAYMENT_BANK_NAME: {
 		example: 'ПриватБанк',
 		description: 'Name of the bank'
+	},
+	WHOLESALE_NAME: {
+		example: 'Іван Петренко',
+		description: 'Contact person full name'
+	},
+	WHOLESALE_PHONE: {
+		example: '+380991112233',
+		description: 'Contact phone number in E.164 UA format',
+		pattern: '^\\+380\\d{9}$'
+	},
+	WHOLESALE_EMAIL: {
+		example: 'ivan@company.com',
+		description: 'Contact email address'
+	},
+	WHOLESALE_QUANTITY: {
+		example: '20 кг на місяць',
+		description: 'Desired plastic quantity (free-form text)'
+	},
+	WHOLESALE_COMMENT: {
+		example: 'Цікавить PETG та PLA, потрібна відстрочка платежу',
+		description: 'Additional comment or details',
+		required: false
 	}
 } as const

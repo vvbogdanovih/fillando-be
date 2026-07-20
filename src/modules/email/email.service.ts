@@ -13,6 +13,10 @@ import {
 	serviceOrderCreatedTemplate,
 	ServiceOrderCreatedEmailData
 } from './templates/service/order-iban-confirmation.template/order-created-service.template'
+import {
+	wholesaleInquiryCreatedTemplate,
+	WholesaleInquiryCreatedEmailData
+} from './templates/service/wholesale-inquiry.template/wholesale-inquiry-created.template'
 
 @Injectable()
 export class EmailService {
@@ -136,6 +140,14 @@ export class EmailService {
 		})
 
 		await Promise.all([customerEmail, serviceEmail])
+	}
+
+	async sendWholesaleInquiryNotification(data: WholesaleInquiryCreatedEmailData): Promise<void> {
+		await this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Нова заявка на оптову закупку від ${data.name}`,
+			html: wholesaleInquiryCreatedTemplate(data)
+		})
 	}
 
 	async sendVendorOrderEmail(

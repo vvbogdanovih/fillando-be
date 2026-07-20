@@ -128,6 +128,24 @@ Schema: `src/database/mongoose/schemas/discount-coupon.schema.ts`
 
 ---
 
+### `wholesale_inquiries`
+
+Schema: `src/database/mongoose/schemas/wholesale-inquiry.schema.ts`
+
+| Field                     | Type           | Notes                                                |
+| ------------------------- | -------------- | ---------------------------------------------------- |
+| `name`                    | string         | required — contact person full name                  |
+| `phone`                   | string         | required, `+380XXXXXXXXX`                            |
+| `email`                   | string         | required                                             |
+| `quantity`                | string         | required — desired plastic quantity, free-form text  |
+| `comment`                 | string \| null | optional, default: `null`                            |
+| `status`                  | enum           | `NEW` (default) \| `PROCESSED`                       |
+| `createdAt` / `updatedAt` | Date           | auto-managed (timestamps)                            |
+
+B2B wholesale inquiry submitted from the public form on the home page. See `src/docs/WHOLESALE_INQUIRY.md`.
+
+---
+
 ### `vendors`
 
 Schema: `src/database/mongoose/schemas/vendor.schema.ts`

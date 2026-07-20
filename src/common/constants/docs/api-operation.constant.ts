@@ -338,6 +338,22 @@ export const API_OPERATION = {
 				'Sets the given record as active and deactivates all others. Only one record can be active at a time.'
 		}
 	},
+	WHOLESALE_INQUIRIES: {
+		CREATE: {
+			summary: 'Submit wholesale inquiry',
+			description:
+				'Submit a wholesale/bulk purchase inquiry form. Public endpoint — no authentication required.'
+		},
+		GET_ALL: {
+			summary: 'Get all wholesale inquiries',
+			description:
+				'Paginated list of wholesale inquiries with optional status filter. Admin only.'
+		},
+		UPDATE_STATUS: {
+			summary: 'Update wholesale inquiry status',
+			description: 'Update the processing status of a wholesale inquiry. Admin only.'
+		}
+	},
 	DISCOUNT_COUPONS: {
 		GET_ALL: {
 			summary: 'Get all discount coupons',

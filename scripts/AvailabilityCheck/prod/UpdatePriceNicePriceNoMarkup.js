@@ -1,18 +1,17 @@
 /**
- * Batch price update for NicePrice (npshop.com.ua) vendor.
+ * Batch price update for NicePrice (npshop.com.ua) vendor — NO markup.
  *
- * Fetches all product variants that have a `prom_id` (populated by
- * BackfillPromIdNicePrice.js), opens the vendor product page directly by that
- * id — `https://npshop.com.ua/ua/p<prom_id>-x.html` (Prom redirects to the
- * canonical slug) — scrapes the current price, and updates the `price` field in
- * MongoDB using a fixed tiered markup (+30 ₴ for 0-200, +35 for 200-400,
- * +40 for 400-600, +45 for 600-800, +50 for 800-1000, +100 for 1000-1500,
- * +110 for 1500-2500, +120 for 2500+), rounded to a whole number — no kopecks.
+ * Same as UpdatePriceNicePrice.js, but sets the price to exactly the vendor
+ * (Prom) price, with no markup applied. Fetches all product variants that have
+ * a `prom_id` (populated by BackfillPromIdNicePrice.js), opens the vendor
+ * product page directly by that id — `https://npshop.com.ua/ua/p<prom_id>-x.html`
+ * (Prom redirects to the canonical slug) — scrapes the current price, and
+ * updates the `price` field in MongoDB, rounded to a whole number — no kopecks.
  * No search-by-SKU step: matching is done purely by `prom_id`. Variants without
  * a `prom_id` are not touched (run BackfillPromIdNicePrice.js first).
  *
  * Usage:
- *   node scripts/AvailabilityCheck/prod/UpdatePriceNicePrice.js
+ *   node scripts/AvailabilityCheck/prod/UpdatePriceNicePriceNoMarkup.js
  */
 
 const axios = require('axios')
@@ -36,20 +35,6 @@ const BASE_URL = 'https://npshop.com.ua'
 const HTTP_TIMEOUT_MS = 20000
 const USER_AGENT =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-
-// ── Pricing ──────────────────────────────────────────────────────────────────
-
-/** Fixed tiered markup (in ₴) based on vendor price range */
-function getMarkupAmount(vendorPrice) {
-	if (vendorPrice <= 200) return 30
-	if (vendorPrice <= 400) return 35
-	if (vendorPrice <= 600) return 40
-	if (vendorPrice <= 800) return 45
-	if (vendorPrice <= 1000) return 50
-	if (vendorPrice <= 1500) return 100
-	if (vendorPrice <= 2500) return 110
-	return 120
-}
 
 // ── Scraping helpers ─────────────────────────────────────────────────────────
 
@@ -221,13 +206,12 @@ async function main() {
 		}
 
 		const prevPrice = variant.price ?? 0
-		const markup = getMarkupAmount(result.vendorPrice)
-		const newPrice = Math.round(result.vendorPrice + markup)
+		const newPrice = Math.round(result.vendorPrice)
 
 		const changed = prevPrice !== newPrice
 		const changeLabel = changed ? `${prevPrice} → ${newPrice}` : `${newPrice} (unchanged)`
 		console.log(
-			`${prefix} → vendor: ${result.vendorPrice} ₴ + ${markup} ₴ = ${newPrice} ₴ | ${changeLabel}${result.productName ? ` | "${result.productName}"` : ''}`
+			`${prefix} → vendor: ${result.vendorPrice} ₴ = ${newPrice} ₴ | ${changeLabel}${result.productName ? ` | "${result.productName}"` : ''}`
 		)
 
 		if (!DRY_RUN) {

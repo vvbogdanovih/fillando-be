@@ -10,6 +10,10 @@ import {
 	orderIbanConfirmationTemplate
 } from './templates/order-iban-confirmation.template/order-iban-confirmation.template'
 import {
+	OrderPaidConfirmationData,
+	orderPaidConfirmationTemplate
+} from './templates/order-paid-confirmation.template/order-paid-confirmation.template'
+import {
 	serviceOrderCreatedTemplate,
 	ServiceOrderCreatedEmailData
 } from './templates/service/order-iban-confirmation.template/order-created-service.template'
@@ -43,6 +47,7 @@ export class EmailService {
 			to,
 			subject,
 			html,
+			replyTo: 'vvbogdanovih@gmail.com',
 			attachments
 		})
 		if (error) {

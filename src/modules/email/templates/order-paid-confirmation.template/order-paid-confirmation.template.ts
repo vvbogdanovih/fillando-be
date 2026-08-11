@@ -1,7 +1,7 @@
 import { DeliveryMethod, OrderStatus, PaymentStatus } from 'src/common/types/enums'
 import { SUPPORT } from 'src/common/constants/contacts.constant'
 
-export interface OrderCashConfirmationData {
+export interface OrderPaidConfirmationData {
 	orderNumber: string
 	orderStatus: OrderStatus
 	paymentStatus: PaymentStatus
@@ -51,7 +51,7 @@ function formatPaymentStatus(status: PaymentStatus): string {
 	return '—'
 }
 
-function formatDelivery(data: OrderCashConfirmationData): string {
+function formatDelivery(data: OrderPaidConfirmationData): string {
 	if (data.deliveryMethod === DeliveryMethod.PICKUP) return 'Самовивіз'
 	if (!data.deliveryAddress) return '—'
 	const { city_name, warehouse_description, street, building, apartment } = data.deliveryAddress
@@ -62,7 +62,7 @@ function formatDelivery(data: OrderCashConfirmationData): string {
 	return `${city_name}, вул. ${street} ${building}${apt}`
 }
 
-function formatDeliveryMethod(data: OrderCashConfirmationData): string {
+function formatDeliveryMethod(data: OrderPaidConfirmationData): string {
 	if (data.deliveryMethod === DeliveryMethod.NOVA_POST) return 'Нова Пошта'
 	if (data.deliveryMethod === DeliveryMethod.COURIER) return "Кур'єр"
 	if (data.deliveryMethod === DeliveryMethod.PICKUP) return 'Самовивіз'
@@ -75,7 +75,7 @@ function formatPrice(value: number): string {
 	)
 }
 
-export function orderCashConfirmationTemplate(data: OrderCashConfirmationData): string {
+export function orderPaidConfirmationTemplate(data: OrderPaidConfirmationData): string {
 	const itemRows = data.items
 		.map(
 			item => `
@@ -96,7 +96,7 @@ export function orderCashConfirmationTemplate(data: OrderCashConfirmationData): 
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Замовлення створено</title>
+    <title>Оплату отримано</title>
   </head>
   <body style="margin:0;padding:24px 12px;background-color:#ffffff;font-family:Arial,sans-serif;">
     <div style="max-width:720px;margin:24px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:none;">
@@ -106,7 +106,7 @@ export function orderCashConfirmationTemplate(data: OrderCashConfirmationData): 
       <div style="padding:32px;color:#333333;">
         <p style="font-size:18px;font-weight:700;color:#1a1a1a;margin:0 0 16px;">Замовлення ${data.orderNumber}</p>
         <p style="font-size:15px;line-height:1.6;color:#555555;margin:0;">
-          Замовлення ${data.orderNumber} успішно створено. Оплата готівкою при отриманні. Гарного дня!
+          Оплату за замовлення ${data.orderNumber} успішно отримано. Дякуємо за покупку!
         </p>
 
         <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#999;margin:20px 0 10px;">Статус замовлення</p>
@@ -150,7 +150,7 @@ export function orderCashConfirmationTemplate(data: OrderCashConfirmationData): 
 					: ''
 			}
             <tr>
-              <td colspan="4" style="padding:12px 8px;font-size:15px;font-weight:700;color:#1a1a1a;text-align:right;">Разом до оплати:</td>
+              <td colspan="4" style="padding:12px 8px;font-size:15px;font-weight:700;color:#1a1a1a;text-align:right;">Разом оплачено:</td>
               <td style="padding:12px 8px;font-size:15px;font-weight:700;color:#1a1a1a;text-align:right;white-space:nowrap;">${formatPrice(data.totalPrice)}</td>
             </tr>
           </tbody>

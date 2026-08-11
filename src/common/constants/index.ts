@@ -1,4 +1,5 @@
 export * from './docs'
+export * from './contacts.constant'
 export * from './endpoints.constant'
 export * from './token-lifetime.constant'
 export * from './env.constant'

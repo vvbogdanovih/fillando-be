@@ -32,6 +32,7 @@ import { ReportProvider } from './report/report.provider'
 		DiscountCouponRepository,
 		InvoicePdfProvider,
 		ReportProvider
-	]
+	],
+	exports: [OrderService]
 })
 export class OrderModule {}

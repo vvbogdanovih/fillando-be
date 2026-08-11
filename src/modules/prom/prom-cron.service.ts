@@ -25,7 +25,7 @@ export class PromCronService implements OnModuleInit {
 		const job = new CronJob(SCHEDULE, () => {
 			void this.handleScheduledSync()
 		})
-		this.schedulerRegistry.addCronJob(JOB_NAME, job as never)
+		this.schedulerRegistry.addCronJob(JOB_NAME, job)
 		job.start()
 		this.logger.log('Scheduled Prom availability sync registered (every 30 minutes)')
 	}

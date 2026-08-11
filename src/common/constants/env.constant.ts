@@ -33,6 +33,13 @@ const envSchema = z.object({
 	SERVICE_EMAIL: z.string().email(),
 	ALLOW_EMAIL_SENDING: z.coerce.boolean().default(true),
 
+	// Secret used to derive the AES-256-GCM key (via SHA-256) that encrypts payment
+	// provider secrets (e.g. LiqPay/MonoPay private keys) at rest in MongoDB.
+	PAYMENT_ENCRYPTION_KEY: z.string().min(32),
+	// Publicly reachable base URL of this backend, used to build the LiqPay
+	// `server_url` callback (e.g. https://fillando.com/api). Falls back to FRONTEND-less usage.
+	PUBLIC_API_URL: z.string().url(),
+
 	FRONTEND_URL: z.string().min(1),
 	PORT: z.coerce.number(),
 
@@ -72,6 +79,8 @@ const getParsedEnv = (): EnvSchema => {
 		RESEND_API_KEY: process.env.RESEND_API_KEY,
 		SERVICE_EMAIL: process.env.SERVICE_EMAIL,
 		ALLOW_EMAIL_SENDING: process.env.ALLOW_EMAIL_SENDING,
+		PAYMENT_ENCRYPTION_KEY: process.env.PAYMENT_ENCRYPTION_KEY,
+		PUBLIC_API_URL: process.env.PUBLIC_API_URL,
 		FRONTEND_URL: process.env.FRONTEND_URL,
 		PORT: process.env.PORT,
 		NODE_ENV: process.env.NODE_ENV,
@@ -109,6 +118,8 @@ export const ENV = {
 	RESEND_API_KEY: validatedEnv.RESEND_API_KEY,
 	SERVICE_EMAIL: validatedEnv.SERVICE_EMAIL,
 	ALLOW_EMAIL_SENDING: validatedEnv.ALLOW_EMAIL_SENDING,
+	PAYMENT_ENCRYPTION_KEY: validatedEnv.PAYMENT_ENCRYPTION_KEY,
+	PUBLIC_API_URL: validatedEnv.PUBLIC_API_URL,
 	FRONTEND_URL: validatedEnv.FRONTEND_URL,
 	PORT: validatedEnv.PORT,
 	NODE_ENV: validatedEnv.NODE_ENV,

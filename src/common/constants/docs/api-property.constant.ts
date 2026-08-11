@@ -115,6 +115,23 @@ export const API_PROPERTY = {
 		example: 'ПриватБанк',
 		description: 'Name of the bank'
 	},
+	PAYMENT_PROVIDER_LABEL: {
+		example: 'ФОП Шевченко — LiqPay',
+		description: 'Human-readable label to distinguish credential sets'
+	},
+	PAYMENT_PROVIDER_PUBLIC_KEY: {
+		example: 'i00000000000',
+		description: 'Merchant public key issued by the payment provider'
+	},
+	PAYMENT_PROVIDER_PRIVATE_KEY: {
+		example: 'a000000000000000000000000000000000000000',
+		description: 'Merchant private/secret key. Encrypted at rest, never returned in responses'
+	},
+	PAYMENT_PROVIDER_SANDBOX: {
+		example: false,
+		description: 'Whether this credential set operates in sandbox/test mode',
+		required: false
+	},
 	WHOLESALE_NAME: {
 		example: 'Іван Петренко',
 		description: 'Contact person full name'

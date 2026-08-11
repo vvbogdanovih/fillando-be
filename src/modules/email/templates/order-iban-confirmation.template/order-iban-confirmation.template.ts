@@ -1,4 +1,5 @@
 import { DeliveryMethod, OrderStatus, PaymentStatus } from 'src/common/types/enums'
+import { SUPPORT } from 'src/common/constants/contacts.constant'
 
 export interface OrderIbanConfirmationData {
 	orderNumber: string
@@ -156,6 +157,7 @@ export function orderIbanConfirmationTemplate(data: OrderIbanConfirmationData): 
         </table>
       </div>
       <div style="padding:18px 32px 24px;background-color:#fafbfc;text-align:center;font-size:12px;color:#a1a1aa;border-top:1px solid #f0f1f5;">
+        <p style="margin:0 0 6px;">Маєте запитання? Напишіть нам: <a href="mailto:${SUPPORT.EMAIL}" style="color:#71717a;">${SUPPORT.EMAIL}</a></p>
         &copy; Fillando. Усі права захищені.
       </div>
     </div>

@@ -5,7 +5,7 @@ import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.re
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
 import { EmailService } from 'src/modules/email/email.service'
-import { DeliveryMethod, PaymentMethod } from 'src/common/types/enums'
+import { DeliveryMethod, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { ReportProvider } from './report/report.provider'
@@ -443,6 +443,77 @@ export class OrderService {
 		)
 		if (!order) throw new NotFoundException('Order not found')
 		return order
+	}
+
+	/**
+	 * Applies a payment result reported by an online gateway (e.g. LiqPay callback).
+	 * Idempotent: an already-PAID order is never reprocessed or downgraded.
+	 * On success sends the paid-confirmation email (customer + service).
+	 */
+	async applyGatewayPaymentResult(orderNumber: string, isPaid: boolean, transactionId?: string) {
+		const order = await this.orderRepository.findByOrderNumber(orderNumber)
+		if (!order) throw new NotFoundException(`Order ${orderNumber} not found`)
+
+		if (order.payment_status === PaymentStatus.PAID) {
+			this.logger.log(`Order ${orderNumber} already PAID, skipping gateway update`)
+			return order
+		}
+
+		const newStatus = isPaid ? PaymentStatus.PAID : PaymentStatus.FAILED
+		const update: Record<string, unknown> = { payment_status: newStatus }
+		if (transactionId) update.payment_transaction_id = transactionId
+
+		const updated = await this.orderRepository.update({ _id: order._id }, { $set: update })
+		if (!updated) throw new NotFoundException(`Order ${orderNumber} not found`)
+
+		this.logger.log(`Order ${orderNumber} payment marked ${newStatus} via gateway`)
+
+		if (isPaid) {
+			this.sendPaidConfirmationEmail(updated).catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to send paid confirmation email for order ${orderNumber}`
+				)
+			)
+		}
+
+		return updated
+	}
+
+	private async sendPaidConfirmationEmail(order: any): Promise<void> {
+		const emailItems = order.items.map((i: any) => ({
+			name: i.name,
+			sku: i.sku,
+			vendor_sku: i.vendor_sku,
+			price: i.price,
+			quantity: i.quantity,
+			image: i.image
+		}))
+		const emailDeliveryAddress = order.delivery_address
+			? {
+					city_name: order.delivery_address.city_name,
+					warehouse_description: order.delivery_address.warehouse_description ?? null,
+					street: order.delivery_address.street ?? null,
+					building: order.delivery_address.building ?? null,
+					apartment: order.delivery_address.apartment ?? null
+				}
+			: null
+
+		await this.emailService.sendOrderPaidConfirmation(
+			order.customer.email,
+			order.order_number,
+			{
+				orderStatus: order.order_status,
+				paymentStatus: order.payment_status,
+				customer: { name: order.customer.name, phone: order.customer.phone },
+				items: emailItems,
+				subtotalPrice: order.subtotal_price,
+				totalPrice: order.total_price,
+				appliedDiscount: order.applied_discount ?? null,
+				deliveryMethod: order.delivery_method,
+				deliveryAddress: emailDeliveryAddress
+			}
+		)
 	}
 
 	async setTtn(id: string, dto: SetTtnDto) {

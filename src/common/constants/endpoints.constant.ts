@@ -101,6 +101,21 @@ export const ENDPOINTS = {
 		DELETE: '/:id',
 		ACTIVATE: '/:id/activate'
 	},
+	PAYMENT_PROVIDERS: {
+		BASE: '/payment-providers',
+		GET_ALL: '/',
+		GET_ACTIVE: '/active/:provider',
+		GET_BY_ID: '/:id',
+		CREATE: '/',
+		UPDATE: '/:id',
+		DELETE: '/:id',
+		ACTIVATE: '/:id/activate'
+	},
+	LIQPAY: {
+		BASE: '/liqpay',
+		CHECKOUT: '/checkout',
+		CALLBACK: '/callback'
+	},
 	WHOLESALE_INQUIRIES: {
 		BASE: '/wholesale-inquiries',
 		CREATE: '/',

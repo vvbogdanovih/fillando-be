@@ -22,6 +22,11 @@ export enum PaymentMethod {
 	MONOPAY = 'MONOPAY'
 }
 
+export enum PaymentProvider {
+	LIQPAY = 'LIQPAY',
+	MONOPAY = 'MONOPAY'
+}
+
 export enum PaymentStatus {
 	PENDING = 'PENDING',
 	PAID = 'PAID',

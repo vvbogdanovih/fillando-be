@@ -1365,31 +1365,55 @@
         ]
       }
     },
-    "/nova-post/sync": {
+    "/payment-providers": {
       "get": {
-        "description": "Fetches all cities and warehouses from the Nova Post API and upserts them into the local database. Admin only. Returns counts of processed records.",
-        "operationId": "NovaPostController_sync",
+        "description": "List online payment provider credentials (LiqPay/MonoPay). Private keys are never returned. Admin only.",
+        "operationId": "PaymentProvidersController_findAll",
         "parameters": [],
         "responses": {
           "200": {
             "description": ""
           }
         },
-        "summary": "Sync Nova Post data",
+        "summary": "Get all payment providers",
         "tags": [
-          "/nova-post"
+          "/payment-providers"
+        ]
+      },
+      "post": {
+        "description": "Create a payment provider credential set. The private key is encrypted at rest. Admin only.",
+        "operationId": "PaymentProvidersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create payment provider",
+        "tags": [
+          "/payment-providers"
         ]
       }
     },
-    "/nova-post/cities": {
+    "/payment-providers/active/{provider}": {
       "get": {
-        "description": "Case-insensitive search for Nova Post cities/settlements by name.",
-        "operationId": "NovaPostController_getCities",
+        "description": "Public endpoint. Returns the active credential set for a provider (without secrets) or null. Used to gate the checkout payment options.",
+        "operationId": "PaymentProvidersController_findActive",
         "parameters": [
           {
-            "name": "q",
+            "name": "provider",
             "required": true,
-            "in": "query",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -1400,43 +1424,21 @@
             "description": ""
           }
         },
-        "summary": "Search cities",
+        "summary": "Get active payment provider",
         "tags": [
-          "/nova-post"
+          "/payment-providers"
         ]
       }
     },
-    "/nova-post/warehouses": {
+    "/payment-providers/{id}": {
       "get": {
-        "description": "Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), POST (поштове відділення), CARGO (вантажне відділення). Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.",
-        "operationId": "NovaPostController_getWarehouses",
+        "description": "Get a single payment provider record (without secrets). Admin only.",
+        "operationId": "PaymentProvidersController_findById",
         "parameters": [
           {
-            "name": "cityRef",
+            "name": "id",
             "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "PARCEL_LOCKER",
-                "POST",
-                "CARGO"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "description": "Optional search: warehouse number (substring on numeric №) and/or fragment of description / short address. Case-insensitive for text; trim and repeated spaces collapsed; word gaps match flexibly. Omit or leave blank for all warehouses in the city (and type).",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -1447,25 +1449,142 @@
             "description": ""
           }
         },
-        "summary": "Get warehouses by city",
+        "summary": "Get payment provider by id",
         "tags": [
-          "/nova-post"
+          "/payment-providers"
         ]
-      }
-    },
-    "/prom/sync-availability": {
-      "get": {
-        "description": "SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `quantity_in_stock` (falling back to presence/in_stock). Emits progress events and a final summary. Admin only.",
-        "operationId": "PromController_syncAvailability",
-        "parameters": [],
+      },
+      "patch": {
+        "description": "Update a payment provider. Provide private_key only when rotating it. Admin only.",
+        "operationId": "PaymentProvidersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentProviderDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
           }
         },
-        "summary": "Sync product availability from Prom",
+        "summary": "Update payment provider",
         "tags": [
-          "/prom"
+          "/payment-providers"
+        ]
+      },
+      "delete": {
+        "description": "Delete a payment provider credential set. Admin only.",
+        "operationId": "PaymentProvidersController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Delete payment provider",
+        "tags": [
+          "/payment-providers"
+        ]
+      }
+    },
+    "/payment-providers/{id}/activate": {
+      "patch": {
+        "description": "Sets the record active and deactivates other records of the same provider. Admin only.",
+        "operationId": "PaymentProvidersController_activate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Activate payment provider",
+        "tags": [
+          "/payment-providers"
+        ]
+      }
+    },
+    "/liqpay/checkout": {
+      "post": {
+        "description": "Builds the signed LiqPay checkout payload (data + signature) for an existing PENDING order. Public endpoint.",
+        "operationId": "LiqpayController_initCheckout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitLiqpayCheckoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Init LiqPay checkout",
+        "tags": [
+          "/liqpay"
+        ]
+      }
+    },
+    "/liqpay/callback": {
+      "post": {
+        "description": "Server-to-server payment callback from LiqPay. Verifies the signature and updates the order payment status. Public endpoint.",
+        "operationId": "LiqpayController_callback",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiqpayCallbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "LiqPay server callback",
+        "tags": [
+          "/liqpay"
         ]
       }
     },
@@ -1947,6 +2066,110 @@
         "summary": "Send email to vendor",
         "tags": [
           "/orders"
+        ]
+      }
+    },
+    "/nova-post/sync": {
+      "get": {
+        "description": "Fetches all cities and warehouses from the Nova Post API and upserts them into the local database. Admin only. Returns counts of processed records.",
+        "operationId": "NovaPostController_sync",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Sync Nova Post data",
+        "tags": [
+          "/nova-post"
+        ]
+      }
+    },
+    "/nova-post/cities": {
+      "get": {
+        "description": "Case-insensitive search for Nova Post cities/settlements by name.",
+        "operationId": "NovaPostController_getCities",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Search cities",
+        "tags": [
+          "/nova-post"
+        ]
+      }
+    },
+    "/nova-post/warehouses": {
+      "get": {
+        "description": "Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), POST (поштове відділення), CARGO (вантажне відділення). Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.",
+        "operationId": "NovaPostController_getWarehouses",
+        "parameters": [
+          {
+            "name": "cityRef",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "PARCEL_LOCKER",
+                "POST",
+                "CARGO"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Optional search: warehouse number (substring on numeric №) and/or fragment of description / short address. Case-insensitive for text; trim and repeated spaces collapsed; word gaps match flexibly. Omit or leave blank for all warehouses in the city (and type).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get warehouses by city",
+        "tags": [
+          "/nova-post"
+        ]
+      }
+    },
+    "/prom/sync-availability": {
+      "get": {
+        "description": "SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `quantity_in_stock` (falling back to presence/in_stock). Emits progress events and a final summary. Admin only.",
+        "operationId": "PromController_syncAvailability",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Sync product availability from Prom",
+        "tags": [
+          "/prom"
         ]
       }
     },
@@ -3079,6 +3302,100 @@
           }
         }
       },
+      "CreatePaymentProviderDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "LIQPAY",
+              "MONOPAY"
+            ],
+            "example": "LIQPAY"
+          },
+          "label": {
+            "type": "string",
+            "example": "ФОП Шевченко — LiqPay",
+            "description": "Human-readable label to distinguish credential sets"
+          },
+          "public_key": {
+            "type": "string",
+            "example": "i00000000000",
+            "description": "Merchant public key issued by the payment provider"
+          },
+          "private_key": {
+            "type": "string",
+            "example": "a000000000000000000000000000000000000000",
+            "description": "Merchant private/secret key. Encrypted at rest, never returned in responses"
+          },
+          "sandbox": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether this credential set operates in sandbox/test mode"
+          }
+        },
+        "required": [
+          "provider",
+          "label",
+          "public_key",
+          "private_key"
+        ]
+      },
+      "UpdatePaymentProviderDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "example": "ФОП Шевченко — LiqPay",
+            "description": "Human-readable label to distinguish credential sets"
+          },
+          "public_key": {
+            "type": "string",
+            "example": "i00000000000",
+            "description": "Merchant public key issued by the payment provider"
+          },
+          "private_key": {
+            "type": "string",
+            "example": "a000000000000000000000000000000000000000",
+            "description": "Merchant private/secret key. Encrypted at rest, never returned in responses"
+          },
+          "sandbox": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether this credential set operates in sandbox/test mode"
+          }
+        }
+      },
+      "InitLiqpayCheckoutDto": {
+        "type": "object",
+        "properties": {
+          "order_number": {
+            "type": "string",
+            "example": "FO-0000001",
+            "description": "Order number of an existing PENDING order"
+          }
+        },
+        "required": [
+          "order_number"
+        ]
+      },
+      "LiqpayCallbackDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Base64-encoded LiqPay payload"
+          },
+          "signature": {
+            "type": "string",
+            "description": "LiqPay signature of the payload"
+          }
+        },
+        "required": [
+          "data",
+          "signature"
+        ]
+      },
       "CreateOrderItemDto": {
         "type": "object",
         "properties": {
@@ -3551,6 +3868,7 @@
         "type": "object",
         "properties": {
           "items": {
+            "minItems": 1,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CreateOrderItemDto"

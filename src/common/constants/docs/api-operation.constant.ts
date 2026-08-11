@@ -338,6 +338,53 @@ export const API_OPERATION = {
 				'Sets the given record as active and deactivates all others. Only one record can be active at a time.'
 		}
 	},
+	PAYMENT_PROVIDERS: {
+		GET_ALL: {
+			summary: 'Get all payment providers',
+			description:
+				'List online payment provider credentials (LiqPay/MonoPay). Private keys are never returned. Admin only.'
+		},
+		GET_ACTIVE: {
+			summary: 'Get active payment provider',
+			description:
+				'Public endpoint. Returns the active credential set for a provider (without secrets) or null. Used to gate the checkout payment options.'
+		},
+		GET_BY_ID: {
+			summary: 'Get payment provider by id',
+			description: 'Get a single payment provider record (without secrets). Admin only.'
+		},
+		CREATE: {
+			summary: 'Create payment provider',
+			description:
+				'Create a payment provider credential set. The private key is encrypted at rest. Admin only.'
+		},
+		UPDATE: {
+			summary: 'Update payment provider',
+			description:
+				'Update a payment provider. Provide private_key only when rotating it. Admin only.'
+		},
+		DELETE: {
+			summary: 'Delete payment provider',
+			description: 'Delete a payment provider credential set. Admin only.'
+		},
+		ACTIVATE: {
+			summary: 'Activate payment provider',
+			description:
+				'Sets the record active and deactivates other records of the same provider. Admin only.'
+		}
+	},
+	LIQPAY: {
+		CHECKOUT: {
+			summary: 'Init LiqPay checkout',
+			description:
+				'Builds the signed LiqPay checkout payload (data + signature) for an existing PENDING order. Public endpoint.'
+		},
+		CALLBACK: {
+			summary: 'LiqPay server callback',
+			description:
+				'Server-to-server payment callback from LiqPay. Verifies the signature and updates the order payment status. Public endpoint.'
+		}
+	},
 	WHOLESALE_INQUIRIES: {
 		CREATE: {
 			summary: 'Submit wholesale inquiry',

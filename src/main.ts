@@ -17,6 +17,8 @@ async function bootstrap() {
 	app.useGlobalFilters(new MongooseExceptionFilter())
 	app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
 	app.useBodyParser('json', { limit: '10mb' })
+	// LiqPay server-to-server callbacks arrive as application/x-www-form-urlencoded
+	app.useBodyParser('urlencoded', { extended: true })
 	app.use(cookieParser())
 	app.enableCors({
 		origin: ENV.FRONTEND_URL || 'http://localhost:9000',

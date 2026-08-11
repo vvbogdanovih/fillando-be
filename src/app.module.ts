@@ -12,6 +12,8 @@ import { NumbersModule } from './modules/numbers/numbers.module'
 import { CartModule } from './modules/cart/cart.module'
 import { EmailModule } from './modules/email/email.module'
 import { PaymentDetailsModule } from './modules/payment-details/payment-details.module'
+import { PaymentProvidersModule } from './modules/payment-providers/payment-providers.module'
+import { LiqpayModule } from './modules/liqpay/liqpay.module'
 import { NovaPostModule } from './modules/nova-post/nova-post.module'
 import { PromModule } from './modules/prom/prom.module'
 import { OrderModule } from './modules/order/order.module'
@@ -43,6 +45,8 @@ import { ENV } from './common/constants'
 		CartModule,
 		EmailModule,
 		PaymentDetailsModule,
+		PaymentProvidersModule,
+		LiqpayModule,
 		NovaPostModule,
 		PromModule,
 		OrderModule,

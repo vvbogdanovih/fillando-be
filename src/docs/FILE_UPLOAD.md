@@ -22,9 +22,10 @@ The bucket is **public-read**. Permanent public URLs are stored in the database 
 
 3. POST /api/upload/confirm
    Client → Backend: { keys: [...] }
-   Backend → S3:     headObject check per key
-                     if jpeg/png → download, convert to WebP via Sharp, re-upload with same key
-                     if already webp → no conversion needed
+   Backend → S3:     headObject check per key, then download the object once
+                     always → write width derivatives -128/-320/-640/-1280 .webp
+                     if jpeg/png → also re-encode the original key to WebP
+                     if already webp → original key left as-is (derivatives still written)
    Backend → Client: { confirmed: [...], failed: [...] }
    Client then saves the publicUrl(s) via the relevant entity API
 ```
@@ -149,6 +150,11 @@ async deleteProduct(id: string) {
 
 - **Allowed content types:** `image/jpeg`, `image/png`, `image/webp`
 - **Auto WebP conversion:** JPEG and PNG files are automatically converted to WebP (quality 80) during the confirm step. The S3 key stays the same — only the content and Content-Type change. Files uploaded as WebP are kept as-is.
+- **Width derivatives:** every confirmed image also gets `<key-without-ext>-{128,320,640,1280}.webp`. These back the frontend's custom `next/image` loader, which is why the Next image optimizer is disabled there — it would download and decode the full S3 object on every cache miss and can exhaust a 1–2 GB VPS. Sharp runs here instead, once per upload.
+  - Tiers are written **unconditionally**, outside the JPEG/PNG gate: a direct WebP upload needs them too, and `withoutEnlargement` makes a tier wider than the source a copy at the source width. The frontend always emits a `1280w` srcset candidate, so every tier must exist or the browser 404s.
+  - `deleteFiles` removes an original's derivatives alongside it.
+  - Backfill for pre-existing objects: `scripts/migrations/generate-image-derivatives.js`. Set the `MODE` constant at the top and re-run for each step — `'dry-run'` → `'live'` → `'verify'`. **`'verify'` must exit 0 before the frontend sets `NEXT_PUBLIC_USE_IMAGE_DERIVATIVES=true`.** The script is a one-off; once verify is clean it can be deleted, since new uploads get their derivatives here.
+  - `DERIVATIVE_WIDTHS` in `upload.service.ts` is the source of truth; the migration script and the frontend loader/`next.config.ts` all mirror it.
 - **Presigned URL TTL:** 15 minutes
 - **File size limit:** Not enforced server-side (validate on the frontend before requesting presign)
 - **Batch size:** No hard limit; presign accepts an array of files in a single request

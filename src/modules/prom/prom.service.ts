@@ -9,6 +9,15 @@ const MAX_RETRIES = 3
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+export interface PromDiscount {
+	/** `amount` — absolute ₴ off; `percent` — share of the base price. */
+	type?: string
+	value?: number | null
+	/** Inclusive `DD.MM.YYYY` window; either bound may be absent. */
+	date_start?: string | null
+	date_end?: string | null
+}
+
 export interface PromProduct {
 	id: number
 	name?: string
@@ -17,6 +26,10 @@ export interface PromProduct {
 	quantity_in_stock?: number | null
 	in_stock?: boolean
 	status?: string
+	/** Pre-discount price. The amount actually charged is `price` minus {@link PromProduct.discount}. */
+	price?: number | null
+	currency?: string
+	discount?: PromDiscount | null
 }
 
 @Injectable()

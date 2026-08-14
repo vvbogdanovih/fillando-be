@@ -2,6 +2,7 @@ import { Injectable, Logger, MessageEvent } from '@nestjs/common'
 import { Observable, Subject } from 'rxjs'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
+import { resolveShopPrice, resolveVendorPrice } from './prom-pricing'
 import { PromProduct, PromService } from './prom.service'
 
 const REQUEST_DELAY_MS = 400
@@ -12,6 +13,8 @@ export interface SyncSummary {
 	total: number
 	processed: number
 	updated: number
+	/** Subset of `updated` whose price actually changed. */
+	pricesUpdated: number
 	skipped: number
 	errors: number
 }
@@ -65,6 +68,7 @@ export class PromSyncService {
 				total: variants.length,
 				processed: 0,
 				updated: 0,
+				pricesUpdated: 0,
 				skipped: 0,
 				errors: 0
 			}
@@ -83,12 +87,10 @@ export class PromSyncService {
 					if (!product) {
 						summary.skipped++
 					} else {
-						const newStock = this.resolveStock(product)
-						await this.variantRepo.update(
-							{ _id: id },
-							{ stock: newStock, stock_updated_at: new Date() }
-						)
+						const patch = this.buildPatch(product, v.price)
+						await this.variantRepo.update({ _id: id }, patch)
 						summary.updated++
+						if (patch.price !== undefined) summary.pricesUpdated++
 					}
 				} catch (err) {
 					this.logger.warn(
@@ -107,6 +109,33 @@ export class PromSyncService {
 		} finally {
 			this.running = false
 		}
+	}
+
+	/**
+	 * Build the variant patch for one Prom product: stock always, price only when it can be
+	 * trusted and actually differs.
+	 *
+	 * **Price is only read while the product is in stock.** Prom drops the `discount` object the
+	 * moment an item goes out of stock and reports the pre-discount `price` instead — pricing off
+	 * that would inflate the variant by the discount amount. Out of stock, the last known price is
+	 * left as it is.
+	 */
+	private buildPatch(product: PromProduct, currentPrice: number): Partial<ProductVariant> {
+		const now = new Date()
+		const stock = this.resolveStock(product)
+		const patch: Partial<ProductVariant> = { stock, stock_updated_at: now }
+
+		if (stock <= 0) return patch
+
+		const vendorPrice = resolveVendorPrice(product, now)
+		if (vendorPrice === null) return patch
+
+		patch.price_updated_at = now
+
+		const newPrice = resolveShopPrice(vendorPrice)
+		if (newPrice !== currentPrice) patch.price = newPrice
+
+		return patch
 	}
 
 	/**

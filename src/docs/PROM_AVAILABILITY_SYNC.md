@@ -30,10 +30,22 @@ API. The scraper scripts remain available but are independent of this flow.
 ### Stock mapping
 
 ```
-if (in_stock === false || presence === 'not_available') stock = 0
-else if (typeof quantity_in_stock === 'number')         stock = quantity_in_stock
-else                                                     stock = 1   // in stock, no exact number
+available = presence !== undefined ? presence !== 'not_available' : in_stock !== false
+
+if (!available)                       stock = 0
+else if (quantity_in_stock > 0)       stock = quantity_in_stock
+else                                  stock = 1   // in stock, no exact number tracked
 ```
+
+**`presence` is authoritative; `in_stock` is not a veto.** Prom returns `in_stock: false` for a
+sizeable slice of listings that are `presence: 'available'` with a positive `quantity_in_stock`
+(~130 of the catalog at the time of writing, including the Tri-Silk / Silk PLA lines). The earlier
+mapping let `in_stock === false` win, which zeroed those variants on every sync even though Prom
+showed them as in stock. `in_stock` is now only consulted when `presence` is absent from the
+payload.
+
+Likewise `quantity_in_stock: 0` on an available product means Prom tracks no exact number, not that
+the item ran out — it maps to `1`, same as a missing quantity.
 
 `stock_updated_at` is set to the current time on every successful update.
 

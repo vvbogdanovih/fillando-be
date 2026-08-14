@@ -109,10 +109,27 @@ export class PromSyncService {
 		}
 	}
 
-	/** Map Prom availability fields to our numeric stock value. */
+	/**
+	 * Map Prom availability fields to our numeric stock value.
+	 *
+	 * `presence` is authoritative — it is the field that drives the availability badge on Prom
+	 * itself. `in_stock` is deliberately not used as a veto: Prom returns it as `false` for a
+	 * sizeable slice of listings that are `available` with a positive `quantity_in_stock`
+	 * (the Tri-Silk / Silk PLA lines among them), which zeroed them out on every sync. It is
+	 * only consulted when `presence` is missing from the payload.
+	 *
+	 * A `quantity_in_stock` of 0 on an available product means Prom is not tracking an exact
+	 * number, not that the item ran out — treat it the same as a missing quantity.
+	 */
 	private resolveStock(product: PromProduct): number {
-		if (product.in_stock === false || product.presence === 'not_available') return 0
-		if (typeof product.quantity_in_stock === 'number') return product.quantity_in_stock
-		return 1
+		const available =
+			product.presence !== undefined
+				? product.presence !== 'not_available'
+				: product.in_stock !== false
+
+		if (!available) return 0
+
+		const qty = product.quantity_in_stock
+		return typeof qty === 'number' && qty > 0 ? qty : 1
 	}
 }

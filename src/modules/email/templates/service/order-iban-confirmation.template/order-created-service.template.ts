@@ -1,4 +1,5 @@
 import { DeliveryMethod, OrderStatus, PaymentStatus } from 'src/common/types/enums'
+import { formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
 
 export interface ServiceOrderCreatedEmailData {
 	orderNumber: string
@@ -29,26 +30,6 @@ export interface ServiceOrderCreatedEmailData {
 		building: string | null
 		apartment: string | null
 	} | null
-}
-
-function formatOrderStatus(status: OrderStatus): string {
-	if (status === OrderStatus.NEW) return 'Нове'
-	if (status === OrderStatus.CONFIRMED) return 'Підтверджене'
-	if (status === OrderStatus.PROCESSING) return 'В обробці'
-	if (status === OrderStatus.SHIPPED) return 'Відправлене'
-	if (status === OrderStatus.DELIVERED) return 'Доставлене'
-	if (status === OrderStatus.COMPLETED) return 'Виконане'
-	if (status === OrderStatus.CANCELLED) return 'Скасоване'
-	if (status === OrderStatus.RETURNED) return 'Повернене'
-	return '—'
-}
-
-function formatPaymentStatus(status: PaymentStatus): string {
-	if (status === PaymentStatus.PENDING) return 'Очікує оплату'
-	if (status === PaymentStatus.PAID) return 'Оплачено'
-	if (status === PaymentStatus.FAILED) return 'Оплата неуспішна'
-	if (status === PaymentStatus.REFUNDED) return 'Кошти повернено'
-	return '—'
 }
 
 function formatDelivery(data: ServiceOrderCreatedEmailData): string {

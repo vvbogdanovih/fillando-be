@@ -65,7 +65,16 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			this.model
 				.find(
 					{ product_id: variant.product_id },
-					{ _id: 1, name: 1, slug: 1, price: 1, v_value: 1, images: 1, stock: 1 }
+					{
+						_id: 1,
+						name: 1,
+						slug: 1,
+						price: 1,
+						v_value: 1,
+						images: 1,
+						stock: 1,
+						price_updated_at: 1
+					}
 				)
 				.lean()
 				.exec(),
@@ -83,6 +92,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				slug: variant.slug,
 				sku: variant.sku,
 				price: variant.price,
+				price_updated_at: variant.price_updated_at ?? null,
 				stock: variant.stock,
 				images: variant.images,
 				v_value: variant.v_value,
@@ -102,6 +112,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				name: s.name,
 				slug: s.slug,
 				price: s.price,
+				price_updated_at: s.price_updated_at ?? null,
 				stock: s.stock,
 				v_value: s.v_value,
 				images: s.images
@@ -181,6 +192,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 								sku: 1,
 								price: 1,
 								stock: 1,
+								price_updated_at: 1,
 								v_value: 1,
 								attributes: '$product.attributes',
 								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] }
@@ -354,6 +366,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 								sku: 1,
 								price: 1,
 								stock: 1,
+								price_updated_at: 1,
 								v_value: 1,
 								attributes: '$product.attributes',
 								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] }

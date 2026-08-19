@@ -246,7 +246,7 @@ export const API_OPERATION = {
 		SYNC_AVAILABILITY: {
 			summary: 'Sync product availability and price from Prom',
 			description:
-				'SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `presence` / `quantity_in_stock`. For variants that are in stock it also recalculates `price` as the discounted Prom price plus a fixed tiered markup; out-of-stock variants keep their last known price. Emits progress events and a final summary. Admin only.'
+				'SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `presence` / `quantity_in_stock`, and `price` as the discounted Prom price plus a fixed tiered markup. Prom withholds the discount for out-of-stock listings, so those variants are repriced from the last discount recorded for them rather than from the bare pre-discount price. A price rise above 15% on a payload with no discount at all is rejected and counted in `priceSkipped`. Emits progress events and a final summary. Admin only.'
 		}
 	},
 	ORDERS: {

@@ -94,6 +94,12 @@
 			"ts"
 		],
 		"rootDir": "src",
+		"moduleNameMapper": {
+			"^src/(.*)$": "<rootDir>/$1"
+		},
+		"setupFiles": [
+			"<rootDir>/../test/jest.setup-env.ts"
+		],
 		"testRegex": ".*\\.spec\\.ts$",
 		"transform": {
 			"^.+\\.(t|j)s$": "ts-jest"

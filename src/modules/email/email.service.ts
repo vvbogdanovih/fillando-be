@@ -192,6 +192,49 @@ export class EmailService {
 		await Promise.all([customerEmail, serviceEmail])
 	}
 
+	/**
+	 * A payment landed on an order that had already been cancelled.
+	 *
+	 * Service-only: the customer must NOT receive a "paid" confirmation for an
+	 * order that no longer exists for them. The admin has to refund the money.
+	 */
+	async sendCancelledOrderPaidNotification(
+		customerEmail: string,
+		orderNumber: string,
+		details: Omit<OrderPaidConfirmationData, 'orderNumber'>
+	): Promise<void> {
+		const serviceData: ServiceOrderCreatedEmailData = {
+			orderNumber,
+			orderStatus: details.orderStatus,
+			paymentStatus: details.paymentStatus,
+			paymentType: 'LiqPay',
+			customer: {
+				name: details.customer.name,
+				phone: details.customer.phone,
+				email: customerEmail
+			},
+			items: details.items.map(item => ({
+				name: item.name,
+				sku: item.sku,
+				vendor_sku: item.vendor_sku,
+				image: item.image,
+				price: item.price,
+				quantity: item.quantity
+			})),
+			subtotalPrice: details.subtotalPrice,
+			totalPrice: details.totalPrice,
+			appliedDiscount: details.appliedDiscount ?? null,
+			deliveryMethod: details.deliveryMethod,
+			deliveryAddress: details.deliveryAddress
+		}
+
+		await this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Оплата надійшла по скасованому замовленню ${orderNumber} — потрібне повернення`,
+			html: serviceOrderCreatedTemplate(serviceData)
+		})
+	}
+
 	async sendWholesaleInquiryNotification(data: WholesaleInquiryCreatedEmailData): Promise<void> {
 		await this.send({
 			to: ENV.SERVICE_EMAIL,

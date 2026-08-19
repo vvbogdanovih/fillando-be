@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Types } from 'mongoose'
 import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
+import type { OrderDocument } from 'src/database/mongoose/schemas/order.schema'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
 import { EmailService } from 'src/modules/email/email.service'
-import { DeliveryMethod, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import { resolvePaymentStatusOnOrderStatusChange } from './helpers/payment-status.helpers'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { ReportProvider } from './report/report.provider'
@@ -426,9 +428,30 @@ export class OrderService {
 	}
 
 	async updateOrderStatus(id: string, dto: UpdateOrderStatusDto) {
+		const current = await this.orderRepository.findById(id)
+		if (!current) throw new NotFoundException('Order not found')
+
+		const update: Record<string, unknown> = { order_status: dto.order_status }
+
+		const nextPaymentStatus = resolvePaymentStatusOnOrderStatusChange(
+			current.payment_status,
+			current.order_status,
+			dto.order_status
+		)
+		if (nextPaymentStatus) update.payment_status = nextPaymentStatus
+
+		if (
+			dto.order_status === OrderStatus.CANCELLED &&
+			current.payment_status === PaymentStatus.PAID
+		) {
+			this.logger.warn(
+				`Order ${current.order_number} cancelled while PAID — refund the customer manually and set REFUNDED`
+			)
+		}
+
 		const order = await this.orderRepository.update(
 			{ _id: new Types.ObjectId(id) },
-			{ $set: { order_status: dto.order_status } }
+			{ $set: update }
 		)
 		if (!order) throw new NotFoundException('Order not found')
 		return order
@@ -459,6 +482,10 @@ export class OrderService {
 			return order
 		}
 
+		if (order.order_status === OrderStatus.CANCELLED) {
+			return this.applyGatewayPaymentResultToCancelledOrder(order, isPaid, transactionId)
+		}
+
 		const newStatus = isPaid ? PaymentStatus.PAID : PaymentStatus.FAILED
 		const update: Record<string, unknown> = { payment_status: newStatus }
 		if (transactionId) update.payment_transaction_id = transactionId
@@ -480,7 +507,47 @@ export class OrderService {
 		return updated
 	}
 
-	private async sendPaidConfirmationEmail(order: any): Promise<void> {
+	/**
+	 * A gateway callback that arrives after the order was already cancelled.
+	 *
+	 * A successful payment is still recorded — the money really arrived, so it
+	 * must never be silently dropped — but the customer is NOT told the order is
+	 * paid. The admin is notified instead, because a refund is now required.
+	 * A failed payment leaves the `VOIDED` status alone.
+	 */
+	private async applyGatewayPaymentResultToCancelledOrder(
+		order: OrderDocument,
+		isPaid: boolean,
+		transactionId?: string
+	): Promise<OrderDocument> {
+		if (!isPaid) {
+			this.logger.log(
+				`Order ${order.order_number} is CANCELLED and the gateway reported a failed payment — keeping ${order.payment_status}`
+			)
+			return order
+		}
+
+		const update: Record<string, unknown> = { payment_status: PaymentStatus.PAID }
+		if (transactionId) update.payment_transaction_id = transactionId
+
+		const updated = await this.orderRepository.update({ _id: order._id }, { $set: update })
+		if (!updated) throw new NotFoundException(`Order ${order.order_number} not found`)
+
+		this.logger.warn(
+			`Order ${order.order_number} was paid via gateway after being CANCELLED — refund required`
+		)
+
+		this.sendCancelledOrderPaidNotification(updated).catch(err =>
+			this.logger.error(
+				{ err },
+				`Failed to notify service about a paid cancelled order ${order.order_number}`
+			)
+		)
+
+		return updated
+	}
+
+	private buildOrderEmailDetails(order: OrderDocument) {
 		const emailItems = order.items.map((i: any) => ({
 			name: i.name,
 			sku: i.sku,
@@ -499,20 +566,32 @@ export class OrderService {
 				}
 			: null
 
+		return {
+			orderStatus: order.order_status,
+			paymentStatus: order.payment_status,
+			customer: { name: order.customer.name, phone: order.customer.phone },
+			items: emailItems,
+			subtotalPrice: order.subtotal_price,
+			totalPrice: order.total_price,
+			appliedDiscount: order.applied_discount ?? null,
+			deliveryMethod: order.delivery_method,
+			deliveryAddress: emailDeliveryAddress
+		}
+	}
+
+	private async sendPaidConfirmationEmail(order: OrderDocument): Promise<void> {
 		await this.emailService.sendOrderPaidConfirmation(
 			order.customer.email,
 			order.order_number,
-			{
-				orderStatus: order.order_status,
-				paymentStatus: order.payment_status,
-				customer: { name: order.customer.name, phone: order.customer.phone },
-				items: emailItems,
-				subtotalPrice: order.subtotal_price,
-				totalPrice: order.total_price,
-				appliedDiscount: order.applied_discount ?? null,
-				deliveryMethod: order.delivery_method,
-				deliveryAddress: emailDeliveryAddress
-			}
+			this.buildOrderEmailDetails(order)
+		)
+	}
+
+	private async sendCancelledOrderPaidNotification(order: OrderDocument): Promise<void> {
+		await this.emailService.sendCancelledOrderPaidNotification(
+			order.customer.email,
+			order.order_number,
+			this.buildOrderEmailDetails(order)
 		)
 	}
 

@@ -2,10 +2,19 @@ import { Injectable, Logger, MessageEvent } from '@nestjs/common'
 import { Observable, Subject } from 'rxjs'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
-import { resolveShopPrice, resolveVendorPrice } from './prom-pricing'
+import { ResolvedVendorPrice, resolveShopPrice, resolveVendorPrice } from './prom-pricing'
 import { PromProduct, PromService } from './prom.service'
 
 const REQUEST_DELAY_MS = 400
+
+/**
+ * How far a price may rise in one sync when Prom reported no discount at all. The vendor runs a
+ * rolling promo campaign that it periodically re-creates; in the gap between campaigns Prom
+ * reports the bare pre-discount price for the whole catalogue, which would inflate every variant
+ * by roughly a third. A rise that large without a discount in the payload is treated as a gap,
+ * not as a price change.
+ */
+const MAX_UNDISCOUNTED_JUMP = 0.15
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -15,6 +24,8 @@ export interface SyncSummary {
 	updated: number
 	/** Subset of `updated` whose price actually changed. */
 	pricesUpdated: number
+	/** Price writes rejected by the undiscounted-jump guard. */
+	priceSkipped: number
 	skipped: number
 	errors: number
 }
@@ -69,6 +80,7 @@ export class PromSyncService {
 				processed: 0,
 				updated: 0,
 				pricesUpdated: 0,
+				priceSkipped: 0,
 				skipped: 0,
 				errors: 0
 			}
@@ -87,10 +99,11 @@ export class PromSyncService {
 					if (!product) {
 						summary.skipped++
 					} else {
-						const patch = this.buildPatch(product, v.price)
+						const { patch, priceRejected } = this.buildPatch(product, v)
 						await this.variantRepo.update({ _id: id }, patch)
 						summary.updated++
 						if (patch.price !== undefined) summary.pricesUpdated++
+						if (priceRejected) summary.priceSkipped++
 					}
 				} catch (err) {
 					this.logger.warn(
@@ -112,30 +125,75 @@ export class PromSyncService {
 	}
 
 	/**
-	 * Build the variant patch for one Prom product: stock always, price only when it can be
-	 * trusted and actually differs.
+	 * Build the variant patch for one Prom product: stock always, price whenever it can be
+	 * resolved and actually differs.
 	 *
-	 * **Price is only read while the product is in stock.** Prom drops the `discount` object the
-	 * moment an item goes out of stock and reports the pre-discount `price` instead — pricing off
-	 * that would inflate the variant by the discount amount. Out of stock, the last known price is
-	 * left as it is.
+	 * The price is recomputed out of stock as well as in — Prom withholds the `discount` object
+	 * for out-of-stock listings, so the last discount we saw for the variant is replayed against
+	 * the current pre-discount price (see `prom-pricing.ts`). Skipping the write there instead
+	 * would freeze whatever price is stored, including a wrong one, for as long as the item stays
+	 * unavailable.
 	 */
-	private buildPatch(product: PromProduct, currentPrice: number): Partial<ProductVariant> {
+	private buildPatch(
+		product: PromProduct,
+		variant: ProductVariant
+	): { patch: Partial<ProductVariant>; priceRejected: boolean } {
 		const now = new Date()
 		const stock = this.resolveStock(product)
 		const patch: Partial<ProductVariant> = { stock, stock_updated_at: now }
 
-		if (stock <= 0) return patch
+		const resolved = resolveVendorPrice(
+			product,
+			{ ratio: variant.prom_discount_ratio, seenAt: variant.prom_discount_seen_at },
+			stock <= 0,
+			now
+		)
 
-		const vendorPrice = resolveVendorPrice(product, now)
-		if (vendorPrice === null) return patch
+		if (!resolved) return { patch, priceRejected: false }
 
+		const newPrice = resolveShopPrice(resolved.vendorPrice)
+
+		if (this.isUndiscountedJump(resolved, newPrice, variant)) {
+			return { patch, priceRejected: true }
+		}
+
+		patch.prom_base_price = product.price ?? null
 		patch.price_updated_at = now
 
-		const newPrice = resolveShopPrice(vendorPrice)
-		if (newPrice !== currentPrice) patch.price = newPrice
+		// Only a discount Prom actually reported refreshes the snapshot. Re-stamping it while
+		// replaying the remembered one would renew its TTL on every sync, so a variant that never
+		// comes back in stock would hold a cancelled promo forever.
+		if (resolved.source === 'payload') {
+			patch.prom_discount_ratio = resolved.ratio
+			patch.prom_discount_seen_at = now
+		}
 
-		return patch
+		if (newPrice !== variant.price) patch.price = newPrice
+
+		return { patch, priceRejected: false }
+	}
+
+	/**
+	 * Whether a price rise came out of a payload with no discount in it and is too steep to be a
+	 * genuine vendor price change — the signature of a lapsed promo campaign. When Prom does send
+	 * an active discount the computed price is trusted however far it moves.
+	 */
+	private isUndiscountedJump(
+		resolved: ResolvedVendorPrice,
+		newPrice: number,
+		variant: ProductVariant
+	): boolean {
+		if (resolved.source !== 'none') return false
+
+		const current = variant.price
+		if (typeof current !== 'number' || current <= 0) return false
+		if (newPrice <= current * (1 + MAX_UNDISCOUNTED_JUMP)) return false
+
+		this.logger.warn(
+			`Skipped price write for ${variant.sku}: ${current} → ${newPrice} ₴ with no discount in the Prom payload`
+		)
+
+		return true
 	}
 
 	/**

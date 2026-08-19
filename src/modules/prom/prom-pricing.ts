@@ -47,33 +47,49 @@ export function getMarkupAmount(vendorPrice: number): number {
 	return MARKUP_TIERS.find(tier => vendorPrice <= tier.upTo)?.markup ?? TOP_TIER_MARKUP
 }
 
-/** Parse Prom's `DD.MM.YYYY` date strings. Returns null for missing/malformed input. */
-function parsePromDate(value: string | null | undefined): Date | null {
-	if (!value) return null
+/**
+ * Prom is a Ukrainian marketplace and its discount windows are plain `DD.MM.YYYY` days in Kyiv
+ * time, with no zone attached. Comparing them against a server-local instant is what broke this
+ * before: the vendor re-creates its campaign every day with `date_start` set to *today in Kyiv*,
+ * so a container running in UTC saw a start date up to three hours in its own future, rejected the
+ * discount, and repriced the whole in-stock catalogue off the bare pre-discount amount — roughly
+ * +29% — until UTC midnight caught up.
+ *
+ * So the window is compared as calendar days in the vendor's zone, never as instants.
+ */
+const VENDOR_TIME_ZONE = 'Europe/Kyiv'
 
-	const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim())
-	if (!match) return null
+const vendorDayFormat = new Intl.DateTimeFormat('en-CA', {
+	timeZone: VENDOR_TIME_ZONE,
+	year: 'numeric',
+	month: '2-digit',
+	day: '2-digit'
+})
 
-	const [, day, month, year] = match
-	const date = new Date(Number(year), Number(month) - 1, Number(day))
+/** The day an instant falls on in the vendor's zone, as a comparable `YYYYMMDD` number. */
+function vendorDay(now: Date): number {
+	return Number(vendorDayFormat.format(now).replace(/-/g, ''))
+}
 
-	return isNaN(date.getTime()) ? null : date
+/** A Prom `DD.MM.YYYY` bound as a comparable `YYYYMMDD` number, or null if absent/malformed. */
+function promDay(value: string | null | undefined): number | null {
+	const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec((value ?? '').trim())
+
+	return match ? Number(`${match[3]}${match[2]}${match[1]}`) : null
 }
 
 /**
- * Whether the discount applies right now. Prom exposes an inclusive `DD.MM.YYYY` window;
- * a missing bound means "open ended" on that side.
+ * Whether the discount applies today. Prom exposes an inclusive day window; a missing or
+ * malformed bound means "open ended" on that side.
  */
 function isDiscountActive(discount: PromDiscount, now: Date): boolean {
-	const start = parsePromDate(discount.date_start)
-	if (start && now < start) return false
+	const today = vendorDay(now)
 
-	const end = parsePromDate(discount.date_end)
-	if (end) {
-		const endOfDay = new Date(end)
-		endOfDay.setHours(23, 59, 59, 999)
-		if (now > endOfDay) return false
-	}
+	const start = promDay(discount.date_start)
+	if (start !== null && today < start) return false
+
+	const end = promDay(discount.date_end)
+	if (end !== null && today > end) return false
 
 	return true
 }

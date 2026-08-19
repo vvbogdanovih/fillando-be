@@ -112,6 +112,42 @@ describe('resolveVendorPrice', () => {
 		})
 	})
 
+	it('honours a window that opened today in Kyiv while the server clock still says yesterday', () => {
+		// The vendor re-creates its campaign daily with date_start = today in Kyiv. At 22:00 UTC
+		// that is already tomorrow in Kyiv, and a UTC server used to reject the discount and
+		// reprice the whole catalogue off the bare base.
+		const p = product({
+			discount: {
+				type: 'amount',
+				value: 135,
+				date_start: '20.08.2026',
+				date_end: '29.09.2026'
+			},
+			price: 585
+		})
+		const duringTheOldGap = new Date('2026-08-19T22:00:00Z')
+
+		const result = resolveVendorPrice(p, noSnapshot, false, duringTheOldGap)
+
+		expect(result?.source).toBe('payload')
+		expect(resolveShopPrice(result!.vendorPrice)).toBe(490)
+	})
+
+	it('still closes a window that ended yesterday in Kyiv', () => {
+		const p = product({
+			discount: {
+				type: 'amount',
+				value: 135,
+				date_start: '01.06.2026',
+				date_end: '18.08.2026'
+			}
+		})
+
+		expect(
+			resolveVendorPrice(p, noSnapshot, false, new Date('2026-08-19T22:00:00Z'))?.source
+		).toBe('none')
+	})
+
 	it('takes the bare price before the discount window opens', () => {
 		const p = product({
 			discount: {

@@ -21,14 +21,21 @@
  * expires — which is the point: the corrected price, not the inflated one.
  *
  * Usage:
- *   node scripts/migrations/backfill-prom-discount-ratio.js            # dry run, writes nothing
- *   APPLY=true node scripts/migrations/backfill-prom-discount-ratio.js # writes
+ *   node scripts/migrations/backfill-prom-discount-ratio.js                       # dry run on .env
+ *   APPLY=true node scripts/migrations/backfill-prom-discount-ratio.js            # writes to .env
+ *   ENV_FILE=.env.prod node scripts/migrations/backfill-prom-discount-ratio.js    # dry run on prod
+ *   ENV_FILE=.env.prod APPLY=true node scripts/...                                # writes to prod
+ *
+ * It prints the env file and the database it resolved before doing anything, so the target is
+ * visible before a write starts.
  */
 
 const axios = require('axios')
 const mongoose = require('mongoose')
 const path = require('path')
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') })
+/** Which env file to read. `ENV_FILE=.env.prod` targets production. */
+const ENV_FILE = process.env.ENV_FILE || '.env'
+require('dotenv').config({ path: path.resolve(__dirname, '../..', ENV_FILE) })
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -80,24 +87,36 @@ function getMarkupAmount(vendorPrice) {
 
 const resolveShopPrice = vendorPrice => Math.round(vendorPrice + getMarkupAmount(vendorPrice))
 
-function parsePromDate(value) {
-	if (!value) return null
-	const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(value).trim())
-	if (!m) return null
-	const date = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
-	return isNaN(date.getTime()) ? null : date
+/**
+ * Prom's discount windows are plain `DD.MM.YYYY` days in Kyiv time. Compare them as calendar days
+ * in that zone, never as instants — the vendor re-creates its campaign daily with `date_start` set
+ * to today in Kyiv, so a UTC process would see a start date in its own future and drop the
+ * discount. Mirrors `src/modules/prom/prom-pricing.ts`.
+ */
+const VENDOR_TIME_ZONE = 'Europe/Kyiv'
+
+const vendorDayFormat = new Intl.DateTimeFormat('en-CA', {
+	timeZone: VENDOR_TIME_ZONE,
+	year: 'numeric',
+	month: '2-digit',
+	day: '2-digit'
+})
+
+const vendorDay = now => Number(vendorDayFormat.format(now).replace(/-/g, ''))
+
+function promDay(value) {
+	const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(value || '').trim())
+	return m ? Number(`${m[3]}${m[2]}${m[1]}`) : null
 }
 
 function isDiscountActive(discount, now) {
-	const start = parsePromDate(discount.date_start)
-	if (start && now < start) return false
+	const today = vendorDay(now)
 
-	const end = parsePromDate(discount.date_end)
-	if (end) {
-		const endOfDay = new Date(end)
-		endOfDay.setHours(23, 59, 59, 999)
-		if (now > endOfDay) return false
-	}
+	const start = promDay(discount.date_start)
+	if (start !== null && today < start) return false
+
+	const end = promDay(discount.date_end)
+	if (end !== null && today > end) return false
 
 	return true
 }
@@ -176,8 +195,22 @@ const ProductVariantSchema = new mongoose.Schema(
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+/** Host and database name of a Mongo URI, with the credentials stripped. */
+function describeTarget(uri) {
+	try {
+		const u = new URL(uri)
+		return `${u.host}${u.pathname}`
+	} catch {
+		return '<unparseable DATABASE_URL>'
+	}
+}
+
 async function main() {
-	if (DRY_RUN) console.log('[dry-run] No changes will be written to the database.\n')
+	console.log(`env file : ${ENV_FILE}`)
+	console.log(`database : ${describeTarget(DATABASE_URL)}`)
+	console.log(
+		`mode     : ${DRY_RUN ? 'DRY RUN — nothing is written' : 'APPLY — prices will be written'}\n`
+	)
 
 	await mongoose.connect(DATABASE_URL)
 	console.log('Connected to MongoDB.')

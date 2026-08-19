@@ -31,7 +31,9 @@ export enum PaymentStatus {
 	PENDING = 'PENDING',
 	PAID = 'PAID',
 	FAILED = 'FAILED',
-	REFUNDED = 'REFUNDED'
+	REFUNDED = 'REFUNDED',
+	/** Order was cancelled and no money ever arrived — payment is no longer expected. */
+	VOIDED = 'VOIDED'
 }
 
 export enum DeliveryMethod {

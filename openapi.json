@@ -1645,7 +1645,8 @@
                 "PENDING",
                 "PAID",
                 "FAILED",
-                "REFUNDED"
+                "REFUNDED",
+                "VOIDED"
               ]
             }
           },
@@ -1747,7 +1748,8 @@
                 "PENDING",
                 "PAID",
                 "FAILED",
-                "REFUNDED"
+                "REFUNDED",
+                "VOIDED"
               ]
             }
           },
@@ -3711,7 +3713,8 @@
               "PENDING",
               "PAID",
               "FAILED",
-              "REFUNDED"
+              "REFUNDED",
+              "VOIDED"
             ]
           },
           "payment_transaction_id": {
@@ -3847,7 +3850,8 @@
               "PENDING",
               "PAID",
               "FAILED",
-              "REFUNDED"
+              "REFUNDED",
+              "VOIDED"
             ]
           }
         },
@@ -3936,7 +3940,8 @@
               "PENDING",
               "PAID",
               "FAILED",
-              "REFUNDED"
+              "REFUNDED",
+              "VOIDED"
             ],
             "example": "PAID"
           },

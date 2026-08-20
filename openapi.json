@@ -647,6 +647,32 @@
         ]
       }
     },
+    "/products/price-list/pdf": {
+      "post": {
+        "description": "Admin only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.",
+        "operationId": "ProductController_generatePriceListPdf",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePriceListDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Generate wholesale price list PDF",
+        "tags": [
+          "/products"
+        ]
+      }
+    },
     "/products/by-slug/{slug}": {
       "get": {
         "description": "Returns full variant info, parent product, and sibling variants by variant slug.",
@@ -2765,6 +2791,43 @@
             "items": {
               "$ref": "#/components/schemas/RequiredAttributeDto"
             }
+          }
+        }
+      },
+      "GeneratePriceListDto": {
+        "type": "object",
+        "properties": {
+          "category_ids": {
+            "example": [
+              "652f1c9b2f8a4d1e3c000111"
+            ],
+            "description": "Category ids to include. Omit or send an empty array for all categories",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "in_stock_only": {
+            "type": "boolean",
+            "example": true,
+            "default": false,
+            "description": "Include only variants with stock greater than 0"
+          },
+          "tier1_percent": {
+            "type": "number",
+            "example": 10,
+            "default": 10,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Discount percent applied to the base price for the \"Ціна від 50кг\" column"
+          },
+          "tier2_percent": {
+            "type": "number",
+            "example": 15,
+            "default": 15,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Discount percent applied to the base price for the \"Ціна від 100кг\" column"
           }
         }
       },

@@ -50,6 +50,18 @@ create(@Body() dto: CreateVendorDto) { ... }
 
 ---
 
+## Enforced Admin-Only Endpoints
+
+Already restricted with `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`:
+
+| Endpoint                              | Module        |
+| ------------------------------------- | ------------- |
+| `POST /api/products/price-list/pdf`   | ProductModule |
+
+(Plus the order-management endpoints in `OrderModule` and the sync endpoints in `PromModule`.)
+
+---
+
 ## Planned Admin-Only Endpoints
 
 The following write endpoints currently require only authentication (`JwtAuthGuard`).

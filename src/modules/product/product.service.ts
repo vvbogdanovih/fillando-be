@@ -11,8 +11,13 @@ import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
 import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
-
-type AttrLike = { k?: string; l?: string; v?: string | number | boolean }
+import {
+	MANUFACTURER_PATTERNS,
+	MATERIAL_PATTERNS,
+	pickAttr,
+	pickColor,
+	type AttrLike
+} from './product-attribute.helpers'
 
 interface PriceSheetRaw {
 	id: string
@@ -84,14 +89,9 @@ export class ProductService {
 				slug: item.slug,
 				image: item.image ?? null,
 				name: item.product_name,
-				manufacturer: this.pickAttr(attributes, [
-					/виробник/i,
-					/manufactur/i,
-					/бренд/i,
-					/brand/i
-				]),
-				material: this.pickAttr(attributes, [/матер/i, /material/i]),
-				color: this.pickColor(item.v_value, attributes, item.variant_type),
+				manufacturer: pickAttr(attributes, MANUFACTURER_PATTERNS),
+				material: pickAttr(attributes, MATERIAL_PATTERNS),
+				color: pickColor(item.v_value, attributes, item.variant_type),
 				article: item.sku || null,
 				price: item.price,
 				in_stock: (item.stock ?? 0) > 0,
@@ -101,28 +101,6 @@ export class ProductService {
 		})
 
 		return { items: rows, total, page, limit }
-	}
-
-	/** First attribute whose label matches any of the given patterns → its value as string. */
-	private pickAttr(attributes: AttrLike[], patterns: RegExp[]): string | null {
-		const found = attributes.find(a => a?.l && patterns.some(rx => rx.test(a.l as string)))
-		return found?.v != null ? String(found.v) : null
-	}
-
-	private pickColor(
-		vValue: string | null | undefined,
-		attributes: AttrLike[],
-		variantType?: { key?: string; label?: string } | null
-	): string | null {
-		const colorPatterns = [/колір/i, /цвіт/i, /color/i]
-		const variantIsColor = variantType?.label
-			? colorPatterns.some(rx => rx.test(variantType.label as string))
-			: false
-
-		// If the product's variant axis is colour, the variant value IS the colour.
-		if (variantIsColor && vValue) return vValue
-		// Otherwise look for a colour attribute, then fall back to the variant value.
-		return this.pickAttr(attributes, colorPatterns) ?? vValue ?? null
 	}
 
 	getAllVariantSlugs(): Promise<Array<{ slug: string; updatedAt: Date }>> {

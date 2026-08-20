@@ -63,7 +63,11 @@ These are **not** stored as dedicated fields — they are derived in `ProductSer
   the variant's `v_value` is the colour. Otherwise a colour-labelled attribute, falling back to
   `v_value`. `null` if none.
 
-If your attribute labelling differs, adjust the regexes in `ProductService.pickAttr` / `pickColor`.
+If your attribute labelling differs, adjust the regexes in
+`src/modules/product/product-attribute.helpers.ts` (`MANUFACTURER_PATTERNS`, `MATERIAL_PATTERNS`,
+`COLOR_PATTERNS`). They live there rather than in `ProductService` because the admin price list PDF
+derives brand and colour the same way — see [PRICE_LIST_PDF.md](./PRICE_LIST_PDF.md). Changing a
+pattern changes both features.
 
 ## Frontend
 

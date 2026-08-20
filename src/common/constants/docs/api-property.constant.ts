@@ -153,5 +153,32 @@ export const API_PROPERTY = {
 		example: 'Цікавить PETG та PLA, потрібна відстрочка платежу',
 		description: 'Additional comment or details',
 		required: false
+	},
+	PRICE_LIST_CATEGORY_IDS: {
+		example: ['652f1c9b2f8a4d1e3c000111'],
+		description: 'Category ids to include. Omit or send an empty array for all categories',
+		required: false
+	},
+	PRICE_LIST_IN_STOCK_ONLY: {
+		example: true,
+		default: false,
+		description: 'Include only variants with stock greater than 0',
+		required: false
+	},
+	PRICE_LIST_TIER1_PERCENT: {
+		example: 10,
+		default: 10,
+		minimum: 0,
+		maximum: 100,
+		description: 'Discount percent applied to the base price for the "Ціна від 50кг" column',
+		required: false
+	},
+	PRICE_LIST_TIER2_PERCENT: {
+		example: 15,
+		default: 15,
+		minimum: 0,
+		maximum: 100,
+		description: 'Discount percent applied to the base price for the "Ціна від 100кг" column',
+		required: false
 	}
 } as const

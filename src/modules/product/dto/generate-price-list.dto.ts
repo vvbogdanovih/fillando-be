@@ -4,6 +4,7 @@ import {
 	ArrayMaxSize,
 	IsArray,
 	IsBoolean,
+	IsEnum,
 	IsMongoId,
 	IsNumber,
 	IsOptional,
@@ -11,6 +12,7 @@ import {
 	Min
 } from 'class-validator'
 import { API_PROPERTY } from 'src/common/constants'
+import { PageOrientation } from 'src/common/types/enums'
 
 export class GeneratePriceListDto {
 	@ApiPropertyOptional({ type: [String], ...API_PROPERTY.PRICE_LIST_CATEGORY_IDS })
@@ -40,4 +42,9 @@ export class GeneratePriceListDto {
 	@Min(0)
 	@Max(100)
 	tier2_percent?: number = 15
+
+	@ApiPropertyOptional({ enum: PageOrientation, ...API_PROPERTY.PRICE_LIST_ORIENTATION })
+	@IsOptional()
+	@IsEnum(PageOrientation)
+	orientation?: PageOrientation = PageOrientation.PORTRAIT
 }

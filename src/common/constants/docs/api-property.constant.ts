@@ -180,5 +180,11 @@ export const API_PROPERTY = {
 		maximum: 100,
 		description: 'Discount percent applied to the base price for the "Ціна від 100кг" column',
 		required: false
+	},
+	PRICE_LIST_ORIENTATION: {
+		example: 'portrait',
+		default: 'portrait',
+		description: 'A4 page orientation. Landscape widens the name and colour columns',
+		required: false
 	}
 } as const

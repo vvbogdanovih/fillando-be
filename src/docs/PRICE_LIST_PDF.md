@@ -2,7 +2,7 @@
 
 ## Overview
 
-A print-ready A4 PDF price list for the admin panel. Rows are **grouped by product**: each product's
+A print-ready A4 PDF price list for the admin panel, in either orientation. Rows are **grouped by product**: each product's
 name occupies a single cell merged (`rowspan`) across all of its variants, mirroring the merged-cell
 spreadsheet the business already used. Products are ordered by **manufacturer**, then product name,
 then colour. On top of the base price it renders two configurable wholesale tiers.
@@ -27,6 +27,7 @@ exists after `JwtAuthGuard` has validated the token.
 | `in_stock_only` | `boolean` | `false` | `stock > 0` only. Must be a real boolean — `"true"` is rejected |
 | `tier1_percent` | `number` 0–100 | `10` | Discount for the «Ціна від 50кг» column |
 | `tier2_percent` | `number` 0–100 | `15` | Discount for the «Ціна від 100кг» column |
+| `orientation` | `'portrait' \| 'landscape'` | `'portrait'` | A4 page orientation |
 
 `tier2_percent < tier1_percent` is **not** rejected — an inverted pair is a valid, if odd, admin
 choice, and a cross-field validator would add friction for no safety. The sanity check lives in the
@@ -106,10 +107,15 @@ cell's text or its bottom border goes missing depending on the version. So:
 Slicing is **even, not greedy** — 17 variants become 9 + 8, not 16 + 1, because a lone trailing row
 under its own repeated product name reads as a glitch.
 
-Portrait A4 at `font-size: 9px` fits ~55 rows (measured), so a 16-row block always fits. 16 is set
-that high on purpose: real filament products carry 10–16 colours, and a spurious `(продовження)`
-split on an ordinary product is more noticeable than the ≤15-row gap a large block may leave at the
-foot of a page.
+At `font-size: 9px` a page fits ~55 rows portrait and ~37 landscape (the shorter page), so a 16-row
+block always fits either way. 16 is set that high on purpose: real filament products carry 10–16
+colours, and a spurious `(продовження)` split on an ordinary product is more noticeable than the gap
+a large block may leave at the foot of a page.
+
+**One block size for both orientations is deliberate.** A smaller landscape block (11) was measured
+and barely moved the trailing gap — a block that moves down whole leaves ~18% of the page empty
+either way — while it *did* add a `(продовження)` split to ordinary 12–16 colour products. The gap is
+inherent to `break-inside: avoid`; the spurious split is not.
 
 **Do not "simplify" this into a single `rowspan` per product.** Rejected alternatives: a true
 page-spanning span (the rendering artifacts above, plus an unlabelled continuation column that reads
@@ -138,6 +144,11 @@ Details that matter:
 - **HTML escaping is mandatory.** Product names and colours are vendor-scraped and do contain `&`,
   `<` and quotes. The invoice template gets away without escaping because its data is admin-entered.
 - `printBackground: true` is required for the grey `thead`.
+- **Orientation** is passed as puppeteer's `landscape` flag on `page.pdf`, not via an `@page` CSS
+  rule, so there is no `preferCSSPageSize` juggling. The template swaps its `<colgroup>` to match:
+  landscape has 267mm of printable width versus 190mm portrait, and spends the extra room on the
+  name and colour columns — the two that wrap — rather than inflating the numeric ones, which never
+  need more than four digits.
 - `PUPPETEER_EXECUTABLE_PATH` from the Dockerfile is picked up automatically — never hardcode
   `executablePath`.
 - `protocolTimeout: 180_000` on launch plus explicit `setContent`/`pdf` timeouts, otherwise a large

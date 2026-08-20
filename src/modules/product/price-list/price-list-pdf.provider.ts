@@ -15,7 +15,7 @@ const FONT_STACK = "'FreeSans',Arial,sans-serif"
 export class PriceListPdfProvider {
 	private readonly logger = new Logger(PriceListPdfProvider.name)
 
-	async generatePdf(html: string, title: string): Promise<Buffer> {
+	async generatePdf(html: string, title: string, landscape: boolean): Promise<Buffer> {
 		const puppeteer = await import('puppeteer')
 		const browser = await puppeteer.default.launch({
 			headless: true,
@@ -29,6 +29,8 @@ export class PriceListPdfProvider {
 			await page.setContent(html, { waitUntil: 'load', timeout: 120_000 })
 			const pdf = await page.pdf({
 				format: 'A4',
+				// Set here rather than via an @page rule, so no preferCSSPageSize juggling.
+				landscape,
 				printBackground: true,
 				displayHeaderFooter: true,
 				// Header/footer render INSIDE the margin box, hence the roomy top/bottom.

@@ -36,6 +36,7 @@ export interface PriceListBlock {
 
 export interface PriceListData {
 	generatedAt: Date
+	landscape: boolean
 	tier1Percent: number
 	tier2Percent: number
 	inStockOnly: boolean

@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 import { ENV } from 'src/common/constants'
+import { PageOrientation } from 'src/common/types/enums'
 import { CategoryRepository } from 'src/database/mongoose/repositories/category.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { GeneratePriceListDto } from '../dto/generate-price-list.dto'
@@ -20,10 +21,11 @@ const MAX_ROWS = 20_000
  * blocks small enough to always fit one page, and each block is a `<tbody>` marked
  * `break-inside: avoid`. Do not "simplify" this away — see src/docs/PRICE_LIST_PDF.md.
  *
- * Portrait A4 at 9px fits ~55 rows (measured), so 16 always fits. It is set that high
- * deliberately: real filament products carry 10-16 colours, and a spurious
- * "(продовження)" split on an ordinary product is more noticeable than the ≤15-row gap
- * a large block can leave at the foot of a page.
+ * At 9px a page fits ~55 rows portrait and ~37 landscape (the shorter page), so 16 fits
+ * either way. One value for both orientations is deliberate: a smaller landscape block was
+ * measured and barely moved the trailing gap (a block moving down whole leaves ~18% of the
+ * page empty either way), while it did add a "(продовження)" split to ordinary 12-16 colour
+ * products. The gap is inherent to `break-inside: avoid`; the spurious split is not.
  */
 const MAX_ROWS_PER_BLOCK = 16
 
@@ -58,6 +60,8 @@ export class PriceListService {
 			const tier1 = dto.tier1_percent ?? 10
 			const tier2 = dto.tier2_percent ?? 15
 			const inStockOnly = dto.in_stock_only ?? false
+			const landscape =
+				(dto.orientation ?? PageOrientation.PORTRAIT) === PageOrientation.LANDSCAPE
 
 			const raw = await this.productVariantRepository.findPriceListRows({
 				categoryIds: dto.category_ids,
@@ -81,6 +85,7 @@ export class PriceListService {
 
 			const html = priceListTemplate({
 				generatedAt: new Date(),
+				landscape,
 				tier1Percent: tier1,
 				tier2Percent: tier2,
 				inStockOnly,
@@ -92,7 +97,8 @@ export class PriceListService {
 
 			const buffer = await this.priceListPdfProvider.generatePdf(
 				html,
-				'Fillando — Прайс-лист'
+				'Fillando — Прайс-лист',
+				landscape
 			)
 			const filename = `price-list-${new Date().toISOString().slice(0, 10)}.pdf`
 

@@ -31,6 +31,17 @@ function formatDateTime(date: Date): string {
 	})
 }
 
+/**
+ * Column widths are percentages of the printable width, which differs a lot between
+ * orientations (190mm portrait vs 267mm landscape). Landscape spends its extra room on
+ * the name and colour columns — the two that wrap — instead of inflating the numeric
+ * ones, which never need more than four digits.
+ */
+const COLUMN_WIDTHS = {
+	portrait: ['11%', '32%', '16%', '7%', '11%', '11.5%', '11.5%'],
+	landscape: ['9%', '34%', '19%', '6%', '10.5%', '10.75%', '10.75%']
+} as const
+
 function renderBlock(block: PriceListBlock): string {
 	const rows = block.rows
 		.map((row, index) => {
@@ -120,13 +131,9 @@ export function priceListTemplate(data: PriceListData): string {
 	</div>
 	<table>
 		<colgroup>
-			<col style="width:11%" />
-			<col style="width:32%" />
-			<col style="width:16%" />
-			<col style="width:7%" />
-			<col style="width:11%" />
-			<col style="width:11.5%" />
-			<col style="width:11.5%" />
+			${(data.landscape ? COLUMN_WIDTHS.landscape : COLUMN_WIDTHS.portrait)
+				.map(width => `<col style="width:${width}" />`)
+				.join('\n\t\t\t')}
 		</colgroup>
 		<thead>
 			<tr>

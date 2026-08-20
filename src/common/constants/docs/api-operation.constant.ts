@@ -175,6 +175,11 @@ export const API_OPERATION = {
 			description:
 				'Public paginated flat list of all product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, vendor article, SKU or attribute value.'
 		},
+		PRICE_LIST_PDF: {
+			summary: 'Generate wholesale price list PDF',
+			description:
+				'Admin only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.'
+		},
 		BY_SLUG: {
 			summary: 'Get variant by slug',
 			description:

@@ -4,6 +4,7 @@ import { HydratedDocument, Model, Types } from 'mongoose'
 import { ProductVariant } from '../schemas/product-variant.schema'
 import { ProductStatus } from 'src/common/types/enums'
 import { BaseRepository } from './base.repository'
+import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
 
 @Injectable()
 export class ProductVariantRepository extends BaseRepository<ProductVariant> {
@@ -293,6 +294,62 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			items: result?.items ?? [],
 			total: result?.meta?.[0]?.total ?? 0
 		}
+	}
+
+	/**
+	 * Unpaginated variant rows for the admin price list PDF. Mongo does the cheap,
+	 * index-friendly work (filter + a deterministic pre-sort); the fuzzy brand lookup and
+	 * the uk-UA alphabetical ordering happen in JS, where the same regex patterns as the
+	 * price sheet apply and `Intl.Collator` sorts Cyrillic correctly.
+	 */
+	findPriceListRows(params: {
+		categoryIds?: string[]
+		inStockOnly?: boolean
+		limit: number
+	}): Promise<PriceListRawRow[]> {
+		const { categoryIds, inStockOnly, limit } = params
+
+		const match: Record<string, unknown> = { status: ProductStatus.ACTIVE }
+		if (categoryIds && categoryIds.length > 0) {
+			match.category_id = { $in: categoryIds.map(id => new Types.ObjectId(id)) }
+		}
+		if (inStockOnly) match.stock = { $gt: 0 }
+
+		return this.model
+			.aggregate<PriceListRawRow>([
+				{ $match: match },
+				{
+					$lookup: {
+						from: 'products',
+						localField: 'product_id',
+						foreignField: '_id',
+						as: 'product',
+						// Only what the price list needs — avoids hauling every description.
+						pipeline: [
+							{ $project: { _id: 0, name: 1, attributes: 1, variant_type: 1 } }
+						]
+					}
+				},
+				{ $unwind: '$product' },
+				{
+					$project: {
+						_id: 0,
+						product_id: { $toString: '$product_id' },
+						product_name: '$product.name',
+						attributes: '$product.attributes',
+						variant_type: '$product.variant_type',
+						variant_name: '$name',
+						v_value: 1,
+						sku: 1,
+						price: 1,
+						stock: 1
+					}
+				},
+				{ $sort: { product_name: 1, variant_name: 1, sku: 1 } },
+				{ $limit: limit }
+			])
+			.allowDiskUse(true)
+			.exec()
 	}
 
 	async findCatalogItems(params: {

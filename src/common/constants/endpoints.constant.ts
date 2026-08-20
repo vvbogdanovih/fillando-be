@@ -41,6 +41,7 @@ export const ENDPOINTS = {
 		VARIANT_SLUGS: '/variants/slugs',
 		VARIANT_COUNT: '/variants/count',
 		PRICE_SHEET: '/price-sheet',
+		PRICE_LIST_PDF: '/price-list/pdf',
 		BY_SLUG: '/by-slug/:slug',
 		GET_BY_ID: '/:id',
 		CREATE: '/',

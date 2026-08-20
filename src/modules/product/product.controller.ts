@@ -1,8 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import {
+	Body,
+	Controller,
+	Delete,
+	Get,
+	Param,
+	Patch,
+	Post,
+	Query,
+	Res,
+	UseGuards
+} from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import type { Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Role } from 'src/common/types/enums'
 import { ProductService } from './product.service'
+import { PriceListService } from './price-list/price-list.service'
 import { CreateProductDto } from './dto/create-product.dto'
 import { UpdateProductDto } from './dto/update-product.dto'
 import { ValidateProductDto } from './dto/validate-product.dto'
@@ -10,11 +26,15 @@ import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
 import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
+import { GeneratePriceListDto } from './dto/generate-price-list.dto'
 
 @Controller(ENDPOINTS.PRODUCTS.BASE)
 @ApiTags(ENDPOINTS.PRODUCTS.BASE)
 export class ProductController {
-	constructor(private readonly productService: ProductService) {}
+	constructor(
+		private readonly productService: ProductService,
+		private readonly priceListService: PriceListService
+	) {}
 
 	@Get(ENDPOINTS.PRODUCTS.GET_ALL)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_ALL)
@@ -50,6 +70,23 @@ export class ProductController {
 	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_SHEET)
 	getPriceSheet(@Query() query: GetPriceSheetQueryDto) {
 		return this.productService.getPriceSheet(query)
+	}
+
+	// NOTE: unlike the write endpoints below, this one is genuinely admin-only.
+	// JwtAuthGuard must come first — RolesGuard reads req.user.role, which only exists
+	// once the JWT has been validated.
+	@Post(ENDPOINTS.PRODUCTS.PRICE_LIST_PDF)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_LIST_PDF)
+	async generatePriceListPdf(@Body() dto: GeneratePriceListDto, @Res() res: Response) {
+		const { buffer, filename } = await this.priceListService.generatePdf(dto)
+		res.set({
+			'Content-Type': 'application/pdf',
+			'Content-Disposition': `attachment; filename="${filename}"`,
+			'Content-Length': buffer.length.toString()
+		})
+		res.end(buffer)
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.BY_SLUG)

@@ -63,3 +63,8 @@ export enum OrderStatus {
 	CANCELLED = 'CANCELLED',
 	RETURNED = 'RETURNED'
 }
+
+export enum PageOrientation {
+	PORTRAIT = 'portrait',
+	LANDSCAPE = 'landscape'
+}

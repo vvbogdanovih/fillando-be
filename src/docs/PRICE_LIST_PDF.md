@@ -144,6 +144,11 @@ Details that matter:
 - **HTML escaping is mandatory.** Product names and colours are vendor-scraped and do contain `&`,
   `<` and quotes. The invoice template gets away without escaping because its data is admin-entered.
 - `printBackground: true` is required for the grey `thead`.
+- **`body { padding: 0 1px }` is load-bearing, not cosmetic.** With `border-collapse: collapse` the
+  outer border is centred *on* the table's edge, so half of it sits outside the border box. A table
+  at exactly 100% of the printable width therefore has its rightmost border land on the clip
+  boundary, and Chromium drops it — the last column prints with no right edge while the left one
+  looks fine. The 1px inset keeps it inside. Removing it silently reintroduces the bug.
 - **Orientation** is passed as puppeteer's `landscape` flag on `page.pdf`, not via an `@page` CSS
   rule, so there is no `preferCSSPageSize` juggling. The template swaps its `<colgroup>` to match:
   landscape has 267mm of printable width versus 190mm portrait, and spends the extra room on the

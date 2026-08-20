@@ -89,6 +89,11 @@ export function priceListTemplate(data: PriceListData): string {
 		* { box-sizing: border-box; }
 		body {
 			margin: 0;
+			/* With border-collapse the outer border is centred ON the table's edge, so half
+			   of it falls outside. A table at exactly 100% of the printable width therefore
+			   has its rightmost border land on the clip boundary and Chromium drops it —
+			   the last column printed with no right edge. 1px of inset keeps it inside. */
+			padding: 0 1px;
 			/* The Alpine runtime image installs only ttf-freefont (see Dockerfile), so
 			   FreeSans is the one font that resolves AND covers Cyrillic. Keep it first —
 			   dropping it renders every Ukrainian label as tofu boxes in production. */

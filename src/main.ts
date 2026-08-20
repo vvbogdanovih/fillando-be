@@ -22,7 +22,11 @@ async function bootstrap() {
 	app.use(cookieParser())
 	app.enableCors({
 		origin: ENV.FRONTEND_URL || 'http://localhost:9000',
-		credentials: true
+		credentials: true,
+		// Browsers hide every non-safelisted response header from JS. Without this the
+		// frontend's file downloads (price list, order report, invoice) cannot read the
+		// server-provided filename and silently fall back to a generic one.
+		exposedHeaders: ['Content-Disposition']
 	})
 	const config = new DocumentBuilder()
 		.setTitle('Urban Tab API')

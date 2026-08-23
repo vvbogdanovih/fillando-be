@@ -6,6 +6,10 @@ import {
 	orderCashConfirmationTemplate
 } from './templates/order-cash-confirmation.template/order-cash-confirmation.template'
 import {
+	OrderCodConfirmationData,
+	orderCodConfirmationTemplate
+} from './templates/order-cod-confirmation.template/order-cod-confirmation.template'
+import {
 	OrderIbanConfirmationData,
 	orderIbanConfirmationTemplate
 } from './templates/order-iban-confirmation.template/order-iban-confirmation.template'
@@ -118,6 +122,51 @@ export class EmailService {
 			orderStatus: details.orderStatus,
 			paymentStatus: details.paymentStatus,
 			paymentType: 'CASH',
+			customer: {
+				name: details.customer.name,
+				phone: details.customer.phone,
+				email: to
+			},
+			items: details.items.map(item => ({
+				name: item.name,
+				sku: item.sku,
+				vendor_sku: item.vendor_sku,
+				image: item.image,
+				price: item.price,
+				quantity: item.quantity
+			})),
+			subtotalPrice: details.subtotalPrice,
+			totalPrice: details.totalPrice,
+			appliedDiscount: details.appliedDiscount ?? null,
+			deliveryMethod: details.deliveryMethod,
+			deliveryAddress: details.deliveryAddress
+		}
+
+		const serviceEmail = this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Нове замовлення ${orderNumber}`,
+			html: serviceOrderCreatedTemplate(serviceData)
+		})
+
+		await Promise.all([customerEmail, serviceEmail])
+	}
+
+	async sendOrderCodConfirmation(
+		to: string,
+		orderNumber: string,
+		details: Omit<OrderCodConfirmationData, 'orderNumber'>
+	): Promise<void> {
+		const customerEmail = this.send({
+			to,
+			subject: `Замовлення ${orderNumber} успішно створено`,
+			html: orderCodConfirmationTemplate({ orderNumber, ...details })
+		})
+
+		const serviceData: ServiceOrderCreatedEmailData = {
+			orderNumber,
+			orderStatus: details.orderStatus,
+			paymentStatus: details.paymentStatus,
+			paymentType: 'Накладний платіж',
 			customer: {
 				name: details.customer.name,
 				phone: details.customer.phone,

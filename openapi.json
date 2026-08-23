@@ -3561,7 +3561,8 @@
               "CASH",
               "IBAN",
               "LIQPAY",
-              "MONOPAY"
+              "MONOPAY",
+              "COD"
             ],
             "example": "LIQPAY"
           },
@@ -3777,7 +3778,8 @@
               "CASH",
               "IBAN",
               "LIQPAY",
-              "MONOPAY"
+              "MONOPAY",
+              "COD"
             ]
           },
           "payment_status": {
@@ -3960,7 +3962,8 @@
               "CASH",
               "IBAN",
               "LIQPAY",
-              "MONOPAY"
+              "MONOPAY",
+              "COD"
             ],
             "example": "LIQPAY"
           },

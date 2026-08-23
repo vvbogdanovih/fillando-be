@@ -19,7 +19,9 @@ export enum PaymentMethod {
 	CASH = 'CASH',
 	IBAN = 'IBAN',
 	LIQPAY = 'LIQPAY',
-	MONOPAY = 'MONOPAY'
+	MONOPAY = 'MONOPAY',
+	/** Cash on delivery — paid to the carrier on pickup. Nova Post shipments only. */
+	COD = 'COD'
 }
 
 export enum PaymentProvider {

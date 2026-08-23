@@ -44,6 +44,20 @@ Delivery validation:
 - `NOVA_POST` -> `delivery_address.warehouse_description` and `delivery_address.warehouse_number` are required
 - `COURIER` -> `delivery_address.street` and `delivery_address.building` are required
 
+Payment / delivery combination:
+
+- `COD` (накладний платіж) is only valid with `NOVA_POST` or `COURIER` delivery —
+  the parcel has to travel with Nova Post for the carrier to collect the money.
+  The check runs on the **effective** pair, so it rejects both
+  `{ payment_method: COD }` on a `PICKUP` order and
+  `{ delivery_method: PICKUP }` on a `COD` order
+  (`OrderService.validatePaymentDeliveryCombination`).
+- Other payment methods are unrestricted at the API level.
+
+COD payment status is never automated: it stays `PENDING` until an admin sets
+`PAID` via `PATCH /api/orders/:id/payment-status` once Nova Post remits the money.
+Setting the TTN does not change it.
+
 ---
 
 ## `PATCH /api/orders/:id/status` — payment side effect

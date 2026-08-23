@@ -24,6 +24,16 @@ export class OrderService {
 	private readonly logger = new Logger(OrderService.name)
 	private static readonly ORDER_NUMBER_PREFIX = 'FO'
 
+	/**
+	 * Payment methods that are only valid with certain delivery methods.
+	 * A method absent from this map is allowed with any delivery method.
+	 */
+	private static readonly ALLOWED_DELIVERY_BY_PAYMENT: Partial<
+		Record<PaymentMethod, DeliveryMethod[]>
+	> = {
+		[PaymentMethod.COD]: [DeliveryMethod.NOVA_POST, DeliveryMethod.COURIER]
+	}
+
 	constructor(
 		private readonly orderRepository: OrderRepository,
 		private readonly numbersRepository: NumbersRepository,
@@ -104,6 +114,18 @@ export class OrderService {
 		}
 	}
 
+	private validatePaymentDeliveryCombination(
+		paymentMethod: PaymentMethod,
+		deliveryMethod: DeliveryMethod
+	): void {
+		const allowed = OrderService.ALLOWED_DELIVERY_BY_PAYMENT[paymentMethod]
+		if (!allowed || allowed.includes(deliveryMethod)) return
+
+		throw new BadRequestException(
+			`payment_method ${paymentMethod} is only allowed with delivery_method ${allowed.join(' or ')}`
+		)
+	}
+
 	private async buildOrderItems(items: Array<{ variant_id: string; quantity: number }>): Promise<{
 		orderItems: Array<{
 			variant_id: Types.ObjectId
@@ -174,6 +196,7 @@ export class OrderService {
 
 	async create(dto: CreateOrderDto, userId?: string) {
 		this.validateDeliveryData(dto.delivery_method, dto.delivery_address)
+		this.validatePaymentDeliveryCombination(dto.payment_method, dto.delivery_method)
 		const { orderItems, subtotalPrice } = await this.buildOrderItems(dto.items)
 
 		let applied_discount: {
@@ -236,7 +259,8 @@ export class OrderService {
 
 		if (
 			dto.payment_method === PaymentMethod.IBAN ||
-			dto.payment_method === PaymentMethod.CASH
+			dto.payment_method === PaymentMethod.CASH ||
+			dto.payment_method === PaymentMethod.COD
 		) {
 			const emailCustomer = { name: dto.customer.name, phone: dto.customer.phone }
 			const emailItems = orderItems.map(i => ({
@@ -269,18 +293,28 @@ export class OrderService {
 				deliveryAddress: emailDeliveryAddress
 			}
 
-			const sendEmail =
-				dto.payment_method === PaymentMethod.IBAN
-					? this.emailService.sendOrderIbanConfirmation(
-							dto.customer.email,
-							order_number,
-							emailDetails
-						)
-					: this.emailService.sendOrderCashConfirmation(
-							dto.customer.email,
-							order_number,
-							emailDetails
-						)
+			const sendConfirmation = {
+				[PaymentMethod.IBAN]: () =>
+					this.emailService.sendOrderIbanConfirmation(
+						dto.customer.email,
+						order_number,
+						emailDetails
+					),
+				[PaymentMethod.CASH]: () =>
+					this.emailService.sendOrderCashConfirmation(
+						dto.customer.email,
+						order_number,
+						emailDetails
+					),
+				[PaymentMethod.COD]: () =>
+					this.emailService.sendOrderCodConfirmation(
+						dto.customer.email,
+						order_number,
+						emailDetails
+					)
+			}[dto.payment_method]
+
+			const sendEmail = sendConfirmation()
 
 			sendEmail.catch(err =>
 				this.logger.error(
@@ -358,6 +392,13 @@ export class OrderService {
 	async update(id: string, dto: AdminUpdateOrderDto) {
 		const order = await this.orderRepository.findById(id)
 		if (!order) throw new NotFoundException('Order not found')
+
+		if (dto.payment_method || dto.delivery_method) {
+			this.validatePaymentDeliveryCombination(
+				dto.payment_method ?? order.payment_method,
+				dto.delivery_method ?? order.delivery_method
+			)
+		}
 
 		const updateSet: Record<string, unknown> = {}
 

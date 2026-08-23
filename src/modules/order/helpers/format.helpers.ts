@@ -7,6 +7,7 @@ export function formatPaymentMethod(method: PaymentMethod): string {
 	if (method === PaymentMethod.IBAN) return 'IBAN (банківський переказ)'
 	if (method === PaymentMethod.LIQPAY) return 'LiqPay'
 	if (method === PaymentMethod.MONOPAY) return 'MonoPay'
+	if (method === PaymentMethod.COD) return 'Накладний платіж'
 	return '—'
 }
 

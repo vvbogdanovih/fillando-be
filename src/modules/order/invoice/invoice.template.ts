@@ -1,3 +1,4 @@
+import { SUPPORT } from 'src/common/constants/contacts.constant'
 import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
 import {
 	formatOrderStatus,
@@ -108,7 +109,7 @@ export function invoiceTemplate(data: InvoiceData): string {
 	<div style="max-width:1400px;margin:0 auto;padding:0;">
 		<div style="text-align:center;padding-bottom:16px;border-bottom:2px dashed #999;margin-bottom:16px;">
 			<h1 style="font-size:28px;letter-spacing:4px;margin:0 0 4px;font-family:Courier New,Courier,monospace;">FILLANDO</h1>
-			<p style="font-size:12px;color:#555;margin:0;font-family:Courier New,Courier,monospace;">fillando.com | info@fillando.com</p>
+			<p style="font-size:12px;color:#555;margin:0;font-family:Courier New,Courier,monospace;">fillando.com | ${SUPPORT.EMAIL}</p>
 		</div>
 
 		<div style="${SECTION}">

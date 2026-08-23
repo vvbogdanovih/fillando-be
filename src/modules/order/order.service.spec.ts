@@ -1,4 +1,5 @@
-import { DeliveryMethod, OrderStatus, PaymentStatus } from 'src/common/types/enums'
+import { BadRequestException } from '@nestjs/common'
+import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
 import { OrderService } from './order.service'
 
 const buildOrder = (overrides: Record<string, unknown> = {}) => ({
@@ -20,6 +21,7 @@ const buildOrder = (overrides: Record<string, unknown> = {}) => ({
 	subtotal_price: 1000,
 	total_price: 1000,
 	applied_discount: null,
+	payment_method: PaymentMethod.IBAN,
 	delivery_method: DeliveryMethod.PICKUP,
 	delivery_address: null,
 	...overrides
@@ -163,5 +165,96 @@ describe('OrderService.updateOrderStatus — payment side effect', () => {
 				payment_status: PaymentStatus.PENDING
 			}
 		})
+	})
+})
+
+describe('OrderService — COD is limited to Nova Post deliveries', () => {
+	const ORDER_ID = '64b8f0000000000000000000'
+
+	const buildService = (order?: OrderFixture): OrderService =>
+		new OrderService(
+			{
+				findById: jest.fn().mockResolvedValue(order),
+				update: order ? buildUpdateMock(order) : jest.fn()
+			} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+
+	const createDto = (
+		delivery_method: DeliveryMethod,
+		delivery_address: Record<string, unknown> | undefined
+	) => ({
+		items: [{ variant_id: '64b8f0000000000000000001', quantity: 1 }],
+		customer: { name: 'Тест', phone: '+380000000000', email: 'buyer@example.com' },
+		payment_method: PaymentMethod.COD,
+		delivery_method,
+		delivery_address
+	})
+
+	it('rejects a COD order with PICKUP delivery', async () => {
+		await expect(
+			buildService().create(createDto(DeliveryMethod.PICKUP, undefined) as never)
+		).rejects.toBeInstanceOf(BadRequestException)
+	})
+
+	it('lets a COD order through the combination check for NOVA_POST', async () => {
+		// buildOrderItems is reached only when the combination is valid, and it fails
+		// on the empty repository mock — which is proof the guard did not fire.
+		await expect(
+			buildService().create(
+				createDto(DeliveryMethod.NOVA_POST, {
+					city_name: 'Київ',
+					warehouse_description: 'Відділення №1',
+					warehouse_number: 1
+				}) as never
+			)
+		).rejects.not.toBeInstanceOf(BadRequestException)
+	})
+
+	it('rejects moving an existing COD order to PICKUP', async () => {
+		const order = buildOrder({
+			payment_method: PaymentMethod.COD,
+			delivery_method: DeliveryMethod.NOVA_POST,
+			delivery_address: {
+				city_name: 'Київ',
+				warehouse_description: 'Відділення №1',
+				warehouse_number: 1
+			}
+		})
+
+		await expect(
+			buildService(order).update(ORDER_ID, { delivery_method: DeliveryMethod.PICKUP })
+		).rejects.toBeInstanceOf(BadRequestException)
+	})
+
+	it('rejects switching a PICKUP order to COD', async () => {
+		const order = buildOrder()
+
+		await expect(
+			buildService(order).update(ORDER_ID, { payment_method: PaymentMethod.COD })
+		).rejects.toBeInstanceOf(BadRequestException)
+	})
+
+	it('allows COD on a COURIER order', async () => {
+		const order = buildOrder({
+			delivery_method: DeliveryMethod.COURIER,
+			delivery_address: {
+				city_name: 'Київ',
+				street: 'Хрещатик',
+				building: '1',
+				apartment: null
+			}
+		})
+
+		const result = (await buildService(order).update(ORDER_ID, {
+			payment_method: PaymentMethod.COD
+		})) as { payment_method: PaymentMethod }
+
+		expect(result.payment_method).toBe(PaymentMethod.COD)
 	})
 })

@@ -75,7 +75,7 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 | `subtotal_price`          | number                     | required — sum before any discount                            |
 | `total_price`             | number                     | required                                                      |
 | `applied_discount`        | `AppliedDiscount` \| null  | nullable — coupon snapshot captured at checkout               |
-| `payment_method`          | `PaymentMethod` enum       | required                                                      |
+| `payment_method`          | `PaymentMethod` enum       | required — `COD` only with `NOVA_POST` / `COURIER` delivery   |
 | `payment_status`          | `PaymentStatus` enum       | default: `PENDING`                                            |
 | `delivery_method`         | `DeliveryMethod` enum      | required                                                      |
 | `delivery_address`        | `DeliveryAddress` \| null  | nullable — depends on delivery method                         |

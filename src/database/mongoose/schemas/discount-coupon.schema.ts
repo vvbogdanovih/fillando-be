@@ -23,6 +23,12 @@ export class DiscountCoupon {
 
 	@Prop({ default: true })
 	is_active: boolean
+
+	@Prop({ default: false })
+	is_reusable: boolean
+
+	@Prop({ default: 0, min: 0 })
+	used_count: number
 }
 
 export const DiscountCouponSchema = SchemaFactory.createForClass(DiscountCoupon)

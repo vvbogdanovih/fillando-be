@@ -124,6 +124,8 @@ Schema: `src/database/mongoose/schemas/discount-coupon.schema.ts`
 | `discount_percent`        | number  | required, `0..100`                                                        |
 | `valid_until`             | Date    | required — coupon expiration moment                                       |
 | `is_active`               | boolean | default: `true`                                                           |
+| `is_reusable`             | boolean | default: `false` — single-use coupons are deactivated after the first order; reusable coupons stay active until `valid_until` or manual deactivation |
+| `used_count`              | number  | default: `0` — incremented on every order that applies the coupon         |
 | `createdAt` / `updatedAt` | Date    | auto-managed (timestamps)                                                 |
 
 ---

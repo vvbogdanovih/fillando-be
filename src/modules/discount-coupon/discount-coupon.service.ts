@@ -72,7 +72,9 @@ export class DiscountCouponService {
 			code,
 			discount_percent: dto.discount_percent,
 			valid_until: new Date(dto.valid_until),
-			is_active: dto.is_active ?? true
+			is_active: dto.is_active ?? true,
+			is_reusable: dto.is_reusable ?? false,
+			used_count: 0
 		})
 	}
 
@@ -87,7 +89,8 @@ export class DiscountCouponService {
 					...(dto.valid_until !== undefined
 						? { valid_until: new Date(dto.valid_until) }
 						: {}),
-					...(dto.is_active !== undefined ? { is_active: dto.is_active } : {})
+					...(dto.is_active !== undefined ? { is_active: dto.is_active } : {}),
+					...(dto.is_reusable !== undefined ? { is_reusable: dto.is_reusable } : {})
 				}
 			}
 		)
@@ -128,7 +131,8 @@ export class DiscountCouponService {
 				number: coupon.number,
 				code: coupon.code,
 				discount_percent: coupon.discount_percent,
-				valid_until: coupon.valid_until
+				valid_until: coupon.valid_until,
+				is_reusable: coupon.is_reusable
 			}
 		}
 	}

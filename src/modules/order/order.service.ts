@@ -205,6 +205,7 @@ export class OrderService {
 			discount_percent: number
 			discount_amount: number
 		} | null = null
+		let couponIsReusable = false
 		let total_price = subtotalPrice
 
 		if (dto.coupon_code) {
@@ -226,6 +227,7 @@ export class OrderService {
 				discount_percent: discountPercent,
 				discount_amount: discountAmount
 			}
+			couponIsReusable = coupon.is_reusable
 		}
 
 		const nextOrderSequence = await this.numbersRepository.increment('order')
@@ -251,7 +253,10 @@ export class OrderService {
 		if (applied_discount) {
 			await this.discountCouponRepository.update(
 				{ _id: applied_discount.coupon_id },
-				{ $set: { is_active: false } }
+				{
+					$inc: { used_count: 1 },
+					...(couponIsReusable ? {} : { $set: { is_active: false } })
+				}
 			)
 		}
 

@@ -19,4 +19,14 @@ export class CreateDiscountCouponDto {
 	@IsOptional()
 	@IsBoolean()
 	is_active?: boolean
+
+	@ApiPropertyOptional({
+		example: false,
+		default: false,
+		description:
+			'Reusable coupons stay active after each order; single-use coupons are deactivated on first use'
+	})
+	@IsOptional()
+	@IsBoolean()
+	is_reusable?: boolean
 }

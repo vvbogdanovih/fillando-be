@@ -4108,6 +4108,12 @@
             "type": "boolean",
             "example": true,
             "default": true
+          },
+          "is_reusable": {
+            "type": "boolean",
+            "example": false,
+            "default": false,
+            "description": "Reusable coupons stay active after each order; single-use coupons are deactivated on first use"
           }
         },
         "required": [
@@ -4145,6 +4151,12 @@
             "type": "boolean",
             "example": true,
             "default": true
+          },
+          "is_reusable": {
+            "type": "boolean",
+            "example": false,
+            "default": false,
+            "description": "Reusable coupons stay active after each order; single-use coupons are deactivated on first use"
           }
         }
       },

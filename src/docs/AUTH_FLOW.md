@@ -68,12 +68,12 @@ The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 2. Hash it and delete from `refresh_tokens` via `deleteByTokenHash`.
 3. Clear both cookies from the response.
 
-### Get Current User (`GET /api/auth/me`) — requires `JwtAuthGuard`
+### Get Current User (`GET /api/auth/me`) — `OptionalJwtAuthGuard`
 
-1. `JwtStrategy` extracts the JWT from the `ACCSESS_TOKEN_NAME` cookie and validates it.
-2. The decoded `JWTPayload` is attached to `req.user`.
-3. `AuthService.getMe` fetches the full user document by id → `401` if not found.
-4. Returns `{ id, email, name, role, picture }`.
+1. `OptionalJwtAuthGuard` validates the JWT from the `ACCSESS_TOKEN_NAME` cookie if present, but does not reject the request if it's missing or invalid.
+2. If there's no valid `req.user`, returns `{ message: 'Not authenticated', user: null }` (no `401`).
+3. Otherwise `AuthService.getMe` fetches the full user document by id → `401` if the user no longer exists.
+4. Returns `{ message: 'Me successful', user: { id, email, name, role, picture } }`.
 
 ---
 

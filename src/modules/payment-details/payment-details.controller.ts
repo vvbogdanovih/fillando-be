@@ -2,7 +2,10 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@n
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ENDPOINTS } from 'src/common/constants/endpoints.constant'
 import { API_OPERATION } from 'src/common/constants/docs/api-operation.constant'
+import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Role } from 'src/common/types/enums'
 import { PaymentDetailsService } from './payment-details.service'
 import { CreatePaymentDetailsDto } from './dto/create-payment-details.dto'
 import { UpdatePaymentDetailsDto } from './dto/update-payment-details.dto'
@@ -13,48 +16,56 @@ export class PaymentDetailsController {
 	constructor(private readonly paymentDetailsService: PaymentDetailsService) {}
 
 	@Get(ENDPOINTS.PAYMENT_DETAILS.GET_ALL)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.GET_ALL)
 	findAll() {
 		return this.paymentDetailsService.findAll()
 	}
 
 	@Get(ENDPOINTS.PAYMENT_DETAILS.GET_ACTIVE)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.GET_ACTIVE)
 	findActive() {
 		return this.paymentDetailsService.findActive()
 	}
 
 	@Get(ENDPOINTS.PAYMENT_DETAILS.GET_BY_ID)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.GET_BY_ID)
 	findById(@Param('id') id: string) {
 		return this.paymentDetailsService.findById(id)
 	}
 
 	@Post(ENDPOINTS.PAYMENT_DETAILS.CREATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.CREATE)
 	create(@Body() dto: CreatePaymentDetailsDto) {
 		return this.paymentDetailsService.create(dto)
 	}
 
 	@Patch(ENDPOINTS.PAYMENT_DETAILS.UPDATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.UPDATE)
 	update(@Param('id') id: string, @Body() dto: UpdatePaymentDetailsDto) {
 		return this.paymentDetailsService.update(id, dto)
 	}
 
 	@Delete(ENDPOINTS.PAYMENT_DETAILS.DELETE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.DELETE)
 	delete(@Param('id') id: string) {
 		return this.paymentDetailsService.delete(id)
 	}
 
 	@Patch(ENDPOINTS.PAYMENT_DETAILS.ACTIVATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PAYMENT_DETAILS.ACTIVATE)
 	activate(@Param('id') id: string) {
 		return this.paymentDetailsService.activate(id)

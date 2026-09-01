@@ -35,7 +35,7 @@ NestJS backend with MongoDB (via Mongoose). Global API prefix is `/api`. Swagger
 
 **Module layout under `src/`:**
 
-- `app.module.ts` — root module; imports LoggerModule, MongooseModule, AuthModule, VendorModule, CategoryModule, ProductModule
+- `app.module.ts` — root module; imports LoggerModule, MongooseModule, AuthModule, VendorModule, CategoryModule, ProductModule, UploadModule, NumbersModule, CartModule, EmailModule, PaymentDetailsModule, PaymentProvidersModule, LiqpayModule, NovaPostModule, PromModule, OrderModule, DiscountCouponModule, UsersModule
 - `common/` — shared code: configs, constants, decorators, guards, passport strategies, types, services
 - `database/mongoose/schemas/` — Mongoose schema classes (one file per domain)
 - `database/mongoose/repositories/` — data access layer; `base.repository.ts` + concrete repos

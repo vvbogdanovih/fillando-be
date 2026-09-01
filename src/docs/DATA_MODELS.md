@@ -158,7 +158,10 @@ Schema: `src/database/mongoose/schemas/vendor.schema.ts`
 | `slug`                    | string | required, unique — programmatic identifier |
 | `createdAt` / `updatedAt` | Date   | auto-managed (timestamps)                  |
 
-The `slug` value drives product stock behaviour. See `src/docs/PRODUCT_ENRICHMENT.md`.
+`NicePriceService` (`src/common/services/niceprice.service.ts`) exists as a stub for a
+per-vendor live stock lookup by `slug`, but it is never injected or called anywhere —
+`slug` does not currently drive any stock behaviour. Live availability/pricing is
+handled separately by Prom sync, see `src/docs/PROM_AVAILABILITY_SYNC.md`.
 
 ---
 

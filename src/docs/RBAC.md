@@ -2,7 +2,8 @@
 
 ## Current State
 
-The infrastructure exists but is **not yet applied** to any endpoint.
+Applied to `CategoryModule`, `PaymentDetailsModule`, and select endpoints elsewhere;
+not yet applied to `VendorModule` or most of `ProductModule`.
 
 Available roles (`src/common/types/enums.ts`):
 
@@ -54,9 +55,11 @@ create(@Body() dto: CreateVendorDto) { ... }
 
 Already restricted with `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`:
 
-| Endpoint                              | Module        |
-| ------------------------------------- | ------------- |
-| `POST /api/products/price-list/pdf`   | ProductModule |
+| Endpoint                                    | Module              |
+| -------------------------------------------- | ------------------- |
+| `POST /api/products/price-list/pdf`          | ProductModule        |
+| `POST/PATCH/DELETE /api/categories`          | CategoryModule        |
+| All `/api/payment-details` endpoints         | PaymentDetailsModule |
 
 (Plus the order-management endpoints in `OrderModule` and the sync endpoints in `PromModule`.)
 
@@ -64,20 +67,20 @@ Already restricted with `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`:
 
 ## Planned Admin-Only Endpoints
 
-The following write endpoints currently require only authentication (`JwtAuthGuard`).
-They should be restricted to `ADMIN` once RBAC is wired up:
+The following write endpoints currently require only authentication (`JwtAuthGuard`),
+with no ownership or role check — **any logged-in `USER` can create/edit/delete any
+vendor or product**, not just their own or an admin's. This is tracked as an open
+finding in `src/docs/todo/AUDIT_CRITICAL.md` (#3):
 
 | Endpoint                                          | Module         |
 | ------------------------------------------------- | -------------- |
 | `POST /api/vendors`                               | VendorModule   |
 | `PATCH /api/vendors/:id`                          | VendorModule   |
 | `DELETE /api/vendors/:id`                         | VendorModule   |
-| `POST /api/categories`                            | CategoryModule |
-| `PATCH /api/categories/:id`                       | CategoryModule |
-| `DELETE /api/categories/:id`                      | CategoryModule |
 | `POST /api/products`                              | ProductModule  |
 | `PATCH /api/products/:id`                         | ProductModule  |
 | `DELETE /api/products/:id`                        | ProductModule  |
+| Product variant create/update/delete              | ProductModule  |
 
 ---
 

@@ -115,5 +115,4 @@ src/
 - [API & Swagger Conventions](src/docs/API_AND_SWAGGER.md)
 - [Nova Post cache & lookup API](src/docs/NOVA_POST.md) (cities / warehouses, including `q` search)
 - [Authentication Flow](src/docs/AUTH_FLOW.md)
-- [Product Enrichment Flow](src/docs/PRODUCT_ENRICHMENT.md)
 - [Documentation TODO](src/docs/TODO.md)

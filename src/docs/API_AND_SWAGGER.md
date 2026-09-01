@@ -151,16 +151,18 @@ applied to any endpoint. See `src/docs/TODO.md` for the planned RBAC work.
 
 ## 5. Current modules
 
-| Module           | Base path     | Write guard                         |
-| ---------------- | ------------- | ----------------------------------- |
-| `AuthModule`     | `/auth`       | Public (issues its own tokens)      |
-| `VendorModule`   | `/vendors`    | `JwtAuthGuard` on POST/PATCH/DELETE |
-| `CategoryModule` | `/categories` | `JwtAuthGuard` on POST/PATCH/DELETE |
-| `ProductModule`  | `/products`   | `JwtAuthGuard` on POST/PATCH/DELETE |
-| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`   |
+Non-exhaustive — see `app.module.ts` for the full list (16 feature modules) and
+`src/docs/RBAC.md` for the current, accurate guard status per module.
 
-`ProductModule` imports `VendorModule` to access `VendorRepository` during stock enrichment.
-See `src/docs/PRODUCT_ENRICHMENT.md` for details.
+| Module           | Base path     | Write guard                                       |
+| ---------------- | ------------- | -------------------------------------------------- |
+| `AuthModule`     | `/auth`       | Public (issues its own tokens)                    |
+| `VendorModule`   | `/vendors`    | `JwtAuthGuard` only — no role check (see RBAC.md) |
+| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)`    |
+| `ProductModule`  | `/products`   | `JwtAuthGuard` only — no role check (see RBAC.md) |
+| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`                 |
+
+`ProductModule` imports `NumbersModule` and `CategoryModule` — it does not import `VendorModule`.
 
 ---
 

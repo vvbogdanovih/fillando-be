@@ -222,6 +222,44 @@ Rules:
 
 ---
 
+## 4a. Rate limiting
+
+`@nestjs/throttler` is configured in `app.module.ts` **without** a global guard — a per-IP
+limit on the public catalogue would throttle our own SSR traffic (one container = one IP).
+Limits are opt-in per handler:
+
+```ts
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+
+@Post(ENDPOINTS.AUTH.LOGIN)
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
+login(...) {}
+```
+
+| Endpoint | Limit (per IP, per minute) |
+| --- | --- |
+| `POST /auth/login`, `POST /auth/register` | 10 |
+| `POST /auth/refresh` | 30 |
+| `POST /orders` | 10 |
+| `POST /liqpay/checkout` | 10 |
+| `POST /discount-coupons/validate` | 20 |
+| `GET /products/price-sheet` | 20 |
+| `GET /orders/lookup/:orderNumber` | 30 — add when the lookup endpoint (PR-4) is merged |
+
+- The IP comes from `req.ips[0] ?? req.ip`; `main.ts` sets `trust proxy 1`, so behind the
+  production Nginx (`X-Forwarded-For`) this is the real client.
+- A blocked request gets `429` with a `Retry-After` header (exposed through CORS).
+- **Internal bypass:** requests carrying `X-Internal-Token: <INTERNAL_API_TOKEN>` are never
+  throttled (`skipIf` → `src/common/guards/internal-request.util.ts`, constant-time compare).
+  The env var is optional and shared with the frontend, which sends it from server-side
+  fetches only. Today no SSR fetch targets a throttled endpoint, so the header is a safety net.
+- `ThrottlerGuard` goes **first** in `@UseGuards(...)` so an over-limit client is rejected
+  before any auth work. Add a case to `*.controller.throttle.spec.ts` when you guard a new
+  handler (see `discount-coupon.controller.throttle.spec.ts`).
+
+---
+
 ## 5. Current modules
 
 Non-exhaustive — see `app.module.ts` for the full list (17 feature modules) and

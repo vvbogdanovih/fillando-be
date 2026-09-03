@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { API_OPERATION, ENDPOINTS, ENV, RefreshTokenLifetime } from 'src/common/constants'
 import { AuthService } from './auth.service'
@@ -68,6 +69,8 @@ export class AuthController {
 	}
 
 	@Post(ENDPOINTS.AUTH.LOGIN)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 10, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.AUTH.LOGIN)
 	async login(
 		@Body() loginDto: LoginDto,
@@ -86,6 +89,8 @@ export class AuthController {
 	}
 
 	@Post(ENDPOINTS.AUTH.REGISTER)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 10, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.AUTH.REGISTER)
 	async register(
 		@Body() registerDto: RegisterDto,
@@ -133,6 +138,8 @@ export class AuthController {
 	}
 
 	@Post(ENDPOINTS.AUTH.REFRESH)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 30, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.AUTH.REFRESH)
 	async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
 		const refreshToken = req.cookies?.[ENV.REFRESH_TOKEN_NAME]

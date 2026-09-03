@@ -10,6 +10,7 @@ import {
 	Res,
 	UseGuards
 } from '@nestjs/common'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
@@ -70,6 +71,8 @@ export class ProductController {
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.PRICE_SHEET)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 20, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_SHEET)
 	getPriceSheet(@Query() query: GetPriceSheetQueryDto) {
 		return this.productService.getPriceSheet(query)

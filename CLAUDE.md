@@ -65,9 +65,12 @@ FRONTEND_URL
 PORT
 NODE_ENV / LOG_LEVEL
 RUN_CRON (optional, default false — enables in-process scheduled jobs; set true on one instance only)
+INTERNAL_API_TOKEN (optional, min 32 chars — requests with `X-Internal-Token` bypass rate limits; shared with the frontend)
 ```
 
 **Authentication** uses JWT (from `access_token` cookie) + Google OAuth. `JwtAuthGuard` is the standard guard for protected routes. Admin-only endpoints add `RolesGuard` after it — `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`; `RolesGuard` is default-deny (no `@Roles` metadata or no `req.user.role` → 403) and `@Roles` accepts only `Role[]`, not strings (see `src/docs/RBAC.md`). Access and refresh tokens are set as `httpOnly` cookies. Refresh tokens are stored hashed (SHA256) in `refresh_tokens` collection with IP/UA tracking. Token lifetimes are configured via `JWT_EXPIRATION` / `REFRESH_JWT_EXPIRATION` (in minutes) in `.env`.
+
+**Rate limiting** is opt-in per handler (`@UseGuards(ThrottlerGuard)` + `@Throttle(...)`, no global guard) — see `src/docs/API_AND_SWAGGER.md` §4a for the limits table and the `X-Internal-Token` bypass.
 
 **Enums** (`Role`, `AuthMethod`) are defined in `src/common/types/enums.ts` — import from there, not from any ORM client.
 

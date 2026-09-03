@@ -51,7 +51,10 @@ const envSchema = z.object({
 	RUN_CRON: z
 		.string()
 		.optional()
-		.transform(v => v === 'true' || v === '1')
+		.transform(v => v === 'true' || v === '1'),
+	// Shared secret the frontend's server-side fetches send as `X-Internal-Token`; requests
+	// carrying it bypass the rate limiter. Optional — when unset nothing is exempted.
+	INTERNAL_API_TOKEN: z.string().min(32).optional()
 })
 
 type EnvSchema = z.infer<typeof envSchema>
@@ -85,7 +88,8 @@ const getParsedEnv = (): EnvSchema => {
 		PORT: process.env.PORT,
 		NODE_ENV: process.env.NODE_ENV,
 		LOG_LEVEL: process.env.LOG_LEVEL,
-		RUN_CRON: process.env.RUN_CRON
+		RUN_CRON: process.env.RUN_CRON,
+		INTERNAL_API_TOKEN: process.env.INTERNAL_API_TOKEN
 	})
 	if (!result.success) {
 		console.log('error', result.error)
@@ -124,5 +128,6 @@ export const ENV = {
 	PORT: validatedEnv.PORT,
 	NODE_ENV: validatedEnv.NODE_ENV,
 	LOG_LEVEL: validatedEnv.LOG_LEVEL,
-	RUN_CRON: validatedEnv.RUN_CRON
+	RUN_CRON: validatedEnv.RUN_CRON,
+	INTERNAL_API_TOKEN: validatedEnv.INTERNAL_API_TOKEN
 } as const

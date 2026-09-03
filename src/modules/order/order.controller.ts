@@ -11,6 +11,7 @@ import {
 	UseGuards
 } from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
@@ -37,7 +38,8 @@ export class OrderController {
 	constructor(private readonly orderService: OrderService) {}
 
 	@Post(ENDPOINTS.ORDERS.CREATE)
-	@UseGuards(OptionalJwtAuthGuard)
+	@UseGuards(ThrottlerGuard, OptionalJwtAuthGuard)
+	@Throttle({ default: { limit: 10, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.ORDERS.CREATE)
 	create(@Body() dto: CreateOrderDto, @Req() req: Request) {
 		const userId = (req.user as JWTPayload | undefined)?.id

@@ -4,9 +4,11 @@ import {
 	INestApplication,
 	Provider,
 	Type,
-	UnauthorizedException
+	UnauthorizedException,
+	ModuleMetadata
 } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
+import { ThrottlerModule } from '@nestjs/throttler'
 import type { Server } from 'node:http'
 import type { Request } from 'express'
 import request from 'supertest'
@@ -39,6 +41,8 @@ export class HeaderRoleAuthGuard implements CanActivate {
 export type RbacAppOptions = {
 	controllers: Type<unknown>[]
 	providers: Provider[]
+	/** Extra modules (e.g. `ThrottlerModule.forRoot(...)`) the controller's guards need. */
+	imports?: ModuleMetadata['imports']
 }
 
 /**
@@ -46,11 +50,21 @@ export type RbacAppOptions = {
  * replaced by `HeaderRoleAuthGuard`. Global pipes from `main.ts` are NOT registered on
  * purpose — these specs test guards, not DTO validation, so empty bodies must pass.
  */
+/**
+ * Controllers that rate-limit a handler inject `ThrottlerGuard`, which needs the throttler
+ * module. A permissive default keeps RBAC specs independent of the real limits; a spec that
+ * tests throttling passes its own `imports` with the real configuration.
+ */
+const DEFAULT_IMPORTS = [
+	ThrottlerModule.forRoot({ throttlers: [{ name: 'default', ttl: 60_000, limit: 10_000 }] })
+]
+
 export async function createRbacApp({
 	controllers,
-	providers
+	providers,
+	imports = DEFAULT_IMPORTS
 }: RbacAppOptions): Promise<INestApplication> {
-	const moduleRef = await Test.createTestingModule({ controllers, providers })
+	const moduleRef = await Test.createTestingModule({ imports, controllers, providers })
 		.overrideGuard(JwtAuthGuard)
 		.useValue(new HeaderRoleAuthGuard())
 		.compile()

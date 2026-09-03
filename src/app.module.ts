@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { ScheduleModule } from '@nestjs/schedule'
+import { ThrottlerModule } from '@nestjs/throttler'
+import { isInternalRequest } from './common/guards/internal-request.util'
 import { LoggerModule } from 'nestjs-pino'
 
 import { AuthModule } from './modules/auth/auth.module'
@@ -33,6 +35,13 @@ import { ENV } from './common/constants'
 						: undefined,
 				autoLogging: true
 			}
+		}),
+		// Rate limiting is opt-in per endpoint (@UseGuards(ThrottlerGuard) + @Throttle) — there is
+		// deliberately no APP_GUARD: a global per-IP limit would throttle our own SSR traffic and
+		// the public catalogue. `default` is the ceiling for any guarded handler without @Throttle.
+		ThrottlerModule.forRoot({
+			throttlers: [{ name: 'default', ttl: 60_000, limit: 20 }],
+			skipIf: isInternalRequest
 		}),
 		MongooseModule.forRoot(ENV.DATABASE_URL),
 		ScheduleModule.forRoot(),

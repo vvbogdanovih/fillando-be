@@ -26,7 +26,7 @@ async function bootstrap() {
 		// Browsers hide every non-safelisted response header from JS. Without this the
 		// frontend's file downloads (price list, order report, invoice) cannot read the
 		// server-provided filename and silently fall back to a generic one.
-		exposedHeaders: ['Content-Disposition']
+		exposedHeaders: ['Content-Disposition', 'Retry-After']
 	})
 	const config = new DocumentBuilder()
 		.setTitle('Urban Tab API')

@@ -84,16 +84,16 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 
 #### Embedded: `OrderItem` (`_id: false`)
 
-| Field        | Type                          | Notes                                                          |
-| ------------ | ----------------------------- | -------------------------------------------------------------- |
-| `variant_id` | ObjectId → `product_variants` | required                                                       |
-| `product_id` | ObjectId → `products`         | required                                                       |
-| `name`       | string                        | required — variant name snapshot                               |
-| `sku`        | string                        | required — internal Fillando SKU                               |
-| `vendor_sku` | string \| null                | nullable — external vendor SKU (`vendor_product_sku` snapshot) |
-| `price`      | number                        | required — price at checkout time                              |
-| `quantity`   | number                        | required, min: 1                                               |
-| `image`      | string \| null                | nullable                                                       |
+| Field        | Type                          | Notes                                                                                                            |
+| ------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `variant_id` | ObjectId → `product_variants` | required                                                                                                         |
+| `product_id` | ObjectId → `products`         | required                                                                                                         |
+| `name`       | string                        | required — variant name snapshot                                                                                 |
+| `sku`        | string                        | required — internal Fillando SKU                                                                                 |
+| `vendor_sku` | string \| null                | nullable — supplier article snapshot (`vendor_product_sku`) for the admin invoice / vendor e-mail; must not appear in customer-facing responses (`POST /orders`, `GET /orders/me*`) — stripped by the order module's customer projection |
+| `price`      | number                        | required — price at checkout time                                                                                |
+| `quantity`   | number                        | required, min: 1                                                                                                 |
+| `image`      | string \| null                | nullable                                                                                                         |
 
 #### Embedded: `AppliedDiscount` (`_id: false`)
 
@@ -104,7 +104,7 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 | `discount_percent` | number                        | required — `0..100`                           |
 | `discount_amount`  | number                        | required — absolute amount at checkout moment |
 
-Admin update behavior (`PATCH /api/orders/:id`, ADMIN only):
+Admin update behavior (`PATCH /orders/:id`, ADMIN only):
 
 - `items` are rebuilt from the current product-variant catalog (`name`, `sku`, `vendor_sku`, `price`, first `image`)
 - `subtotal_price` is recalculated as the sum of line totals (`price * quantity`)
@@ -117,16 +117,16 @@ Admin update behavior (`PATCH /api/orders/:id`, ADMIN only):
 
 Schema: `src/database/mongoose/schemas/discount-coupon.schema.ts`
 
-| Field                     | Type    | Notes                                                                     |
-| ------------------------- | ------- | ------------------------------------------------------------------------- |
-| `number`                  | string  | required, unique — internal incremental id in format `DIS-0000123`        |
-| `code`                    | string  | required, unique, uppercase, format: `XXXXXXXXXX` (10 random alnum chars) |
-| `discount_percent`        | number  | required, `0..100`                                                        |
-| `valid_until`             | Date    | required — coupon expiration moment                                       |
-| `is_active`               | boolean | default: `true`                                                           |
+| Field                     | Type    | Notes                                                                                                                                                |
+| ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `number`                  | string  | required, unique — internal incremental id in format `DIS-0000123`                                                                                   |
+| `code`                    | string  | required, unique, uppercase, format: `XXXXXXXXXX` (10 random alnum chars)                                                                            |
+| `discount_percent`        | number  | required, `0..100`                                                                                                                                   |
+| `valid_until`             | Date    | required — coupon expiration moment                                                                                                                  |
+| `is_active`               | boolean | default: `true`                                                                                                                                      |
 | `is_reusable`             | boolean | default: `false` — single-use coupons are deactivated after the first order; reusable coupons stay active until `valid_until` or manual deactivation |
-| `used_count`              | number  | default: `0` — incremented on every order that applies the coupon         |
-| `createdAt` / `updatedAt` | Date    | auto-managed (timestamps)                                                 |
+| `used_count`              | number  | default: `0` — incremented on every order that applies the coupon                                                                                    |
+| `createdAt` / `updatedAt` | Date    | auto-managed (timestamps)                                                                                                                            |
 
 ---
 
@@ -134,15 +134,15 @@ Schema: `src/database/mongoose/schemas/discount-coupon.schema.ts`
 
 Schema: `src/database/mongoose/schemas/wholesale-inquiry.schema.ts`
 
-| Field                     | Type           | Notes                                                |
-| ------------------------- | -------------- | ---------------------------------------------------- |
-| `name`                    | string         | required — contact person full name                  |
-| `phone`                   | string         | required, `+380XXXXXXXXX`                            |
-| `email`                   | string         | required                                             |
-| `quantity`                | string         | required — desired plastic quantity, free-form text  |
-| `comment`                 | string \| null | optional, default: `null`                            |
-| `status`                  | enum           | `NEW` (default) \| `PROCESSED`                       |
-| `createdAt` / `updatedAt` | Date           | auto-managed (timestamps)                            |
+| Field                     | Type           | Notes                                               |
+| ------------------------- | -------------- | --------------------------------------------------- |
+| `name`                    | string         | required — contact person full name                 |
+| `phone`                   | string         | required, `+380XXXXXXXXX`                           |
+| `email`                   | string         | required                                            |
+| `quantity`                | string         | required — desired plastic quantity, free-form text |
+| `comment`                 | string \| null | optional, default: `null`                           |
+| `status`                  | enum           | `NEW` (default) \| `PROCESSED`                      |
+| `createdAt` / `updatedAt` | Date           | auto-managed (timestamps)                           |
 
 B2B wholesale inquiry submitted from the public form on the home page. See `src/docs/WHOLESALE_INQUIRY.md`.
 
@@ -169,14 +169,14 @@ handled separately by Prom sync, see `src/docs/PROM_AVAILABILITY_SYNC.md`.
 
 Schema: `src/database/mongoose/schemas/category.schema.ts`
 
-| Field                     | Type            | Notes                                                           |
-| ------------------------- | --------------- | --------------------------------------------------------------- |
-| `name`                    | string          | required, unique                                                |
-| `slug`                    | string          | required, unique                                                |
-| `image`                   | string \| null  | optional — public URL of the category image; `null` when absent |
-| `order`                   | number          | UI display order — lower values appear first; default: `0`      |
-| `required_attributes`     | `RequiredAttribute[]` | **embedded**, default: `[]`                               |
-| `createdAt` / `updatedAt` | Date            | auto-managed (timestamps)                                       |
+| Field                     | Type                  | Notes                                                           |
+| ------------------------- | --------------------- | --------------------------------------------------------------- |
+| `name`                    | string                | required, unique                                                |
+| `slug`                    | string                | required, unique                                                |
+| `image`                   | string \| null        | optional — public URL of the category image; `null` when absent |
+| `order`                   | number                | UI display order — lower values appear first; default: `0`      |
+| `required_attributes`     | `RequiredAttribute[]` | **embedded**, default: `[]`                                     |
+| `createdAt` / `updatedAt` | Date                  | auto-managed (timestamps)                                       |
 
 Categories are a single flat level. The former two-level structure (category → embedded
 subcategories) was flattened by `scripts/migrations/flatten-categories.js`: each subcategory
@@ -202,32 +202,32 @@ client — it is derived from `label` in the service layer using `generateAttrKe
 
 Schema: `src/database/mongoose/schemas/product.schema.ts`
 
-| Field                     | Type                    | Notes                                                            |
-| ------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `name`                    | string                  | required                                                         |
-| `slug`                    | string                  | required, unique                                                 |
-| `category_id`             | ObjectId → `categories` | required — denormalized onto each variant as well                |
-| `images`                  | string[]                | product-level images                                             |
-| `price`                   | number                  | required — base price                                            |
-| `attributes`              | `Attribute[]`           | **embedded**, default: `[]`                                      |
-| `vendor_id`               | ObjectId → `vendors`    | required                                                         |
-| `variant_type`            | string                  | optional — label for the variant axis (e.g. `'color'`, `'size'`) |
-| `variants`                | `ProductVariant[]`      | **embedded**, default: `[]`                                      |
-| `status`                  | `ProductStatus` enum    | default: `DRAFT`                                                 |
-| `createdAt` / `updatedAt` | Date                    | auto-managed (timestamps)                                        |
+| Field                     | Type                    | Notes                                                        |
+| ------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `name`                    | string                  | required                                                     |
+| `category_id`             | ObjectId → `categories` | required — denormalized onto each variant as well            |
+| `vendor_id`               | ObjectId → `vendors`    | required                                                     |
+| `description`             | `ProductDescription`    | optional — **embedded** rich text (`json` + rendered `html`) |
+| `variant_type`            | `VariantType`           | optional — **embedded** label of the variant axis            |
+| `attributes`              | `Attribute[]`           | **embedded**, default: `[]`                                  |
+| `createdAt` / `updatedAt` | Date                    | auto-managed (timestamps)                                    |
 
-#### Embedded: `ProductVariant` (`_id: true`)
+A product is the shared "header" of its variants. Slug, SKU, price, stock, images and status live on
+`product_variants` (own collection, below) — not on the product.
 
-| Field                | Type     | Notes                                                                       |
-| -------------------- | -------- | --------------------------------------------------------------------------- |
-| `_id`                | ObjectId | auto-generated                                                              |
-| `sku`                | string   | required                                                                    |
-| `v_value`            | string   | required — variant value (e.g. `'Red'`, `'XL'`)                             |
-| `price`              | number   | optional — overrides product base price                                     |
-| `stock`              | number   | optional — used for Fillando vendor; overwritten at read time for NicePrice |
-| `vendor_product_sku` | string   | optional — external SKU used to fetch stock from NicePrice                  |
-| `prom_id`            | string   | optional — NicePrice (Prom) product id from the product URL (`/p<id>-…`)    |
-| `images`             | string[] | variant-level images                                                        |
+#### Embedded: `ProductDescription` (`_id: false`)
+
+| Field  | Type   | Notes                                            |
+| ------ | ------ | ------------------------------------------------ |
+| `json` | object | required — editor document (`Mixed`)             |
+| `html` | string | required — rendered HTML; part of the text index |
+
+#### Embedded: `VariantType` (`_id: false`)
+
+| Field   | Type   | Notes                                                                               |
+| ------- | ------ | ----------------------------------------------------------------------------------- |
+| `key`   | string | required — e.g. `'color'`                                                           |
+| `label` | string | required — display label (e.g. `'Колір'`); drives the price-sheet colour derivation |
 
 #### Embedded: `Attribute` (`_id: false`)
 
@@ -237,8 +237,61 @@ Schema: `src/database/mongoose/schemas/product.schema.ts`
 | `l`   | string                      | required — human-readable label (e.g. `'Виробник'`)                        |
 | `v`   | string \| number \| boolean | required — attribute value (e.g. `'Sony'`, `1.75`)                         |
 
-A compound index on `{ 'attributes.k': 1, 'attributes.v': 1 }` supports efficient filter queries.
+Indexes: compound `{ 'attributes.k': 1, 'attributes.v': 1 }` for filter queries; text index
+`product_text_search` over `name` (10), `attributes.v` (5), `attributes.l` (3), `description.html`
+(1) with `default_language: 'none'` — used by `GET /products/search`.
 `k` is never supplied by the client — it is derived from `l` in the service layer using `generateAttrKey`.
+
+---
+
+### `product_variants`
+
+Schema: `src/database/mongoose/schemas/product-variant.schema.ts`
+
+| Field                     | Type                    | Notes                                                                                                                                                                     |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `product_id`              | ObjectId → `products`   | required                                                                                                                                                                  |
+| `category_id`             | ObjectId → `categories` | required — denormalized from the product for flat catalog queries                                                                                                         |
+| `name`                    | string                  | required — full variant name                                                                                                                                              |
+| `slug`                    | string                  | required, unique — public URL (`/products/{slug}`)                                                                                                                        |
+| `sku`                     | string                  | required, unique — internal Fillando article `FL-000123` (from the `numbers` counter)                                                                                     |
+| `price`                   | number                  | required — selling price, UAH                                                                                                                                             |
+| `stock`                   | number                  | default: `0` — available quantity                                                                                                                                         |
+| `images`                  | string[]                | variant-level images                                                                                                                                                      |
+| `v_value`                 | string \| null          | default: `null` — value on the variant axis (e.g. `'Червоний'`)                                                                                                           |
+| `vendor_product_sku`      | string                  | optional — supplier's article. **Internal — never exposed by public endpoints; only via admin-only variant endpoints**                                                    |
+| `prom_id`                 | string                  | optional — supplier's Prom product id (digits in `/p<id>-…`), key for Prom sync. **Internal — never exposed by public endpoints; only via admin-only variant endpoints**  |
+| `prom_base_price`         | number \| null          | default: `null` — last pre-discount price seen on Prom (audit trail for `price`). **Internal — never exposed by public endpoints; only via admin-only variant endpoints** |
+| `prom_discount_ratio`     | number \| null          | default: `null` — last Prom discount as a fraction `0..1`. **Internal — never exposed by public endpoints; only via admin-only variant endpoints**                        |
+| `prom_discount_seen_at`   | Date \| null            | default: `null` — when `prom_discount_ratio` was last refreshed. **Internal — never exposed by public endpoints; only via admin-only variant endpoints**                  |
+| `price_updated_at`        | Date \| null            | default: `null` — last successful price resolution (Prom sync)                                                                                                            |
+| `stock_updated_at`        | Date \| null            | default: `null` — last successful stock sync; shown as `synced_at` on the price sheet                                                                                     |
+| `status`                  | `ProductStatus` enum    | default: `ACTIVE` — `draft` \| `active` \| `archived`                                                                                                                     |
+| `createdAt` / `updatedAt` | Date                    | auto-managed (timestamps)                                                                                                                                                 |
+
+Indexes: `{ product_id: 1 }`, `{ category_id: 1, status: 1 }`, unique `{ slug: 1 }`, unique
+`{ sku: 1 }`. How the `prom_*` fields are written: `src/docs/PROM_AVAILABILITY_SYNC.md`.
+
+#### Public exposure
+
+A public endpoint never returns a raw variant document. Responses go through the allowlist in
+`src/modules/product/product-public.mappers.ts`:
+
+- `toPublicVariant` — `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`,
+  `v_value`, `status`. Used by `GET /products/by-slug/:slug` (the variant and its siblings).
+- `PRICE_SHEET_PUBLIC_PROJECTION` — the `$project` stage of `GET /products/price-sheet`
+  (see `src/docs/PRICE_SHEET.md`).
+
+`vendor_product_sku`, `prom_id`, `prom_base_price`, `prom_discount_ratio` and
+`prom_discount_seen_at` are absent from both. The only endpoints that return full variant documents
+including them are **admin-only**: `GET /products/:id/variants` and
+`GET /products/:id/variants/:variantId` (the admin UI needs the supplier identifiers to edit a
+variant). `GET /products` (unpaginated dump) is admin-only as well. Guard details: `src/docs/RBAC.md`.
+
+Only `status = active` variants are visible publicly: `GET /products/by-slug/:slug` returns 404 for
+a `draft`/`archived` slug, and such variants are excluded from `catalog`, `search`, `price-sheet`,
+`variants/slugs` (the sitemap source) and `variants/count` (its cache key). Draft and archived
+variants are reachable only through the admin-only endpoints above.
 
 ---
 
@@ -292,7 +345,10 @@ categories
 
 products
   └── attributes[]      ← embedded, _id: false
-  └── variants[]        ← embedded, _id: true
+  └── description       ← embedded, _id: false
+  └── variant_type      ← embedded, _id: false
+  └── product_variants (product_id → products._id)
+        └── carts.items[].variant_id / orders.items[].variant_id → product_variants._id
 
 nova_post_cities
   └── nova_post_warehouses (cityRef = nova_post_cities.ref)
@@ -302,11 +358,11 @@ nova_post_cities
 
 ## Embedding vs. Referencing Decisions
 
-| Case                              | Decision       | Reason                                                                              |
-| --------------------------------- | -------------- | ----------------------------------------------------------------------------------- |
-| `ProductVariant` in `Product`     | **Embedded**   | Variants are meaningless without their parent product                               |
-| `Attribute` / `RequiredAttribute` | **Embedded**   | Pure value objects; no independent identity needed                                  |
-| `Vendor` on `Product`             | **Referenced** | Vendors are shared across products; queried independently                           |
-| `Category` on `Product`           | **Referenced** | Categories are queried independently and managed separately                         |
-| `User` on `RefreshToken`          | **Referenced** | Users are the primary entity; tokens are secondary                                  |
-| `ProductVariant` in `Cart.items`  | **Referenced** | Variants change (price, stock) — always read live data, never denormalize into cart |
+| Case                                                                     | Decision       | Reason                                                                                                                                                                        |
+| ------------------------------------------------------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ProductVariant` on `Product`                                            | **Referenced** | Own collection `product_variants`: variants are queried flat (catalog, search, price sheet, cart, Prom sync), carry their own `status` and need unique `slug` / `sku` indexes |
+| `Attribute` / `RequiredAttribute` / `ProductDescription` / `VariantType` | **Embedded**   | Pure value objects; no independent identity needed                                                                                                                            |
+| `Vendor` on `Product`                                                    | **Referenced** | Vendors are shared across products; queried independently                                                                                                                     |
+| `Category` on `Product`                                                  | **Referenced** | Categories are queried independently and managed separately                                                                                                                   |
+| `User` on `RefreshToken`                                                 | **Referenced** | Users are the primary entity; tokens are secondary                                                                                                                            |
+| `ProductVariant` in `Cart.items`                                         | **Referenced** | Variants change (price, stock) — always read live data, never denormalize into cart                                                                                           |

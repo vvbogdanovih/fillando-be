@@ -36,7 +36,10 @@ export class ProductController {
 		private readonly priceListService: PriceListService
 	) {}
 
+	// Unpaginated full dump for the admin catalogue screen — the storefront uses /catalog.
 	@Get(ENDPOINTS.PRODUCTS.GET_ALL)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_ALL)
 	findAll() {
 		return this.productService.findAll()
@@ -116,13 +119,19 @@ export class ProductController {
 		return this.productService.create(dto)
 	}
 
+	// Raw variant documents carry supplier identifiers (vendor_product_sku, prom_id) that the
+	// admin editor needs but the public API must never expose — hence ADMIN-only.
 	@Get(ENDPOINTS.PRODUCTS.VARIANTS)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_VARIANTS)
 	getVariants(@Param('id') id: string) {
 		return this.productService.getVariants(id)
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.VARIANT)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_VARIANT)
 	getVariant(@Param('id') id: string, @Param('variantId') variantId: string) {
 		return this.productService.getVariant(id, variantId)

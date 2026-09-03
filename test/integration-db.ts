@@ -12,7 +12,10 @@ export const TEST_MONGO_URL =
 export async function connectTestDb(suite: string): Promise<typeof mongoose> {
 	const url = new URL(TEST_MONGO_URL)
 	url.pathname = `/${url.pathname.replace(/^\//, '') || 'fillando-test'}-${suite}`
-	return mongoose.connect(url.toString(), { serverSelectionTimeoutMS: 5000 })
+	const conn = await mongoose.connect(url.toString(), { serverSelectionTimeoutMS: 5000 })
+	// A run aborted before afterAll leaves fixtures behind; start every suite from a clean db.
+	await conn.connection.dropDatabase()
+	return conn
 }
 
 export async function dropTestDb(conn: typeof mongoose): Promise<void> {

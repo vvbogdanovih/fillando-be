@@ -462,7 +462,7 @@
     },
     "/products": {
       "get": {
-        "description": "Get all products",
+        "description": "Admin-only, unpaginated list of every product for the admin catalogue screen. Public storefront must use /products/catalog.",
         "operationId": "ProductController_findAll",
         "parameters": [],
         "responses": {
@@ -470,7 +470,7 @@
             "description": ""
           }
         },
-        "summary": "Get all products",
+        "summary": "List all products (admin)",
         "tags": [
           "/products"
         ]
@@ -567,7 +567,7 @@
     },
     "/products/variants/slugs": {
       "get": {
-        "description": "Returns minimal variant data for sitemap generation (slug and updatedAt).",
+        "description": "Returns slug and updatedAt of every ACTIVE variant for sitemap generation (draft/archived are excluded).",
         "operationId": "ProductController_getAllVariantSlugs",
         "parameters": [],
         "responses": {
@@ -575,7 +575,7 @@
             "description": ""
           }
         },
-        "summary": "Get all variant slugs",
+        "summary": "Get active variant slugs",
         "tags": [
           "/products"
         ]
@@ -583,7 +583,7 @@
     },
     "/products/variants/count": {
       "get": {
-        "description": "Returns total number of product variants.",
+        "description": "Returns the number of ACTIVE product variants — the same set as /variants/slugs (used as the sitemap cache key).",
         "operationId": "ProductController_getVariantCount",
         "parameters": [],
         "responses": {
@@ -591,7 +591,7 @@
             "description": ""
           }
         },
-        "summary": "Get variants count",
+        "summary": "Get active variants count",
         "tags": [
           "/products"
         ]
@@ -599,14 +599,14 @@
     },
     "/products/price-sheet": {
       "get": {
-        "description": "Public paginated flat list of all product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, vendor article, SKU or attribute value.",
+        "description": "Public paginated flat list of ACTIVE product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, SKU or attribute value. Response is a fixed public projection — no supplier identifiers.",
         "operationId": "ProductController_getPriceSheet",
         "parameters": [
           {
             "name": "q",
             "required": false,
             "in": "query",
-            "description": "Search by product name, vendor article, SKU or attribute value",
+            "description": "Search by product name, SKU or attribute value",
             "schema": {
               "example": "PLA",
               "type": "string"
@@ -649,7 +649,7 @@
     },
     "/products/price-list/pdf": {
       "post": {
-        "description": "Admin only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.",
+        "description": "Admin-only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.",
         "operationId": "ProductController_generatePriceListPdf",
         "parameters": [],
         "requestBody": {
@@ -667,7 +667,7 @@
             "description": ""
           }
         },
-        "summary": "Generate wholesale price list PDF",
+        "summary": "Generate wholesale price list PDF (admin)",
         "tags": [
           "/products"
         ]
@@ -675,7 +675,7 @@
     },
     "/products/by-slug/{slug}": {
       "get": {
-        "description": "Returns full variant info, parent product, and sibling variants by variant slug.",
+        "description": "Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product and category. Draft/archived variants respond 404.",
         "operationId": "ProductController_getVariantBySlug",
         "parameters": [
           {
@@ -807,7 +807,7 @@
     },
     "/products/{id}/variants": {
       "get": {
-        "description": "Get all variants belonging to a product.",
+        "description": "Admin-only; returns the full variant documents of a product including supplier identifiers (vendor_product_sku, prom_id).",
         "operationId": "ProductController_getVariants",
         "parameters": [
           {
@@ -824,7 +824,7 @@
             "description": ""
           }
         },
-        "summary": "Get product variants",
+        "summary": "Get product variants (admin)",
         "tags": [
           "/products"
         ]
@@ -865,7 +865,7 @@
     },
     "/products/{id}/variants/{variantId}": {
       "get": {
-        "description": "Get a single product variant by id.",
+        "description": "Admin-only; returns the full variant document including supplier identifiers (vendor_product_sku, prom_id).",
         "operationId": "ProductController_getVariant",
         "parameters": [
           {
@@ -890,7 +890,7 @@
             "description": ""
           }
         },
-        "summary": "Get variant by id",
+        "summary": "Get variant by id (admin)",
         "tags": [
           "/products"
         ]

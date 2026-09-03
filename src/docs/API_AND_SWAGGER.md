@@ -128,14 +128,22 @@ Shared descriptions (e.g. “User email”, “Password”) live in **`api-prope
 
 ## 4. Guard convention
 
-**GET endpoints on catalogue data are public by default.** Everything else falls into one of
-two buckets:
+**GET endpoints on catalogue data are public by default** — with one exception: **a GET that
+returns supplier/internal fields or an unpaginated dump of a collection is admin-only.** Everything
+else falls into one of two buckets:
 
 1. **Catalogue / admin resources** (products, vendors, categories, uploads, payment settings,
    order management, coupons, sync jobs) — every write endpoint, and any read that exposes
    admin data, is **admin-only**: `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`.
 2. **User-owned resources** (`/cart/*`, `/users/me`, `/orders/me`) — `JwtAuthGuard` alone; the
    service scopes the query by `req.user.id`.
+
+Admin-only reads today: `GET /products` (unpaginated full dump, used only by the admin UI),
+`GET /products/:id/variants` and `GET /products/:id/variants/:variantId` (full variant documents
+including `vendor_product_sku`, `prom_id` and the `prom_*` pricing fields, which the admin UI needs
+to edit a variant). They are guarded exactly like writes. When the storefront needs part of the same
+data, it gets a **projection** on a separate public endpoint — never the raw document with a hope
+that the client ignores the extra fields (see [Public projections](#public-projections) below).
 
 ```ts
 import { UseGuards } from '@nestjs/common'
@@ -177,6 +185,41 @@ Rules that matter:
 
 Full endpoint list, guard internals and the test harness: `src/docs/RBAC.md`.
 
+### Public projections
+
+A public endpoint never returns a raw Mongoose document. Its response is built from an explicit
+**allowlist** — a mapper or an aggregation `$project` stage — so a new schema field is private until
+someone decides otherwise. For the product domain the allowlists live in
+`src/modules/product/product-public.mappers.ts`:
+
+| Export                                               | Used by                                                                 | Fields                                                                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `toPublicVariant(variant)` + `PUBLIC_VARIANT_FIELDS` | `GET /products/by-slug/:slug` (the variant and its siblings)            | `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`, `v_value`, `status`                            |
+| `PRICE_SHEET_PUBLIC_PROJECTION`                      | `ProductVariantRepository.findPriceSheet` → `GET /products/price-sheet` | `id`, `product_name`, `slug`, `v_value`, `sku`, `price`, `stock`, `stock_updated_at`, `image`, `attributes`, `variant_type` |
+
+Never on either list: `vendor_product_sku`, `prom_id`, `prom_base_price`, `prom_discount_ratio`,
+`prom_discount_seen_at` — the shop resells at supplier price + margin, so any of them lets a visitor
+derive the margin. Public product endpoints also serve only `status = active` variants
+(`ProductStatus.ACTIVE`) — the price sheet, `GET /products/variants/slugs` (sitemap source) and
+`GET /products/variants/count` (its cache key), `catalog`/`search`, and `GET /products/by-slug/:slug`
+(a `draft`/`archived` slug → 404).
+
+Rules:
+
+- **Adding a field to a public response = update the mapper/projection and its spec.**
+  `product-public.mappers.spec.ts` pins the exact key set of each projection, so a field added to
+  the mapper without a spec change fails the build, and a field added to the schema never appears
+  publicly on its own. Treat the change as a security review, not a routine edit; re-run
+  `yarn spec:export` afterwards as for any contract change.
+- The allowlist sits at the repository/projection boundary, not only in a service mapper —
+  otherwise a second consumer of the same repository method leaks the fields again.
+- A field the admin UI needs but the public must not see is **not** projected: the endpoint that
+  returns it becomes admin-only instead (this is why `GET /products/:id/variants` and
+  `GET /products/:id/variants/:variantId` are guarded).
+- Mark an admin-only endpoint in Swagger so the contract shows the guard without reading the
+  controller: `(admin)` suffix on the `summary` and a leading `Admin-only` in the `description`
+  (see `API_OPERATION.PRODUCTS.GET_ALL`, `GET_VARIANTS`, `PRICE_LIST_PDF`).
+
 ---
 
 ## 5. Current modules
@@ -184,14 +227,14 @@ Full endpoint list, guard internals and the test harness: `src/docs/RBAC.md`.
 Non-exhaustive — see `app.module.ts` for the full list (17 feature modules) and
 `src/docs/RBAC.md` for the current, accurate guard status per module.
 
-| Module           | Base path     | Write guard                                                            |
-| ---------------- | ------------- | ---------------------------------------------------------------------- |
-| `AuthModule`     | `/auth`       | Public (issues its own tokens)                                         |
-| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                    |
-| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                    |
-| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                    |
-| `UploadModule`   | `/upload`     | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` (class-level, all) |
-| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)` |
+| Module           | Base path     | Guard (writes + admin-only reads)                                                                                                     |
+| ---------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `AuthModule`     | `/auth`       | Public (issues its own tokens)                                                                                                        |
+| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                   |
+| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                   |
+| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on writes **and** on `GET /`, `GET /:id/variants`, `GET /:id/variants/:variantId` |
+| `UploadModule`   | `/upload`     | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` (class-level, all)                                                                |
+| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)`                                                                |
 
 `ProductModule` imports `NumbersModule` and `CategoryModule` — it does not import `VendorModule`.
 

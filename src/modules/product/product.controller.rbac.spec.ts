@@ -36,9 +36,19 @@ const priceListService = {
 }
 
 type ServiceMock = jest.Mock
-type WriteRow = [method: HttpMethod, path: string, body: object | undefined, handler: ServiceMock]
+type AdminRow = [method: HttpMethod, path: string, body: object | undefined, handler: ServiceMock]
 
-const WRITE_ENDPOINTS: WriteRow[] = [
+/**
+ * Every handler behind `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`.
+ *
+ * The three GETs are admin-only on purpose: `/products` is the unpaginated full dump for the
+ * admin catalogue screen, and the variant reads return raw documents carrying supplier
+ * identifiers (`vendor_product_sku`, `prom_id`) that must never leave through a public route.
+ */
+const ADMIN_ENDPOINTS: AdminRow[] = [
+	['get', '/products', undefined, productService.findAll],
+	['get', `/products/${PRODUCT_ID}/variants`, undefined, productService.getVariants],
+	['get', `/products/${PRODUCT_ID}/variants/${VARIANT_ID}`, undefined, productService.getVariant],
 	['post', '/products/validate', {}, productService.validate],
 	['post', '/products', {}, productService.create],
 	['post', `/products/${PRODUCT_ID}/variants`, {}, productService.addVariant],
@@ -60,17 +70,15 @@ const WRITE_ENDPOINTS: WriteRow[] = [
 	['post', '/products/price-list/pdf', {}, priceListService.generatePdf]
 ]
 
+/** Storefront reads — must keep answering anonymous requests. */
 const PUBLIC_GETS: [path: string, handler: ServiceMock][] = [
-	['/products', productService.findAll],
 	['/products/catalog', productService.getCatalog],
 	['/products/search', productService.search],
 	['/products/variants/slugs', productService.getAllVariantSlugs],
 	['/products/variants/count', productService.getVariantCount],
 	['/products/price-sheet', productService.getPriceSheet],
 	['/products/by-slug/x', productService.getVariantBySlug],
-	[`/products/${PRODUCT_ID}`, productService.findById],
-	[`/products/${PRODUCT_ID}/variants`, productService.getVariants],
-	[`/products/${PRODUCT_ID}/variants/${VARIANT_ID}`, productService.getVariant]
+	[`/products/${PRODUCT_ID}`, productService.findById]
 ]
 
 describe('ProductController RBAC', () => {
@@ -94,8 +102,8 @@ describe('ProductController RBAC', () => {
 		jest.clearAllMocks()
 	})
 
-	describe('write endpoints are ADMIN-only', () => {
-		it.each(WRITE_ENDPOINTS)(
+	describe('admin-only endpoints (writes + full-document reads)', () => {
+		it.each(ADMIN_ENDPOINTS)(
 			'%s %s → 401 without a token',
 			async (method, path, body, handler) => {
 				const res = await send(app, method, path, { body })
@@ -105,14 +113,14 @@ describe('ProductController RBAC', () => {
 			}
 		)
 
-		it.each(WRITE_ENDPOINTS)('%s %s → 403 for USER', async (method, path, body, handler) => {
+		it.each(ADMIN_ENDPOINTS)('%s %s → 403 for USER', async (method, path, body, handler) => {
 			const res = await send(app, method, path, { role: Role.USER, body })
 
 			expect(res.status).toBe(403)
 			expect(handler).not.toHaveBeenCalled()
 		})
 
-		it.each(WRITE_ENDPOINTS)('%s %s → 2xx for ADMIN', async (method, path, body, handler) => {
+		it.each(ADMIN_ENDPOINTS)('%s %s → 2xx for ADMIN', async (method, path, body, handler) => {
 			const res = await send(app, method, path, { role: Role.ADMIN, body })
 
 			expect(res.status).toBeGreaterThanOrEqual(200)
@@ -128,7 +136,7 @@ describe('ProductController RBAC', () => {
 		})
 	})
 
-	describe('read endpoints stay public', () => {
+	describe('storefront read endpoints stay public', () => {
 		it.each(PUBLIC_GETS)('GET %s → 200 without a token', async (path, handler) => {
 			const res = await send(app, 'get', path)
 

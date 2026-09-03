@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ProductStatus } from 'src/common/types/enums'
 import { Types } from 'mongoose'
 import { CartRepository } from 'src/database/mongoose/repositories/cart.repository'
 import { CartItem } from 'src/database/mongoose/schemas/cart.schema'
@@ -56,7 +57,7 @@ export class CartService {
 
 		for (const item of cart.items) {
 			const v = variantMap.get(item.variant_id.toString())
-			if (!v || v.stock === 0) {
+			if (!v || v.stock === 0 || v.status !== ProductStatus.ACTIVE) {
 				removedItems.push(item.variant_id.toString())
 			} else {
 				validItems.push(item)
@@ -78,6 +79,9 @@ export class CartService {
 		const variant = await this.productVariantRepository.findById(dto.variant_id)
 		if (!variant) throw new NotFoundException('Варіант товару не знайдено')
 		if (variant.stock === 0) throw new ConflictException('Варіант товару відсутній у наявності')
+		if (variant.status !== ProductStatus.ACTIVE) {
+			throw new ConflictException('Варіант товару недоступний для замовлення')
+		}
 
 		const cart = await this.cartRepository.findByUserId(userId)
 		const currentItems = cart ? cart.items.map((i: any) => i.toObject?.() ?? { ...i }) : []
@@ -111,6 +115,9 @@ export class CartService {
 		const variant = await this.productVariantRepository.findById(variantId)
 		if (!variant) throw new NotFoundException('Варіант товару не знайдено')
 		if (variant.stock === 0) throw new ConflictException('Варіант товару відсутній у наявності')
+		if (variant.status !== ProductStatus.ACTIVE) {
+			throw new ConflictException('Варіант товару недоступний для замовлення')
+		}
 		if (dto.quantity > variant.stock)
 			throw new ConflictException(`Доступно лише ${variant.stock} шт. на складі`)
 
@@ -173,7 +180,7 @@ export class CartService {
 
 		for (const item of dto.items) {
 			const v = variantMap.get(item.variant_id)
-			if (!v || v.stock === 0) {
+			if (!v || v.stock === 0 || v.status !== ProductStatus.ACTIVE) {
 				removedItems.push(item.variant_id)
 			} else {
 				validItems.push({

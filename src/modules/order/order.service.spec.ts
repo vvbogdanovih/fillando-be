@@ -1,7 +1,13 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { Types } from 'mongoose'
 import { orderAccessToken } from 'src/common/services/crypto.util'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus,
+	ProductStatus
+} from 'src/common/types/enums'
 import { OrderService } from './order.service'
 
 const buildOrder = (overrides: Record<string, unknown> = {}) => ({
@@ -358,7 +364,7 @@ describe('OrderService.getPaymentStatusPublic', () => {
 describe('OrderService.create — payment_access_token', () => {
 	const VARIANT_ID = '64b8f0000000000000000001'
 
-	const buildVariant = () => ({
+	const buildVariant = (overrides: Record<string, unknown> = {}) => ({
 		_id: new Types.ObjectId(VARIANT_ID),
 		product_id: new Types.ObjectId('64b8f0000000000000000002'),
 		name: 'PLA 1.75 чорний',
@@ -366,10 +372,12 @@ describe('OrderService.create — payment_access_token', () => {
 		vendor_product_sku: 'V-1',
 		price: 500,
 		stock: 10,
-		images: []
+		status: ProductStatus.ACTIVE,
+		images: [],
+		...overrides
 	})
 
-	const buildService = () => {
+	const buildService = (variants: unknown[] = [buildVariant()]) => {
 		// Mimic a Mongoose document: the persisted fields plus toObject().
 		const orderRepository = {
 			create: jest.fn().mockImplementation((payload: Record<string, unknown>) => {
@@ -384,7 +392,7 @@ describe('OrderService.create — payment_access_token', () => {
 		}
 		const numbersRepository = { increment: jest.fn().mockResolvedValue(123) }
 		const productVariantRepository = {
-			findByIds: jest.fn().mockResolvedValue([buildVariant()])
+			findByIds: jest.fn().mockResolvedValue(variants)
 		}
 		const emailService = {
 			sendOrderIbanConfirmation: jest.fn().mockResolvedValue(undefined),
@@ -459,4 +467,39 @@ describe('OrderService.create — payment_access_token', () => {
 			expect.any(Object)
 		)
 	})
+
+	it('never returns the supplier article (vendor_sku) to the customer', async () => {
+		const { service, orderRepository } = buildService()
+
+		const result = (await service.create({
+			...baseDto,
+			payment_method: PaymentMethod.IBAN,
+			delivery_method: DeliveryMethod.PICKUP
+		} as never)) as { items: Array<Record<string, unknown>> }
+
+		expect(result.items).toHaveLength(1)
+		expect(result.items[0]).not.toHaveProperty('vendor_sku')
+		expect(result.items[0]).toMatchObject({ sku: 'SKU-1', line_total: 1000 })
+		// …but the snapshot IS persisted for the admin invoice / vendor e-mail
+		expect(orderRepository.create.mock.calls[0][0]).toMatchObject({
+			items: [expect.objectContaining({ vendor_sku: 'V-1' })]
+		})
+	})
+
+	it.each([ProductStatus.DRAFT, ProductStatus.ARCHIVED])(
+		'refuses to order a %s variant even when the id is known',
+		async status => {
+			const { service, orderRepository } = buildService([buildVariant({ status })])
+
+			await expect(
+				service.create({
+					...baseDto,
+					payment_method: PaymentMethod.IBAN,
+					delivery_method: DeliveryMethod.PICKUP
+				} as never)
+			).rejects.toBeInstanceOf(BadRequestException)
+
+			expect(orderRepository.create).not.toHaveBeenCalled()
+		}
+	)
 })

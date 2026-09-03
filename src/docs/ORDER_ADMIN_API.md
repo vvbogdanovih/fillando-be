@@ -6,6 +6,11 @@ prepends `/api` in production)
 Access: ADMIN (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`) for every route in the
 table below. The module also exposes user-owned routes (`POST /orders`, `GET /orders/me`,
 `GET /orders/me/:id`) and one public, token-protected route — see *Public endpoints*.
+Customer-facing responses (`POST /orders`, `GET /orders/me*`) go through a customer
+projection that omits `items[].vendor_sku` (the supplier article snapshot is for the admin
+invoice and vendor e-mail only); admin routes return the full item. `POST /orders` also
+refuses draft/archived variants (`400 Variant <sku> is not available`) — they are hidden from
+every public read and must not be orderable by id.
 
 ---
 

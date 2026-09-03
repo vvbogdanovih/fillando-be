@@ -21,7 +21,7 @@ All routes are under `/api/cart` and require `JwtAuthGuard`. The user identity c
 
 | Method   | Path                     | Description                                                        |
 | -------- | ------------------------ | ------------------------------------------------------------------ |
-| `GET`    | `/cart`                  | Get cart with populated variants. Auto-removes out-of-stock items. |
+| `GET`    | `/cart`                  | Get cart with populated variants. Auto-removes out-of-stock and non-active (draft/archived) items. |
 | `POST`   | `/cart/merge`            | Post-login cart sync (see Merge Logic below).                      |
 | `POST`   | `/cart/items`            | Add item or increment quantity.                                    |
 | `PATCH`  | `/cart/items/:variantId` | Set absolute quantity for an item.                                 |
@@ -55,7 +55,7 @@ All endpoints return the same envelope:
 }
 ```
 
-`removed_items` is a list of `variant_id` strings that were silently removed because their stock dropped to 0. The frontend should display a notification when this array is non-empty.
+`removed_items` is a list of `variant_id` strings that were silently removed because their stock dropped to 0 or the variant is no longer `active` (draft/archived). The frontend should display a notification when this array is non-empty.
 
 ---
 
@@ -64,16 +64,18 @@ All endpoints return the same envelope:
 **On add (`POST /cart/items`):**
 
 - If `variant.stock === 0` → `409 Conflict`
+- If `variant.status !== active` (draft/archived) → `409 Conflict` — hidden variants cannot be added by id
 - If `existing_quantity + dto.quantity > variant.stock` → `409 Conflict` with available count
 
 **On update (`PATCH /cart/items/:variantId`):**
 
 - If `variant.stock === 0` → `409 Conflict`
+- If `variant.status !== active` → `409 Conflict`
 - If `dto.quantity > variant.stock` → `409 Conflict` with available count
 
 **On `GET /cart` (auto-clean):**
 
-- All items are checked against live stock. Items where `stock === 0` are silently removed from the cart document and returned in `removed_items`.
+- All items are checked against live stock and status. Items where `stock === 0` or `status !== active` are silently removed from the cart document and returned in `removed_items`.
 
 ---
 
@@ -87,7 +89,7 @@ if server cart has items:
 
 if server cart is empty (or doesn't exist):
   → validate each client item against stock
-  → skip items where variant not found or stock === 0  (added to removed_items)
+  → skip items where variant not found, stock === 0 or status !== active  (added to removed_items)
   → cap quantity at available stock (Math.min)
   → set these as the cart items (upsert)
   → return populated cart + removed_items

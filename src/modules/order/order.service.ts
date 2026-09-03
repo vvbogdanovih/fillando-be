@@ -7,7 +7,13 @@ import { ProductVariantRepository } from 'src/database/mongoose/repositories/pro
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
 import { EmailService } from 'src/modules/email/email.service'
 import { orderAccessToken, verifyOrderAccessToken } from 'src/common/services/crypto.util'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus,
+	ProductStatus
+} from 'src/common/types/enums'
 import { resolvePaymentStatusOnOrderStatusChange } from './helpers/payment-status.helpers'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
@@ -158,6 +164,11 @@ export class OrderService {
 		for (const item of items) {
 			const variant = variantMap.get(item.variant_id)
 			if (!variant) throw new NotFoundException(`Variant ${item.variant_id} not found`)
+			// Draft/archived variants are hidden from every public read; they must not be
+			// orderable by id either.
+			if (variant.status !== ProductStatus.ACTIVE) {
+				throw new BadRequestException(`Variant ${variant.sku} is not available`)
+			}
 			if (variant.stock < item.quantity) {
 				throw new BadRequestException(
 					`Only ${variant.stock} units available for SKU ${variant.sku}`
@@ -192,6 +203,23 @@ export class OrderService {
 				...item,
 				line_total: this.toLineTotal(item.price, item.quantity)
 			}))
+		}
+	}
+
+	/**
+	 * Customer-facing shape (POST /orders, GET /orders/me*): like {@link mapOrderResponse}
+	 * minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
+	 * and vendor e-mail only and must never reach a buyer.
+	 */
+	private mapCustomerOrderResponse(order: any) {
+		const mapped = this.mapOrderResponse(order)
+		return {
+			...mapped,
+			items: mapped.items.map((item: any) => {
+				const customerItem = { ...item }
+				delete customerItem.vendor_sku
+				return customerItem
+			})
 		}
 	}
 
@@ -330,12 +358,12 @@ export class OrderService {
 			)
 		}
 
-		if (dto.payment_method !== PaymentMethod.LIQPAY) return order
+		const response = this.mapCustomerOrderResponse(order)
+		if (dto.payment_method !== PaymentMethod.LIQPAY) return response
 
 		// LiqPay buyers land on the success page without a session; the token lets them
 		// read the payment status via GET /orders/lookup/:orderNumber. Never persisted.
-		const plainOrder = typeof order.toObject === 'function' ? order.toObject() : order
-		return { ...plainOrder, payment_access_token: orderAccessToken(order_number) }
+		return { ...response, payment_access_token: orderAccessToken(order_number) }
 	}
 
 	async findAll(query: GetOrdersQueryDto) {
@@ -372,7 +400,7 @@ export class OrderService {
 		])
 
 		return {
-			items: items.map(item => this.mapOrderResponse(item)),
+			items: items.map(item => this.mapCustomerOrderResponse(item)),
 			total,
 			page,
 			limit
@@ -414,7 +442,7 @@ export class OrderService {
 			new Types.ObjectId(userId)
 		)
 		if (!order) throw new NotFoundException('Order not found')
-		return this.mapOrderResponse(order)
+		return this.mapCustomerOrderResponse(order)
 	}
 
 	async update(id: string, dto: AdminUpdateOrderDto) {

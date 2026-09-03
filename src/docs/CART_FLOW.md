@@ -17,7 +17,7 @@ Schema: `src/database/mongoose/schemas/cart.schema.ts`
 
 ## Endpoints
 
-All routes are under `/api/cart` and require `JwtAuthGuard`. The user identity comes from the JWT payload — never from the request body.
+All routes are under `/cart` and require `JwtAuthGuard`. The user identity comes from the JWT payload — never from the request body.
 
 | Method   | Path                     | Description                                                        |
 | -------- | ------------------------ | ------------------------------------------------------------------ |

@@ -128,39 +128,70 @@ Shared descriptions (e.g. “User email”, “Password”) live in **`api-prope
 
 ## 4. Guard convention
 
-**GET endpoints are public by default.** Write endpoints (POST, PATCH, DELETE) require authentication.
+**GET endpoints on catalogue data are public by default.** Everything else falls into one of
+two buckets:
 
-Apply `JwtAuthGuard` on any endpoint that must be authenticated:
+1. **Catalogue / admin resources** (products, vendors, categories, uploads, payment settings,
+   order management, coupons, sync jobs) — every write endpoint, and any read that exposes
+   admin data, is **admin-only**: `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`.
+2. **User-owned resources** (`/cart/*`, `/users/me`, `/orders/me`) — `JwtAuthGuard` alone; the
+   service scopes the query by `req.user.id`.
 
 ```ts
+import { UseGuards } from '@nestjs/common'
+import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Role } from 'src/common/types/enums'
 
+// Admin-only write on a catalogue resource
 @Post(ENDPOINTS.ITEMS.CREATE)
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN)
 @ApiOperation(API_OPERATION.ITEMS.CREATE)
 create(@Body() dto: CreateItemDto) {
   return this.itemsService.create(dto)
 }
+
+// User-owned resource — authenticated, scoped by the caller's id
+@Get(ENDPOINTS.ITEMS.MY)
+@UseGuards(JwtAuthGuard)
+@ApiOperation(API_OPERATION.ITEMS.MY)
+findMine(@Req() req: Request & { user: JWTPayload }) {
+  return this.itemsService.findByUser(req.user.id)
+}
 ```
 
-A `RolesGuard` and `@Roles()` decorator also exist (`src/common/guards/roles.guard.ts`,
-`src/common/decorators/roles.decorator.ts`) for role-based access control but are not yet
-applied to any endpoint. See `src/docs/TODO.md` for the planned RBAC work.
+Rules that matter:
+
+- **Order of guards matters.** `JwtAuthGuard` must come first — it validates the cookie and
+  sets `req.user`; `RolesGuard` reads `req.user.role`. Reversed or alone, `RolesGuard` sees no
+  user and rejects everyone.
+- **`RolesGuard` is default-deny.** Without `@Roles(...)` on the handler or class it returns
+  403 for every caller. Never add `RolesGuard` without a matching `@Roles(...)`.
+- **`@Roles` takes `Role[]`**, not strings — `@Roles('ADMIN')` is a compile error; use
+  `@Roles(Role.ADMIN)`.
+- `@Roles` + `@UseGuards` may be placed on the controller class when every handler is admin-only
+  (see `UploadController`).
+- Add a case for every new guarded endpoint to the module's `*.controller.rbac.spec.ts`.
+
+Full endpoint list, guard internals and the test harness: `src/docs/RBAC.md`.
 
 ---
 
 ## 5. Current modules
 
-Non-exhaustive — see `app.module.ts` for the full list (16 feature modules) and
+Non-exhaustive — see `app.module.ts` for the full list (17 feature modules) and
 `src/docs/RBAC.md` for the current, accurate guard status per module.
 
-| Module           | Base path     | Write guard                                       |
-| ---------------- | ------------- | -------------------------------------------------- |
-| `AuthModule`     | `/auth`       | Public (issues its own tokens)                    |
-| `VendorModule`   | `/vendors`    | `JwtAuthGuard` only — no role check (see RBAC.md) |
-| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)`    |
-| `ProductModule`  | `/products`   | `JwtAuthGuard` only — no role check (see RBAC.md) |
-| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`                 |
+| Module           | Base path     | Write guard                                                            |
+| ---------------- | ------------- | ---------------------------------------------------------------------- |
+| `AuthModule`     | `/auth`       | Public (issues its own tokens)                                         |
+| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                    |
+| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                    |
+| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                    |
+| `UploadModule`   | `/upload`     | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` (class-level, all) |
+| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)` |
 
 `ProductModule` imports `NumbersModule` and `CategoryModule` — it does not import `VendorModule`.
 

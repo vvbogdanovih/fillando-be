@@ -12,7 +12,7 @@ The bucket is **public-read**. Permanent public URLs are stored in the database 
 ## Upload Flow (3 steps)
 
 ```
-1. POST /api/upload/presign
+1. POST /upload/presign
    Client → Backend: [{ entityType, entityId, contentType }]
    Backend → S3:     generates presigned PUT URL per file
    Backend → Client: { files: [{ key, uploadUrl, publicUrl }] }
@@ -20,7 +20,7 @@ The bucket is **public-read**. Permanent public URLs are stored in the database 
 2. PUT {presignedUrl}   (client → S3 directly)
    Client must set: Content-Type header matching the requested contentType
 
-3. POST /api/upload/confirm
+3. POST /upload/confirm
    Client → Backend: { keys: [...] }
    Backend → S3:     headObject check per key, then download the object once
                      always → write width derivatives -128/-320/-640/-1280 .webp
@@ -50,9 +50,9 @@ Extension is derived from the requested `contentType`:
 
 ## API Reference
 
-### `POST /api/upload/presign`
+### `POST /upload/presign`
 
-Requires JWT auth.
+Requires the `ADMIN` role (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`, applied class-level).
 
 **Request body:**
 
@@ -82,9 +82,9 @@ Requires JWT auth.
 }
 ```
 
-### `POST /api/upload/confirm`
+### `POST /upload/confirm`
 
-Requires JWT auth. Verifies uploaded files exist in S3 via `HeadObject`.
+Requires the `ADMIN` role (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`, applied class-level). Verifies uploaded files exist in S3 via `HeadObject`.
 
 **Request body:**
 
@@ -98,9 +98,9 @@ Requires JWT auth. Verifies uploaded files exist in S3 via `HeadObject`.
 { "confirmed": ["products/..."], "failed": [] }
 ```
 
-### `DELETE /api/upload`
+### `DELETE /upload`
 
-Requires JWT auth. Deletes one or more files from S3.
+Requires the `ADMIN` role (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`, applied class-level). Deletes one or more files from S3.
 
 **Request body:**
 
@@ -158,7 +158,7 @@ async deleteProduct(id: string) {
 - **Presigned URL TTL:** 15 minutes
 - **File size limit:** Not enforced server-side (validate on the frontend before requesting presign)
 - **Batch size:** No hard limit; presign accepts an array of files in a single request
-- **Auth:** All three endpoints require a valid JWT (`access_token` cookie)
+- **Auth:** All three endpoints are admin-only — `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)` on the controller class (a plain `USER` gets 403). Media is catalogue data owned by the shop; there is no per-user upload flow.
 
 ---
 

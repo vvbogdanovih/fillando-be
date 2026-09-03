@@ -35,7 +35,7 @@ Post API is only called on explicit admin sync.
 
 ## API Endpoints
 
-### `POST /api/nova-post/sync`
+### `POST /nova-post/sync`
 
 **Auth:** JWT required, `ADMIN` role only.
 
@@ -50,7 +50,7 @@ local collections. Safe to call multiple times — uses `bulkWrite` with `upsert
 
 Sync time is typically 30–90 seconds depending on network latency.
 
-### `GET /api/nova-post/cities?q=<query>`
+### `GET /nova-post/cities?q=<query>`
 
 **Auth:** public.
 
@@ -59,14 +59,14 @@ than 2 characters.
 
 **Response:** array of `NovaPostCity` objects.
 
-### `GET /api/nova-post/warehouses?cityRef=<ref>&type=<optional>&q=<optional>`
+### `GET /nova-post/warehouses?cityRef=<ref>&type=<optional>&q=<optional>`
 
 **Auth:** public.
 
 Returns warehouses for the given city `ref` (use `ref` from the cities search response). Optional
 `type`: `PARCEL_LOCKER` | `POST` | `CARGO` — same as before.
 
-Optional `q` (aligned with `GET /api/nova-post/cities?q=`): when present and non-empty after trim,
+Optional `q` (aligned with `GET /nova-post/cities?q=`): when present and non-empty after trim,
 the response is filtered to branches that match **at least one** of:
 
 - warehouse **number** — substring match against the numeric № (e.g. `12` matches `12`, `120`, …);

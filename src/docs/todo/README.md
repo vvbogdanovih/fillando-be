@@ -18,7 +18,8 @@
 
 1. Cookie `secure: true` + правильний `maxAge` (#1)
 2. Закрити payment-details за `@Roles(Role.ADMIN)` (#2)
-3. Ownership перевірки на vendor/product мутації (#3)
+3. ~~Ownership перевірки на vendor/product мутації (#3)~~ — ✅ виконано 2026-09-03 (через
+   `@Roles(Role.ADMIN)` замість ownership; також закрито `/upload/*`)
 4. Race condition у refresh token rotation (#4)
 5. Rate limiting на auth + order + coupon validate (#9, #12, #6)
 

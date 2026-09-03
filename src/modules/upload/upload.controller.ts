@@ -2,7 +2,10 @@ import { Body, Controller, Delete, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { PinoLogger, InjectPinoLogger } from 'nestjs-pino'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Role } from 'src/common/types/enums'
 import { UploadService } from './upload.service'
 import { PresignUploadDto } from './dto/presign-upload.dto'
 import { ConfirmUploadDto } from './dto/confirm-upload.dto'
@@ -10,7 +13,10 @@ import { DeleteUploadDto } from './dto/delete-upload.dto'
 
 @Controller(ENDPOINTS.UPLOAD.BASE)
 @ApiTags(ENDPOINTS.UPLOAD.BASE)
-@UseGuards(JwtAuthGuard)
+// Media management is admin-only: any authenticated USER could otherwise delete the
+// whole S3 catalogue (no bucket versioning = irreversible).
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN)
 export class UploadController {
 	constructor(
 		@InjectPinoLogger(UploadController.name)

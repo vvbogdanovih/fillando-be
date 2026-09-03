@@ -72,7 +72,6 @@ export class ProductController {
 		return this.productService.getPriceSheet(query)
 	}
 
-	// NOTE: unlike the write endpoints below, this one is genuinely admin-only.
 	// JwtAuthGuard must come first — RolesGuard reads req.user.role, which only exists
 	// once the JWT has been validated.
 	@Post(ENDPOINTS.PRODUCTS.PRICE_LIST_PDF)
@@ -102,14 +101,16 @@ export class ProductController {
 	}
 
 	@Post(ENDPOINTS.PRODUCTS.VALIDATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.VALIDATE)
 	validate(@Body() dto: ValidateProductDto) {
 		return this.productService.validate(dto)
 	}
 
 	@Post(ENDPOINTS.PRODUCTS.CREATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.CREATE)
 	create(@Body() dto: CreateProductDto) {
 		return this.productService.create(dto)
@@ -128,14 +129,16 @@ export class ProductController {
 	}
 
 	@Post(ENDPOINTS.PRODUCTS.VARIANTS)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.ADD_VARIANT)
 	addVariant(@Param('id') id: string, @Body() dto: AddVariantDto) {
 		return this.productService.addVariant(id, dto)
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.VARIANT)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.UPDATE_VARIANT)
 	updateVariant(
 		@Param('id') id: string,
@@ -146,14 +149,16 @@ export class ProductController {
 	}
 
 	@Delete(ENDPOINTS.PRODUCTS.VARIANT)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.DELETE_VARIANT)
 	deleteVariant(@Param('id') id: string, @Param('variantId') variantId: string) {
 		return this.productService.deleteVariant(id, variantId)
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.PATCH_VARIANT_IMAGES)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.PATCH_VARIANT_IMAGES)
 	setVariantImages(
 		@Param('id') id: string,
@@ -164,14 +169,16 @@ export class ProductController {
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.UPDATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.UPDATE)
 	update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
 		return this.productService.update(id, dto)
 	}
 
 	@Delete(ENDPOINTS.PRODUCTS.DELETE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.DELETE)
 	delete(@Param('id') id: string) {
 		return this.productService.delete(id)

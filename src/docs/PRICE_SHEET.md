@@ -9,7 +9,7 @@ projections that omit these fields).
 
 ## Endpoint
 
-### `GET /api/products/price-sheet`
+### `GET /products/price-sheet`
 
 **Auth:** public (no guard).
 

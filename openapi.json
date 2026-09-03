@@ -1631,7 +1631,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateOrderResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Create order",
@@ -1845,6 +1852,50 @@
           }
         },
         "summary": "Get my order by id",
+        "tags": [
+          "/orders"
+        ]
+      }
+    },
+    "/orders/lookup/{orderNumber}": {
+      "get": {
+        "description": "Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed.",
+        "operationId": "OrderController_lookupPaymentStatus",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "required": true,
+            "in": "path",
+            "description": "Order number in FO-XXXXXXX format",
+            "schema": {
+              "example": "FO-0000123",
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "description": "HMAC access token issued with the order (LiqPay result_url / create response). 32 lowercase hex chars.",
+            "schema": {
+              "example": "3f2a9c1e8b7d6f5a4c3b2a1908f7e6d5",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPaymentStatusResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Public payment-status lookup",
         "tags": [
           "/orders"
         ]
@@ -3735,6 +3786,142 @@
           "apartment"
         ]
       },
+      "CreateOrderResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664f1b2c3d4e5f6a7b8c9d10"
+          },
+          "order_number": {
+            "type": "string",
+            "example": "FO-0000123"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/OrderResponseCustomerDto"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderResponseItemDto"
+            }
+          },
+          "subtotal_price": {
+            "type": "number",
+            "example": 2598
+          },
+          "total_price": {
+            "type": "number",
+            "example": 2338.2
+          },
+          "applied_discount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderResponseDiscountDto"
+              }
+            ]
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "IBAN",
+              "LIQPAY",
+              "MONOPAY",
+              "COD"
+            ]
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PAID",
+              "FAILED",
+              "REFUNDED",
+              "VOIDED"
+            ]
+          },
+          "payment_transaction_id": {
+            "type": "object",
+            "example": "liqpay_tx_123",
+            "nullable": true
+          },
+          "delivery_method": {
+            "type": "string",
+            "enum": [
+              "NOVA_POST",
+              "COURIER",
+              "PICKUP"
+            ]
+          },
+          "delivery_address": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderResponseDeliveryAddressDto"
+              }
+            ]
+          },
+          "nova_post_ttn": {
+            "type": "object",
+            "example": "59001000000000",
+            "nullable": true
+          },
+          "order_status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "CONFIRMED",
+              "PROCESSING",
+              "SHIPPED",
+              "DELIVERED",
+              "COMPLETED",
+              "CANCELLED",
+              "RETURNED"
+            ]
+          },
+          "comment": {
+            "type": "object",
+            "example": "Зателефонуйте перед відправкою",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "payment_access_token": {
+            "type": "string",
+            "example": "3f2a9c1e8b7d6f5a4c3b2a1f0e9d8c7b",
+            "description": "HMAC access token for GET /orders/lookup/:orderNumber. Present only when payment_method is LIQPAY; never persisted."
+          }
+        },
+        "required": [
+          "_id",
+          "order_number",
+          "customer",
+          "items",
+          "subtotal_price",
+          "total_price",
+          "applied_discount",
+          "payment_method",
+          "payment_status",
+          "payment_transaction_id",
+          "delivery_method",
+          "delivery_address",
+          "nova_post_ttn",
+          "order_status",
+          "comment",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "OrderResponseDto": {
         "type": "object",
         "properties": {
@@ -3933,6 +4120,45 @@
         "required": [
           "date_from",
           "date_to"
+        ]
+      },
+      "OrderPaymentStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "order_number": {
+            "type": "string",
+            "example": "FO-0000123"
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "IBAN",
+              "LIQPAY",
+              "MONOPAY",
+              "COD"
+            ]
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PAID",
+              "FAILED",
+              "REFUNDED",
+              "VOIDED"
+            ]
+          },
+          "total_price": {
+            "type": "number",
+            "example": 2338.2
+          }
+        },
+        "required": [
+          "order_number",
+          "payment_method",
+          "payment_status",
+          "total_price"
         ]
       },
       "UpdateOrderCustomerDto": {

@@ -270,6 +270,11 @@ export const API_OPERATION = {
 			description:
 				'Get full details of a single order that belongs to the authenticated user.'
 		},
+		LOOKUP: {
+			summary: 'Public payment-status lookup',
+			description:
+				'Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed.'
+		},
 		GET_ALL: {
 			summary: 'Get all orders',
 			description:

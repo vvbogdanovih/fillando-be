@@ -6,6 +6,7 @@ import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.re
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
 import { EmailService } from 'src/modules/email/email.service'
+import { orderAccessToken, verifyOrderAccessToken } from 'src/common/services/crypto.util'
 import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
 import { resolvePaymentStatusOnOrderStatusChange } from './helpers/payment-status.helpers'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
@@ -329,7 +330,12 @@ export class OrderService {
 			)
 		}
 
-		return order
+		if (dto.payment_method !== PaymentMethod.LIQPAY) return order
+
+		// LiqPay buyers land on the success page without a session; the token lets them
+		// read the payment status via GET /orders/lookup/:orderNumber. Never persisted.
+		const plainOrder = typeof order.toObject === 'function' ? order.toObject() : order
+		return { ...plainOrder, payment_access_token: orderAccessToken(order_number) }
 	}
 
 	async findAll(query: GetOrdersQueryDto) {
@@ -377,6 +383,23 @@ export class OrderService {
 		const order = await this.orderRepository.findByOrderNumber(orderNumber)
 		if (!order) throw new NotFoundException(`Order ${orderNumber} not found`)
 		return order
+	}
+
+	/**
+	 * Public, token-gated read of an order's payment status (no auth). A wrong token is
+	 * reported as 404 — not 403 — so the endpoint never confirms that an order number exists.
+	 */
+	async getPaymentStatusPublic(orderNumber: string, token: string) {
+		if (!verifyOrderAccessToken(orderNumber, token)) {
+			throw new NotFoundException(`Order ${orderNumber} not found`)
+		}
+		const order = await this.findByNumber(orderNumber)
+		return {
+			order_number: order.order_number,
+			payment_method: order.payment_method,
+			payment_status: order.payment_status,
+			total_price: order.total_price
+		}
 	}
 
 	async findById(id: string) {

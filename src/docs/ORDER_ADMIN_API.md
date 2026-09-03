@@ -1,8 +1,11 @@
 # Order Admin API
 
 Module: `src/modules/order/`
-Base path: `/api/orders`
-Access: ADMIN (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`)
+Base path: `/orders` (paths are shown as the app serves them — there is no global prefix; Nginx
+prepends `/api` in production)
+Access: ADMIN (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`) for every route in the
+table below. The module also exposes user-owned routes (`POST /orders`, `GET /orders/me`,
+`GET /orders/me/:id`) and one public, token-protected route — see *Public endpoints*.
 
 ---
 
@@ -10,16 +13,22 @@ Access: ADMIN (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`)
 
 | Method  | Path                             | Description                                                               |
 | ------- | -------------------------------- | ------------------------------------------------------------------------- |
-| `GET`   | `/api/orders`                    | Paginated orders list with filters by `order_status` and `payment_status` |
-| `GET`   | `/api/orders/:id`                | Full order details                                                        |
-| `PATCH` | `/api/orders/:id`                | Edit order fields (items, customer, delivery, payment method, comment)    |
-| `PATCH` | `/api/orders/:id/status`         | Update fulfillment status                                                 |
-| `PATCH` | `/api/orders/:id/payment-status` | Update payment status and optional transaction id                         |
-| `PATCH` | `/api/orders/:id/ttn`            | Set Nova Post TTN                                                         |
+| `GET`   | `/orders`                    | Paginated orders list with filters by `order_status` and `payment_status` |
+| `GET`   | `/orders/:id`                | Full order details                                                        |
+| `PATCH` | `/orders/:id`                | Edit order fields (items, customer, delivery, payment method, comment)    |
+| `PATCH` | `/orders/:id/status`         | Update fulfillment status                                                 |
+| `PATCH` | `/orders/:id/payment-status` | Update payment status and optional transaction id                         |
+| `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN                                                         |
+
+### Public endpoints
+
+| Method | Path                                  | Access                | Description                                                              |
+| ------ | ------------------------------------- | --------------------- | ------------------------------------------------------------------------ |
+| `GET`  | `/orders/lookup/:orderNumber?token=…` | public, HMAC token    | Payment status of an order (`order_number`, `payment_method`, `payment_status`, `total_price`) for the checkout success page — see `LIQPAY_FLOW.md` |
 
 ---
 
-## Admin `PATCH /api/orders/:id` rules
+## Admin `PATCH /orders/:id` rules
 
 Editable fields:
 
@@ -55,12 +64,12 @@ Payment / delivery combination:
 - Other payment methods are unrestricted at the API level.
 
 COD payment status is never automated: it stays `PENDING` until an admin sets
-`PAID` via `PATCH /api/orders/:id/payment-status` once Nova Post remits the money.
+`PAID` via `PATCH /orders/:id/payment-status` once Nova Post remits the money.
 Setting the TTN does not change it.
 
 ---
 
-## `PATCH /api/orders/:id/status` — payment side effect
+## `PATCH /orders/:id/status` — payment side effect
 
 `order_status` and `payment_status` are otherwise independent, but cancelling an
 order also recalculates the payment status
@@ -89,6 +98,11 @@ customer account, the admin panel, reports and the PDF invoice.
   (`EmailService.sendCancelledOrderPaidNotification`) so an admin can refund it.
 - **failed** → nothing is written; `VOIDED` is preserved rather than being
   overwritten with `FAILED`.
+
+The complete LiqPay sequence — checkout payload, callback verification, why
+`result_url` carries no status, and the public token-protected
+`GET /orders/lookup/:orderNumber?token=…` payment-status endpoint used by
+the checkout success page — is documented in `src/docs/LIQPAY_FLOW.md`.
 
 See `docs/architecture/state-machines.md` and TD-0003 in the `fillando-meta`
 repository.

@@ -77,10 +77,20 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 | `applied_discount`        | `AppliedDiscount` \| null  | nullable — coupon snapshot captured at checkout               |
 | `payment_method`          | `PaymentMethod` enum       | required — `COD` only with `NOVA_POST` / `COURIER` delivery   |
 | `payment_status`          | `PaymentStatus` enum       | default: `PENDING`                                            |
+| `payment_transaction_id`  | string \| null             | nullable — gateway transaction id (LiqPay `transaction_id` / `payment_id`), or set by admin via `PATCH /orders/:id/payment-status` |
 | `delivery_method`         | `DeliveryMethod` enum      | required                                                      |
 | `delivery_address`        | `DeliveryAddress` \| null  | nullable — depends on delivery method                         |
+| `nova_post_ttn`           | string \| null             | nullable — Nova Post tracking number, set via `PATCH /orders/:id/ttn` |
+| `order_status`            | `OrderStatus` enum         | default: `NEW` — fulfillment status, independent of `payment_status` (see `ORDER_ADMIN_API.md`) |
 | `comment`                 | string \| null             | optional                                                      |
 | `createdAt` / `updatedAt` | Date                       | auto-managed (timestamps)                                     |
+
+Indexes: `user_id`, `order_status`, `payment_status` (plus the unique `order_number`).
+
+There is **no** stored token for the public payment-status lookup
+(`GET /orders/lookup/:orderNumber?token=…`). The token is derived on every request as
+`HMAC-SHA256(PAYMENT_ENCRYPTION_KEY, 'order-lookup:' + order_number)` (hex, first 32 chars),
+so nothing about it lives in this collection. See `src/docs/LIQPAY_FLOW.md`.
 
 #### Embedded: `OrderItem` (`_id: false`)
 
@@ -104,7 +114,7 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 | `discount_percent` | number                        | required — `0..100`                           |
 | `discount_amount`  | number                        | required — absolute amount at checkout moment |
 
-Admin update behavior (`PATCH /api/orders/:id`, ADMIN only):
+Admin update behavior (`PATCH /orders/:id`, ADMIN only):
 
 - `items` are rebuilt from the current product-variant catalog (`name`, `sku`, `vendor_sku`, `price`, first `image`)
 - `subtotal_price` is recalculated as the sum of line totals (`price * quantity`)

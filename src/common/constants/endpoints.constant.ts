@@ -82,6 +82,7 @@ export const ENDPOINTS = {
 		CREATE: '/',
 		MY: '/me',
 		MY_BY_ID: '/me/:id',
+		LOOKUP: '/lookup/:orderNumber',
 		GET_ALL: '/',
 		GET_BY_ID: '/:id',
 		UPDATE: '/:id',

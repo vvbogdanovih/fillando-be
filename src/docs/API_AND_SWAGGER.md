@@ -161,6 +161,8 @@ Non-exhaustive — see `app.module.ts` for the full list (16 feature modules) an
 | `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)`    |
 | `ProductModule`  | `/products`   | `JwtAuthGuard` only — no role check (see RBAC.md) |
 | `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`                 |
+| `OrderModule`    | `/orders`     | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)` on admin routes; `POST /` uses `OptionalJwtAuthGuard` (guest checkout). Public read: `GET /orders/lookup/:orderNumber?token=…` — no guard, gated by an HMAC token (see `LIQPAY_FLOW.md`) |
+| `LiqpayModule`   | `/liqpay`     | Public — `POST /checkout` and `POST /callback` (LiqPay signature verified in the service), see `LIQPAY_FLOW.md` |
 
 `ProductModule` imports `NumbersModule` and `CategoryModule` — it does not import `VendorModule`.
 

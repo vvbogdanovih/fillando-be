@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { ScheduleModule } from '@nestjs/schedule'
 import { LoggerModule } from 'nestjs-pino'
+import { stdSerializers } from 'pino-http'
 
 import { AuthModule } from './modules/auth/auth.module'
 import { VendorModule } from './modules/vendor/vendor.module'
@@ -31,7 +32,20 @@ import { ENV } from './common/constants'
 					ENV.NODE_ENV !== 'production'
 						? { target: 'pino-pretty', options: { colorize: true } }
 						: undefined,
-				autoLogging: true
+				autoLogging: true,
+				// The order payment-status lookup carries its access token in the query string
+				// and is polled by the success page — keep it (and auth material) out of logs.
+				redact: {
+					paths: ['req.query.token', 'req.headers.cookie', 'req.headers.authorization'],
+					censor: '[redacted]'
+				},
+				serializers: {
+					req: req => {
+						const serialized = stdSerializers.req(req)
+						serialized.url = serialized.url.replace(/([?&]token=)[^&]*/, '$1[redacted]')
+						return serialized
+					}
+				}
 			}
 		}),
 		MongooseModule.forRoot(ENV.DATABASE_URL),

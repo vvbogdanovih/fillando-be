@@ -10,7 +10,7 @@ import {
 	Res,
 	UseGuards
 } from '@nestjs/common'
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
@@ -30,6 +30,10 @@ import { GenerateInvoiceDto } from './dto/generate-invoice.dto'
 import { GenerateReportDto } from './dto/generate-report.dto'
 import { SendVendorEmailDto } from './dto/send-vendor-email.dto'
 import { OrderListResponseDto, OrderResponseDto } from './dto/order-response.dto'
+import { CreateOrderResponseDto } from './dto/create-order-response.dto'
+import { OrderLookupParamsDto } from './dto/order-lookup-params.dto'
+import { OrderLookupQueryDto } from './dto/order-lookup-query.dto'
+import { OrderPaymentStatusResponseDto } from './dto/order-payment-status-response.dto'
 
 @Controller(ENDPOINTS.ORDERS.BASE)
 @ApiTags(ENDPOINTS.ORDERS.BASE)
@@ -39,6 +43,7 @@ export class OrderController {
 	@Post(ENDPOINTS.ORDERS.CREATE)
 	@UseGuards(OptionalJwtAuthGuard)
 	@ApiOperation(API_OPERATION.ORDERS.CREATE)
+	@ApiCreatedResponse({ type: CreateOrderResponseDto })
 	create(@Body() dto: CreateOrderDto, @Req() req: Request) {
 		const userId = (req.user as JWTPayload | undefined)?.id
 		return this.orderService.create(dto, userId)
@@ -83,6 +88,16 @@ export class OrderController {
 	findMyOrderById(@Req() req: Request, @Param('id') id: string) {
 		const userId = (req.user as JWTPayload).id
 		return this.orderService.findMyOrderById(userId, id)
+	}
+
+	@Get(ENDPOINTS.ORDERS.LOOKUP)
+	@ApiOperation(API_OPERATION.ORDERS.LOOKUP)
+	@ApiOkResponse({ type: OrderPaymentStatusResponseDto })
+	lookupPaymentStatus(
+		@Param() params: OrderLookupParamsDto,
+		@Query() query: OrderLookupQueryDto
+	) {
+		return this.orderService.getPaymentStatusPublic(params.orderNumber, query.token)
 	}
 
 	@Get(ENDPOINTS.ORDERS.GET_BY_ID)

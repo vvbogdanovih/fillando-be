@@ -2,6 +2,8 @@
 
 ## 6. Coupon enumeration attack
 
+> **Статус: ✅ ВИПРАВЛЕНО (2026-09-03).** `POST /discount-coupons/validate` — 20 запитів/хв на IP (`@nestjs/throttler`, див. `API_AND_SWAGGER.md` §4a).
+
 **Файл:** `src/modules/discount-coupon/discount-coupon.controller.ts`
 
 **Проблема:**
@@ -60,6 +62,8 @@ if (q?.trim()) filter.code = { $regex: q.trim().toUpperCase(), $options: 'i' }
 
 ## 9. Відсутній rate limiting на auth ендпоінтах
 
+> **Статус: ✅ ВИПРАВЛЕНО (2026-09-03).** `/auth/login`, `/auth/register` — 10/хв, `/auth/refresh` — 30/хв на IP (числа з plan-0003, а не 5/15хв з цього аудиту — свідоме рішення плану).
+
 **Файл:** `src/modules/auth/auth.controller.ts` — всі ендпоінти
 
 **Проблема:**
@@ -114,6 +118,8 @@ if (q?.trim()) filter.code = { $regex: q.trim().toUpperCase(), $options: 'i' }
 ---
 
 ## 12. Order creation DoS
+
+> **Статус: ✅ ВИПРАВЛЕНО (2026-09-03).** `POST /orders` — 10/хв на IP; `POST /liqpay/checkout` — 10/хв.
 
 **Файл:** `src/modules/order/order.controller.ts`
 

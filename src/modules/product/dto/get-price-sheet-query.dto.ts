@@ -5,7 +5,7 @@ import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validato
 export class GetPriceSheetQueryDto {
 	@ApiPropertyOptional({
 		example: 'PLA',
-		description: 'Search by product name, vendor article, SKU or attribute value'
+		description: 'Search by product name, SKU or attribute value'
 	})
 	@IsOptional()
 	@IsString()

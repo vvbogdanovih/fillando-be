@@ -25,8 +25,6 @@ interface PriceSheetRaw {
 	slug: string
 	v_value: string | null
 	sku: string
-	vendor_product_sku?: string
-	prom_id?: string
 	price: number
 	stock?: number
 	stock_updated_at?: Date | null
@@ -73,7 +71,10 @@ export class ProductService {
 		return this.productRepository.findAll({})
 	}
 
-	/** Flat, paginated variant list for the public price-sheet table. */
+	/**
+	 * Flat, paginated variant list for the public price-sheet table. The repository already
+	 * restricts rows to ACTIVE variants and to public fields; this mapper only reshapes them.
+	 */
 	async getPriceSheet(query: GetPriceSheetQueryDto) {
 		const { q, page = 1, limit = 50 } = query
 		const { items, total } = await this.productVariantRepository.findPriceSheet({
@@ -146,6 +147,7 @@ export class ProductService {
 		})
 	}
 
+	/** Public product page. Non-ACTIVE variants are a 404 here (repository filters them). */
 	async getVariantBySlug(slug: string) {
 		const result = await this.productVariantRepository.findVariantWithProduct(slug)
 		if (!result) throw new NotFoundException('Variant not found')
@@ -153,9 +155,15 @@ export class ProductService {
 	}
 
 	async findById(id: string) {
+		this.assertObjectId(id, 'Product not found')
 		const product = await this.productRepository.findById(id)
 		if (!product) throw new NotFoundException('Product not found')
 		return product
+	}
+
+	/** A malformed id is "not found", never a BSONError 500. */
+	private assertObjectId(id: string, message: string): void {
+		if (!Types.ObjectId.isValid(id)) throw new NotFoundException(message)
 	}
 
 	async create(dto: CreateProductDto) {
@@ -258,13 +266,20 @@ export class ProductService {
 		}
 	}
 
+	/** Admin only — returns full variant documents (incl. supplier fields) for editing. */
 	async getVariants(productId: string) {
+		if (!Types.ObjectId.isValid(productId)) throw new NotFoundException('Product not found')
 		const product = await this.productRepository.findById(productId)
 		if (!product) throw new NotFoundException('Product not found')
 		return this.productVariantRepository.findByProductId(productId)
 	}
 
+	/** Admin only — returns the full variant document (incl. supplier fields) for editing. */
 	async getVariant(productId: string, variantId: string) {
+		// A malformed id must be a 404, not a BSONError-turned-500 from `new ObjectId()`.
+		if (!Types.ObjectId.isValid(productId) || !Types.ObjectId.isValid(variantId)) {
+			throw new NotFoundException('Variant not found')
+		}
 		const variant = await this.productVariantRepository.findOne({
 			_id: new Types.ObjectId(variantId),
 			product_id: new Types.ObjectId(productId)
@@ -292,6 +307,8 @@ export class ProductService {
 	}
 
 	async updateVariant(productId: string, variantId: string, dto: UpdateVariantDto) {
+		this.assertObjectId(productId, 'Product not found')
+		this.assertObjectId(variantId, 'Variant not found')
 		const product = await this.productRepository.findById(productId)
 		if (!product) throw new NotFoundException('Product not found')
 
@@ -315,6 +332,8 @@ export class ProductService {
 	}
 
 	async deleteVariant(productId: string, variantId: string) {
+		this.assertObjectId(productId, 'Product not found')
+		this.assertObjectId(variantId, 'Variant not found')
 		const product = await this.productRepository.findById(productId)
 		if (!product) throw new NotFoundException('Product not found')
 
@@ -327,6 +346,8 @@ export class ProductService {
 	}
 
 	async setVariantImages(productId: string, variantId: string, dto: SetVariantImagesDto) {
+		this.assertObjectId(productId, 'Product not found')
+		this.assertObjectId(variantId, 'Variant not found')
 		const product = await this.productRepository.findById(productId)
 		if (!product) throw new NotFoundException('Product not found')
 

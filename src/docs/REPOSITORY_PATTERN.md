@@ -218,3 +218,4 @@ Any other `MongoServerError` is not caught by this filter and will surface as a 
 - **Repositories contain no business logic** — no throwing HTTP exceptions, no password hashing, no token signing.
 - **Domain-specific finders** belong on the concrete repository class (e.g. `findByEmail`, `findBySlug`), not on the base.
 - **Schemas** stay in `src/database/mongoose/schemas/`. Repositories stay in `src/database/mongoose/repositories/`.
+- **Public projections are a sanctioned repository dependency.** A repository that feeds a public endpoint may import the allowlist/mapper from the owning module (e.g. `src/modules/product/product-public.mappers.ts`) so the query itself never selects supplier fields — the only feature-module import a repository is allowed to have.

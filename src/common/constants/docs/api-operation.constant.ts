@@ -105,8 +105,9 @@ export const API_OPERATION = {
 	},
 	PRODUCTS: {
 		GET_ALL: {
-			summary: 'Get all products',
-			description: 'Get all products'
+			summary: 'List all products (admin)',
+			description:
+				'Admin-only, unpaginated list of every product for the admin catalogue screen. Public storefront must use /products/catalog.'
 		},
 		GET_BY_ID: {
 			summary: 'Get product by id',
@@ -134,12 +135,14 @@ export const API_OPERATION = {
 			description: 'Replace the images array on a specific product variant.'
 		},
 		GET_VARIANTS: {
-			summary: 'Get product variants',
-			description: 'Get all variants belonging to a product.'
+			summary: 'Get product variants (admin)',
+			description:
+				'Admin-only; returns the full variant documents of a product including supplier identifiers (vendor_product_sku, prom_id).'
 		},
 		GET_VARIANT: {
-			summary: 'Get variant by id',
-			description: 'Get a single product variant by id.'
+			summary: 'Get variant by id (admin)',
+			description:
+				'Admin-only; returns the full variant document including supplier identifiers (vendor_product_sku, prom_id).'
 		},
 		ADD_VARIANT: {
 			summary: 'Add variant to product',
@@ -163,27 +166,29 @@ export const API_OPERATION = {
 				'Full-text search across product names, descriptions, and attributes. Also matches variant SKU prefixes. Returns paginated results.'
 		},
 		VARIANT_SLUGS: {
-			summary: 'Get all variant slugs',
-			description: 'Returns minimal variant data for sitemap generation (slug and updatedAt).'
+			summary: 'Get active variant slugs',
+			description:
+				'Returns slug and updatedAt of every ACTIVE variant for sitemap generation (draft/archived are excluded).'
 		},
 		VARIANT_COUNT: {
-			summary: 'Get variants count',
-			description: 'Returns total number of product variants.'
+			summary: 'Get active variants count',
+			description:
+				'Returns the number of ACTIVE product variants — the same set as /variants/slugs (used as the sitemap cache key).'
 		},
 		PRICE_SHEET: {
 			summary: 'Price sheet (flat variant list)',
 			description:
-				'Public paginated flat list of all product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, vendor article, SKU or attribute value.'
+				'Public paginated flat list of ACTIVE product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, SKU or attribute value. Response is a fixed public projection — no supplier identifiers.'
 		},
 		PRICE_LIST_PDF: {
-			summary: 'Generate wholesale price list PDF',
+			summary: 'Generate wholesale price list PDF (admin)',
 			description:
-				'Admin only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.'
+				'Admin-only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.'
 		},
 		BY_SLUG: {
 			summary: 'Get variant by slug',
 			description:
-				'Returns full variant info, parent product, and sibling variants by variant slug.'
+				'Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product and category. Draft/archived variants respond 404.'
 		}
 	},
 	UPLOAD: {

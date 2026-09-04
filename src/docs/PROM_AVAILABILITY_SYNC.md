@@ -132,7 +132,7 @@ matched the stored one; `price` itself is only written when it actually changes.
 
 ## API Endpoint
 
-### `GET /api/prom/sync-availability` (SSE)
+### `GET /prom/sync-availability` (SSE)
 
 **Auth:** JWT required, `ADMIN` role only (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`).
 

@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { API_OPERATION } from 'src/common/constants/docs/api-operation.constant'
 import { ENDPOINTS } from 'src/common/constants/endpoints.constant'
@@ -42,6 +43,8 @@ export class DiscountCouponController {
 	}
 
 	@Post(ENDPOINTS.DISCOUNT_COUPONS.VALIDATE)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 20, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.DISCOUNT_COUPONS.VALIDATE)
 	validate(@Body() dto: ValidateDiscountCouponDto) {
 		return this.discountCouponService.validateCoupon(dto.code)

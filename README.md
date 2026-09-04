@@ -11,7 +11,7 @@ NestJS REST API for the Fillando e-commerce platform. MongoDB via Mongoose. JWT 
 
 - Node.js 18+
 - Yarn
-- Docker (for local MongoDB)
+- Docker (only for the disposable test MongoDB — local dev uses the remote `DATABASE_URL`)
 
 ---
 
@@ -24,10 +24,7 @@ yarn install
 # 2. Copy and fill environment variables
 cp .env.example .env
 
-# 3. Start MongoDB
-docker compose up -d
-
-# 4. Start the dev server
+# 3. Start the dev server (connects to DATABASE_URL from .env)
 yarn start:dev
 ```
 
@@ -75,7 +72,9 @@ yarn format          # Prettier format
 yarn test            # Unit tests
 yarn test:watch      # Unit tests in watch mode
 yarn test:cov        # Unit tests with coverage
-yarn test:e2e        # End-to-end tests
+yarn test:db:up      # Disposable MongoDB 7 for integration tests (127.0.0.1:27018)
+yarn test:integration # *.int-spec.ts against it
+yarn test:db:down    # Stop and remove it (tmpfs, nothing to clean up)
 ```
 
 ---

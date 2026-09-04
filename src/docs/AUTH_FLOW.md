@@ -16,7 +16,7 @@ Both result in the same token pair being issued and set as `httpOnly` cookies.
 
 Both cookies are `httpOnly`. The access token cookie is `sameSite: lax`; the refresh token cookie is `sameSite: strict`.
 
-The access JWT still expires per `JWT_EXPIRATION`; the **browser cookie** `maxAge` for the access token matches the refresh cookie (`REFRESH_JWT_EXPIRATION`) so the client can keep calling `POST /api/auth/refresh` until the refresh window ends.
+The access JWT still expires per `JWT_EXPIRATION`; the **browser cookie** `maxAge` for the access token matches the refresh cookie (`REFRESH_JWT_EXPIRATION`) so the client can keep calling `POST /auth/refresh` until the refresh window ends.
 
 The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 
@@ -24,7 +24,7 @@ The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 
 ## Flows
 
-### Register (`POST /api/auth/register`)
+### Register (`POST /auth/register`)
 
 1. Check no user exists with that email → `409` if duplicate.
 2. Validate `password === confirmPassword` → `409` if mismatch.
@@ -34,7 +34,7 @@ The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 6. Store refresh token (see [Refresh Token Storage](#refresh-token-storage)).
 7. Set both cookies on the response.
 
-### Login (`POST /api/auth/login`)
+### Login (`POST /auth/login`)
 
 1. Look up user by email → `401` if not found or has no password (OAuth-only account).
 2. Verify password with `argon2.verify` + `PASSWORD_PEPPER` → `401` on mismatch.
@@ -42,7 +42,7 @@ The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 4. Store refresh token.
 5. Set both cookies.
 
-### Google OAuth (`GET /api/auth/google` → `GET /api/auth/google/callback`)
+### Google OAuth (`GET /auth/google` → `GET /auth/google/callback`)
 
 1. Browser is redirected to Google consent screen via `GoogleStrategy` (scope: `email`, `profile`).
 2. Google redirects to `GOOGLE_CALLBACK_URL` with a code; Passport exchanges it for a profile.
@@ -51,7 +51,7 @@ The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 5. Store refresh token.
 6. Redirect browser to `FRONTEND_URL/auth/success` with cookies set.
 
-### Token Refresh (`POST /api/auth/refresh`)
+### Token Refresh (`POST /auth/refresh`)
 
 1. Read refresh token from `REFRESH_TOKEN_NAME` cookie → `401` if absent.
 2. Hash it (SHA256) and look up in `refresh_tokens` → `401` if not found (already used or never existed).
@@ -62,13 +62,13 @@ The JWT payload (`JWTPayload`) contains: `id`, `email`, `name`, `role`.
 7. Store the new refresh token.
 8. Set both cookies.
 
-### Logout (`POST /api/auth/logout`)
+### Logout (`POST /auth/logout`)
 
 1. Read refresh token from cookie.
 2. Hash it and delete from `refresh_tokens` via `deleteByTokenHash`.
 3. Clear both cookies from the response.
 
-### Get Current User (`GET /api/auth/me`) — `OptionalJwtAuthGuard`
+### Get Current User (`GET /auth/me`) — `OptionalJwtAuthGuard`
 
 1. `OptionalJwtAuthGuard` validates the JWT from the `ACCSESS_TOKEN_NAME` cookie if present, but does not reject the request if it's missing or invalid.
 2. If there's no valid `req.user`, returns `{ message: 'Not authenticated', user: null }` (no `401`).

@@ -10,6 +10,7 @@ import {
 	Res,
 	UseGuards
 } from '@nestjs/common'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
@@ -36,7 +37,10 @@ export class ProductController {
 		private readonly priceListService: PriceListService
 	) {}
 
+	// Unpaginated full dump for the admin catalogue screen — the storefront uses /catalog.
 	@Get(ENDPOINTS.PRODUCTS.GET_ALL)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_ALL)
 	findAll() {
 		return this.productService.findAll()
@@ -67,12 +71,13 @@ export class ProductController {
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.PRICE_SHEET)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 20, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_SHEET)
 	getPriceSheet(@Query() query: GetPriceSheetQueryDto) {
 		return this.productService.getPriceSheet(query)
 	}
 
-	// NOTE: unlike the write endpoints below, this one is genuinely admin-only.
 	// JwtAuthGuard must come first — RolesGuard reads req.user.role, which only exists
 	// once the JWT has been validated.
 	@Post(ENDPOINTS.PRODUCTS.PRICE_LIST_PDF)
@@ -102,40 +107,50 @@ export class ProductController {
 	}
 
 	@Post(ENDPOINTS.PRODUCTS.VALIDATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.VALIDATE)
 	validate(@Body() dto: ValidateProductDto) {
 		return this.productService.validate(dto)
 	}
 
 	@Post(ENDPOINTS.PRODUCTS.CREATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.CREATE)
 	create(@Body() dto: CreateProductDto) {
 		return this.productService.create(dto)
 	}
 
+	// Raw variant documents carry supplier identifiers (vendor_product_sku, prom_id) that the
+	// admin editor needs but the public API must never expose — hence ADMIN-only.
 	@Get(ENDPOINTS.PRODUCTS.VARIANTS)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_VARIANTS)
 	getVariants(@Param('id') id: string) {
 		return this.productService.getVariants(id)
 	}
 
 	@Get(ENDPOINTS.PRODUCTS.VARIANT)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_VARIANT)
 	getVariant(@Param('id') id: string, @Param('variantId') variantId: string) {
 		return this.productService.getVariant(id, variantId)
 	}
 
 	@Post(ENDPOINTS.PRODUCTS.VARIANTS)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.ADD_VARIANT)
 	addVariant(@Param('id') id: string, @Body() dto: AddVariantDto) {
 		return this.productService.addVariant(id, dto)
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.VARIANT)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.UPDATE_VARIANT)
 	updateVariant(
 		@Param('id') id: string,
@@ -146,14 +161,16 @@ export class ProductController {
 	}
 
 	@Delete(ENDPOINTS.PRODUCTS.VARIANT)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.DELETE_VARIANT)
 	deleteVariant(@Param('id') id: string, @Param('variantId') variantId: string) {
 		return this.productService.deleteVariant(id, variantId)
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.PATCH_VARIANT_IMAGES)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.PATCH_VARIANT_IMAGES)
 	setVariantImages(
 		@Param('id') id: string,
@@ -164,14 +181,16 @@ export class ProductController {
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.UPDATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.UPDATE)
 	update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
 		return this.productService.update(id, dto)
 	}
 
 	@Delete(ENDPOINTS.PRODUCTS.DELETE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.DELETE)
 	delete(@Param('id') id: string) {
 		return this.productService.delete(id)

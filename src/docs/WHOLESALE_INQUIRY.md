@@ -30,9 +30,9 @@ Collection: `wholesale_inquiries` (`src/database/mongoose/schemas/wholesale-inqu
 
 ## Endpoints
 
-Base path: `/api/wholesale-inquiries`
+Base path: `/wholesale-inquiries`
 
-### `POST /api/wholesale-inquiries/`
+### `POST /wholesale-inquiries/`
 
 Public, no auth. Body — `CreateWholesaleInquiryDto`:
 
@@ -52,12 +52,12 @@ Side effect: fire-and-forget email to `SERVICE_EMAIL`
 (`EmailService.sendWholesaleInquiryNotification`). Email failure is logged but never fails
 the request — the inquiry is already persisted.
 
-### `GET /api/wholesale-inquiries/?page=1&limit=20&status=NEW`
+### `GET /wholesale-inquiries/?page=1&limit=20&status=NEW`
 
 Admin only (`JwtAuthGuard` + `RolesGuard`, role `ADMIN`). Paginated list, newest first.
 Optional `status` filter. Response: `{ items, total, page, limit }`.
 
-### `PATCH /api/wholesale-inquiries/:id/status`
+### `PATCH /wholesale-inquiries/:id/status`
 
 Admin only. Body: `{ "status": "PROCESSED" }`. Returns the updated inquiry, 404 if not found.
 

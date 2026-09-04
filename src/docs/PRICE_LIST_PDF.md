@@ -12,12 +12,11 @@ is admin-only, unpaginated, and returns a binary PDF.
 
 ## Endpoint
 
-### `POST /api/products/price-list/pdf`
+### `POST /products/price-list/pdf`
 
-**Auth:** `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)` — genuinely admin-only. Note the
-other write endpoints on `ProductController` still only use `JwtAuthGuard` (see [RBAC.md](./RBAC.md));
-do not copy that pattern here. Guard order matters: `RolesGuard` reads `req.user.role`, which only
-exists after `JwtAuthGuard` has validated the token.
+**Auth:** `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)` — admin-only, like every other write
+endpoint on `ProductController` (see [RBAC.md](./RBAC.md)). Guard order matters: `RolesGuard` reads
+`req.user.role`, which only exists after `JwtAuthGuard` has validated the token.
 
 **Body** (`GeneratePriceListDto`):
 

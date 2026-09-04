@@ -18,24 +18,28 @@ yarn lint                # ESLint with auto-fix
 yarn format              # Prettier format
 
 # Testing
-yarn test                # Run unit tests
+yarn test                # Run unit tests (*.spec.ts, no DB — includes *.controller.rbac.spec.ts)
 yarn test:watch          # Unit tests in watch mode
 yarn test:cov            # With coverage report
-yarn test:e2e            # End-to-end tests
-
-# Database
-docker compose up -d     # Start MongoDB container
+yarn test:db:up          # Start disposable MongoDB 7 for integration tests (127.0.0.1:27018)
+yarn test:integration    # Run *.int-spec.ts against it (test/jest-integration.json)
+yarn test:db:down        # Stop and remove it (data lives on tmpfs, discarded automatically)
 ```
+
+Integration specs connect via `test/integration-db.ts` (`connectTestDb` / `dropTestDb`,
+`TEST_DATABASE_URL`, default `mongodb://127.0.0.1:27018/fillando-test`) — never to
+`DATABASE_URL`. There is no dev `docker-compose.yml`; local development uses the remote
+`DATABASE_URL` from `.env`, and `docker-compose.test.yml` exists only for the test database.
 
 To run a single test file: `yarn test -- path/to/file.spec.ts`
 
 ## Architecture
 
-NestJS backend with MongoDB (via Mongoose). Global API prefix is `/api`. Swagger docs at `/api/swagger`.
+NestJS backend with MongoDB (via Mongoose). No global prefix in the app (nginx adds `/api` in production). Swagger at `/swagger`.
 
 **Module layout under `src/`:**
 
-- `app.module.ts` — root module; imports LoggerModule, MongooseModule, AuthModule, VendorModule, CategoryModule, ProductModule, UploadModule, NumbersModule, CartModule, EmailModule, PaymentDetailsModule, PaymentProvidersModule, LiqpayModule, NovaPostModule, PromModule, OrderModule, DiscountCouponModule, UsersModule
+- `app.module.ts` — root module; imports LoggerModule, MongooseModule, AuthModule, VendorModule, CategoryModule, ProductModule, UploadModule, NumbersModule, CartModule, EmailModule, PaymentDetailsModule, PaymentProvidersModule, LiqpayModule, NovaPostModule, PromModule, OrderModule, DiscountCouponModule, UsersModule, WholesaleInquiryModule
 - `common/` — shared code: configs, constants, decorators, guards, passport strategies, types, services
 - `database/mongoose/schemas/` — Mongoose schema classes (one file per domain)
 - `database/mongoose/repositories/` — data access layer; `base.repository.ts` + concrete repos
@@ -61,12 +65,12 @@ FRONTEND_URL
 PORT
 NODE_ENV / LOG_LEVEL
 RUN_CRON (optional, default false — enables in-process scheduled jobs; set true on one instance only)
-# Docker vars (for docker-compose):
-DOCKER_MONGO_USER / DOCKER_MONGO_PASSWORD / DOCKER_MONGO_DB
-DOCKER_DB_PORT_EXTERNAL / DOCKER_DB_LOCAL_PATH
+INTERNAL_API_TOKEN (optional, min 32 chars — requests with `X-Internal-Token` bypass rate limits; shared with the frontend)
 ```
 
-**Authentication** uses JWT (from `access_token` cookie) + Google OAuth. `JwtAuthGuard` is the standard guard for protected routes. Access and refresh tokens are set as `httpOnly` cookies. Refresh tokens are stored hashed (SHA256) in `refresh_tokens` collection with IP/UA tracking. Token lifetimes are configured via `JWT_EXPIRATION` / `REFRESH_JWT_EXPIRATION` (in minutes) in `.env`.
+**Authentication** uses JWT (from `access_token` cookie) + Google OAuth. `JwtAuthGuard` is the standard guard for protected routes. Admin-only endpoints add `RolesGuard` after it — `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`; `RolesGuard` is default-deny (no `@Roles` metadata or no `req.user.role` → 403) and `@Roles` accepts only `Role[]`, not strings (see `src/docs/RBAC.md`). Access and refresh tokens are set as `httpOnly` cookies. Refresh tokens are stored hashed (SHA256) in `refresh_tokens` collection with IP/UA tracking. Token lifetimes are configured via `JWT_EXPIRATION` / `REFRESH_JWT_EXPIRATION` (in minutes) in `.env`.
+
+**Rate limiting** is opt-in per handler (`@UseGuards(ThrottlerGuard)` + `@Throttle(...)`, no global guard) — see `src/docs/API_AND_SWAGGER.md` §4a for the limits table and the `X-Internal-Token` bypass.
 
 **Enums** (`Role`, `AuthMethod`) are defined in `src/common/types/enums.ts` — import from there, not from any ORM client.
 

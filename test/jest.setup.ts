@@ -27,7 +27,8 @@ const defaults: Record<string, string> = {
 	PAYMENT_ENCRYPTION_KEY: 'test-payment-encryption-key-32-chars',
 	PUBLIC_API_URL: 'http://localhost:3000',
 	FRONTEND_URL: 'http://localhost:9000',
-	PORT: '3000'
+	PORT: '3000',
+	INTERNAL_API_TOKEN: 'test-internal-api-token-32-characters-long'
 }
 
 for (const [key, value] of Object.entries(defaults)) {

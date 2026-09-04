@@ -4,6 +4,10 @@ import { HydratedDocument, Model, Types } from 'mongoose'
 import { ProductVariant } from '../schemas/product-variant.schema'
 import { ProductStatus } from 'src/common/types/enums'
 import { BaseRepository } from './base.repository'
+import {
+	PRICE_SHEET_PUBLIC_PROJECTION,
+	toPublicVariant
+} from 'src/modules/product/product-public.mappers'
 import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
 
 @Injectable()
@@ -41,19 +45,32 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		return this.findAll({ prom_id: { $exists: true, $nin: [null, ''] } })
 	}
 
+	/** Public (sitemap). Only ACTIVE variants have a public page, so only they get a URL. */
 	findAllSlugs(): Promise<Array<{ slug: string; updatedAt: Date }>> {
 		return this.model
-			.find({}, { slug: 1, updatedAt: 1, _id: 0 })
+			.find({ status: ProductStatus.ACTIVE }, { slug: 1, updatedAt: 1, _id: 0 })
 			.lean<Array<{ slug: string; updatedAt: Date }>>()
 			.exec()
 	}
 
+	/**
+	 * Public. The storefront uses this count as the cache key for the sitemap built from
+	 * {@link findAllSlugs}, so it has to count the same set — ACTIVE only — or archiving a
+	 * variant would never invalidate the sitemap.
+	 */
 	async countAll(): Promise<number> {
-		return this.model.countDocuments().exec()
+		return this.model.countDocuments({ status: ProductStatus.ACTIVE }).exec()
 	}
 
+	/**
+	 * Public product page. DRAFT/ARCHIVED variants are not found here on purpose, and the
+	 * `variant` part goes through {@link toPublicVariant} so supplier fields never leak.
+	 */
 	async findVariantWithProduct(slug: string) {
-		const variant = await this.model.findOne({ slug }).lean().exec()
+		const variant = await this.model
+			.findOne({ slug, status: ProductStatus.ACTIVE })
+			.lean()
+			.exec()
 		if (!variant) return null
 
 		const [product, siblings, category] = await Promise.all([
@@ -65,16 +82,18 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				),
 			this.model
 				.find(
-					{ product_id: variant.product_id },
+					{ product_id: variant.product_id, status: ProductStatus.ACTIVE },
 					{
 						_id: 1,
 						name: 1,
 						slug: 1,
+						sku: 1,
 						price: 1,
 						v_value: 1,
 						images: 1,
 						stock: 1,
-						price_updated_at: 1
+						price_updated_at: 1,
+						status: 1
 					}
 				)
 				.lean()
@@ -87,20 +106,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		if (!product) return null
 
 		return {
-			variant: {
-				id: String(variant._id),
-				name: variant.name,
-				slug: variant.slug,
-				sku: variant.sku,
-				price: variant.price,
-				price_updated_at: variant.price_updated_at ?? null,
-				stock: variant.stock,
-				images: variant.images,
-				v_value: variant.v_value,
-				vendor_product_sku: variant.vendor_product_sku,
-				prom_id: variant.prom_id,
-				status: variant.status
-			},
+			variant: toPublicVariant(variant),
 			product: {
 				id: String((product as any)._id),
 				name: (product as any).name,
@@ -108,16 +114,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				attributes: (product as any).attributes,
 				variant_type: (product as any).variant_type
 			},
-			siblings: siblings.map(s => ({
-				id: String((s as any)._id),
-				name: s.name,
-				slug: s.slug,
-				price: s.price,
-				price_updated_at: s.price_updated_at ?? null,
-				stock: s.stock,
-				v_value: s.v_value,
-				images: s.images
-			})),
+			// Same public allowlist as `variant` — one projection for the whole public page.
+			siblings: siblings.map(s => toPublicVariant(s)),
 			category_slug: (category as any)?.slug ?? null,
 			category_name: (category as any)?.name ?? null
 		}
@@ -215,11 +213,17 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		}
 	}
 
+	/**
+	 * Public price sheet. ACTIVE variants only; the search term is matched against public
+	 * fields only (never `vendor_product_sku` — that would be an oracle for supplier SKUs)
+	 * and rows are shaped by {@link PRICE_SHEET_PUBLIC_PROJECTION}.
+	 */
 	async findPriceSheet(params: { q?: string; page: number; limit: number }) {
 		const { q, page, limit } = params
 		const skip = (page - 1) * limit
 
 		const pipeline: any[] = [
+			{ $match: { status: ProductStatus.ACTIVE } },
 			{
 				$lookup: {
 					from: 'products',
@@ -237,12 +241,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			const rx = { $regex: escaped, $options: 'i' }
 			pipeline.push({
 				$match: {
-					$or: [
-						{ 'product.name': rx },
-						{ vendor_product_sku: rx },
-						{ sku: rx },
-						{ 'product.attributes.v': rx }
-					]
+					$or: [{ 'product.name': rx }, { sku: rx }, { 'product.attributes.v': rx }]
 				}
 			})
 		}
@@ -265,24 +264,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					items: [
 						{ $skip: skip },
 						{ $limit: limit },
-						{
-							$project: {
-								_id: 0,
-								id: { $toString: '$_id' },
-								product_name: '$product.name',
-								slug: 1,
-								v_value: 1,
-								sku: 1,
-								vendor_product_sku: 1,
-								prom_id: 1,
-								price: 1,
-								stock: 1,
-								stock_updated_at: 1,
-								image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
-								attributes: '$product.attributes',
-								variant_type: '$product.variant_type'
-							}
-						}
+						{ $project: PRICE_SHEET_PUBLIC_PROJECTION }
 					],
 					meta: [{ $count: 'total' }]
 				}

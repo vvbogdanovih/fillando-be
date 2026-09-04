@@ -36,6 +36,17 @@
 
 ## 3. Відсутня перевірка ownership на vendor/product мутаціях
 
+> **Статус: ✅ ВИПРАВЛЕНО (2026-09-03).** Обрано перевірку ролі (`@Roles(Role.ADMIN)`), а не
+> ownership: вендори та продукти — сутності каталогу, що належать магазину, а не окремим
+> користувачам, тому поняття «власник ресурсу» до них не застосовується. Усі write-ендпоінти
+> `VendorModule` (create, update, delete) та `ProductModule` (create, validate, update, delete,
+> операції з варіантами, зображення варіантів, price-list PDF) закриті
+> `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`. Додатково закрито всі
+> ендпоінти `/upload/*` (presign, confirm, delete), які раніше вимагали лише `JwtAuthGuard`.
+> Супутні зміни: `RolesGuard` став default-deny (без `@Roles` → 403; без `req.user`/`role` →
+> 403), декоратор `@Roles` типізовано як `(...roles: Role[])` — рядкові літерали більше не
+> компілюються. Покрито тестами `*.controller.rbac.spec.ts`. Див. `src/docs/RBAC.md`.
+
 **Файли:**
 
 - `src/modules/vendor/vendor.controller.ts` (update, delete)

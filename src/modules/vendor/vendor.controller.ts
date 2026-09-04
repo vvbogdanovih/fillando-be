@@ -1,7 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Role } from 'src/common/types/enums'
 import { VendorService } from './vendor.service'
 import { CreateVendorDto } from './dto/create-vendor.dto'
 import { UpdateVendorDto } from './dto/update-vendor.dto'
@@ -31,21 +34,24 @@ export class VendorController {
 	}
 
 	@Post(ENDPOINTS.VENDORS.CREATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.VENDORS.CREATE)
 	create(@Body() dto: CreateVendorDto) {
 		return this.vendorService.create(dto)
 	}
 
 	@Patch(ENDPOINTS.VENDORS.UPDATE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.VENDORS.UPDATE)
 	update(@Param('id') id: string, @Body() dto: UpdateVendorDto) {
 		return this.vendorService.update(id, dto)
 	}
 
 	@Delete(ENDPOINTS.VENDORS.DELETE)
-	@UseGuards(JwtAuthGuard)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.VENDORS.DELETE)
 	delete(@Param('id') id: string) {
 		return this.vendorService.delete(id)

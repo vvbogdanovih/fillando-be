@@ -132,6 +132,18 @@ function buildIndex(colorDocs) {
 	return index
 }
 
+/**
+ * A refill variant, identified by the marker inside its colour value ("Clear Безбарвний
+ * Refill", FL-000253). It is skipped rather than normalized: the colour IS Clear, so matching
+ * would rewrite `v_value` to "Clear" and erase the only thing distinguishing this variant from
+ * the spooled Clear sitting next to it on the same product. TD-0002 §5.2.1 assumed the refill
+ * would be a separate product; until it is, leaving it untouched is the only lossless choice.
+ */
+function isRefillVariant(variant) {
+	const fields = [variant && variant.v_value, variant && variant.name]
+	return fields.some(f => typeof f === 'string' && /\brefill\b|рефіл/i.test(f))
+}
+
 function matchColor(index, vValue) {
 	const normalized = normalizeColorValue(vValue)
 	if (!normalized) return null
@@ -204,6 +216,7 @@ async function migrate(db) {
 	const matchedTally = new Map()
 	let skippedNoAxis = 0
 	let alreadyDone = 0
+	const refills = []
 
 	// Slugs are globally unique. Two spellings of one colour on the same product would collapse
 	// onto one address, so those are reported instead of written.
@@ -214,6 +227,16 @@ async function migrate(db) {
 		const product = productById.get(String(variant.product_id))
 		if (!product || !isColorAxis(product.variant_type)) {
 			skippedNoAxis++
+			continue
+		}
+
+		if (isRefillVariant(variant)) {
+			refills.push({
+				_id: variant._id,
+				sku: variant.sku,
+				v_value: variant.v_value,
+				product: product.name
+			})
 			continue
 		}
 
@@ -291,6 +314,18 @@ async function migrate(db) {
 			`(${considered === 0 ? 0 : Math.round((coverage / considered) * 100)}%).`
 	)
 
+	if (refills.length > 0) {
+		console.warn(
+			`\n⚠ ${refills.length} refill variant(s) SKIPPED — normalizing them would erase the marker:`
+		)
+		for (const r of refills) {
+			console.warn(`  ${r.sku} — ${JSON.stringify(r.v_value)} on "${r.product}"`)
+		}
+		console.warn(
+			'  Split the refill into its own product (TD-0002 §5.2.1 assumed one), then re-run.'
+		)
+	}
+
 	if (collisions.length > 0) {
 		console.error(`\n${collisions.length} slug collision(s) — those variants were NOT changed:`)
 		for (const c of collisions) {
@@ -314,7 +349,8 @@ async function migrate(db) {
 		unmatched_total: considered - coverage,
 		matched_by_color: Object.fromEntries([...matchedTally].sort()),
 		unmatched: [...unmatched.values()].sort((a, b) => b.count - a.count),
-		slug_collisions: collisions
+		slug_collisions: collisions,
+		skipped_refills: refills
 	})
 	const moved = changes
 		.filter(c => c.old_slug !== c.new_slug)
@@ -416,7 +452,7 @@ async function main() {
 	}
 }
 
-module.exports = { generateSlug, isColorAxis, buildIndex, matchColor }
+module.exports = { generateSlug, isColorAxis, isRefillVariant, buildIndex, matchColor }
 
 if (require.main === module) {
 	main().catch(err => {

@@ -10,6 +10,7 @@ const migration = require('../../../scripts/migrations/backfill-spool-included.j
 	LABEL: string
 	DEFAULT_VALUE: string
 	REFILL_VALUE: string
+	isRefillVariant: (variant: unknown) => boolean
 	withSpoolIncluded: (attributes: unknown) => {
 		attributes: { k: string; l: string; v: string }[] | null
 		changed: boolean
@@ -116,5 +117,31 @@ describe('withSpoolFilter', () => {
 
 	it.each([[undefined], [null]])('leaves %p alone', value => {
 		expect(migration.withSpoolFilter(value).changed).toBe(false)
+	})
+})
+
+describe('isRefillVariant', () => {
+	/**
+	 * `spool_included` is a product attribute, so it can only describe a product whose variants
+	 * agree about the packaging. In this database FL-000253 is a refill sitting next to eight
+	 * spooled colours on one product — TD-0002 §5.2.1 assumed the refill would be its own
+	 * product — so the migration has to recognise and skip it rather than assert "Так".
+	 */
+	it.each([
+		['the marker inside a colour value', { v_value: 'Clear Безбарвний Refill' }],
+		['a lower-case marker', { v_value: 'clear refill' }],
+		['the Ukrainian word', { v_value: 'Безбарвний рефіл' }],
+		['the marker in the variant name', { name: 'PETG Translucent Refill', v_value: 'Clear' }]
+	])('recognises %s', (_case, variant) => {
+		expect(migration.isRefillVariant(variant)).toBe(true)
+	})
+
+	it.each([
+		['an ordinary colour', { v_value: 'Clear Безбарвний' }],
+		['a colour that merely contains the letters', { v_value: 'Refilled Blue Refillable' }],
+		['no colour at all', { v_value: null, name: 'PLA Basic' }],
+		['an empty variant', {}]
+	])('does not flag %s', (_case, variant) => {
+		expect(migration.isRefillVariant(variant)).toBe(false)
 	})
 })

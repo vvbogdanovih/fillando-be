@@ -17,6 +17,7 @@ const seed = require('../../../scripts/migrations/seed-colors.js') as {
 const normalizer = require('../../../scripts/migrations/normalize-variant-colors.js') as {
 	generateSlug: (text: string) => string
 	isColorAxis: (variantType: unknown) => boolean
+	isRefillVariant: (variant: unknown) => boolean
 	buildIndex: (colorDocs: unknown[]) => Map<string, { name_en: string }>
 	matchColor: (index: Map<string, unknown>, value: unknown) => { name_en: string } | null
 }
@@ -185,5 +186,37 @@ describe('the duplicated generateSlug', () => {
 		// The migration writes slugs the API must reproduce on the next save; a drift here
 		// would change every address again the first time an admin edits the product.
 		expect(normalizer.generateSlug(text)).toBe(generateSlug(text))
+	})
+})
+
+describe('isRefillVariant', () => {
+	/**
+	 * The refill marker lives inside the colour value, so normalizing the variant would rewrite
+	 * `v_value` to "Clear" and erase the only thing telling it apart from the spooled Clear on
+	 * the same product. Skipping is the only lossless option until the refill becomes its own
+	 * product, as TD-0002 §5.2.1 assumed.
+	 */
+	it('recognises the refill this database actually holds', () => {
+		expect(normalizer.isRefillVariant({ v_value: 'Clear Безбарвний Refill' })).toBe(true)
+	})
+
+	it.each([
+		['its spooled sibling', { v_value: 'Clear Безбарвний' }],
+		['an ordinary colour', { v_value: 'Чорний' }],
+		['a null value', { v_value: null }]
+	])('does not flag %s', (_case, variant) => {
+		expect(normalizer.isRefillVariant(variant)).toBe(false)
+	})
+
+	it('agrees with the spool migration, which keys off the same marker', () => {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const spool = require('../../../scripts/migrations/backfill-spool-included.js') as {
+			isRefillVariant: (variant: unknown) => boolean
+		}
+		for (const value of ['Clear Безбарвний Refill', 'Безбарвний рефіл', 'Чорний', null]) {
+			expect(normalizer.isRefillVariant({ v_value: value })).toBe(
+				spool.isRefillVariant({ v_value: value })
+			)
+		}
 	})
 })

@@ -41,6 +41,17 @@ const DEFAULT_VALUE = 'Так'
 const REFILL_VALUE = 'Ні (рефіл)'
 
 /**
+ * A variant that is a refill rather than a spooled coil. In this database the distinction is
+ * carried inside the colour value ("Clear Безбарвний Refill", FL-000253) rather than by a
+ * separate product, which is what TD-0002 §5.2.1 assumed. Kept in step with the identically
+ * named helper in normalize-variant-colors.js — a spec asserts the two agree.
+ */
+function isRefillVariant(variant) {
+	const fields = [variant && variant.v_value, variant && variant.name]
+	return fields.some(f => typeof f === 'string' && /\brefill\b|рефіл/i.test(f))
+}
+
+/**
  * Pure: the product's attributes with `spool_included` appended when it is missing.
  * @returns {{ attributes: object[]|null, changed: boolean }}
  */
@@ -72,6 +83,22 @@ async function migrate(db) {
 		.find({})
 		.project({ _id: 1, name: 1, attributes: 1 })
 		.toArray()
+
+	// `spool_included` lives on the product, so it can only describe a product whose variants
+	// agree about the packaging. FL-000253 is a refill sitting next to eight spooled colours on
+	// one product, so asserting `Так` there would be false — and it would leave the
+	// /filament/refill landing permanently empty. Those products are reported, not guessed at.
+	const refillVariants = await db
+		.collection('product_variants')
+		.find({ $or: [{ v_value: /\brefill\b|рефіл/i }, { name: /\brefill\b|рефіл/i }] })
+		.project({ _id: 1, sku: 1, name: 1, v_value: 1, product_id: 1 })
+		.toArray()
+	const mixedProducts = new Map()
+	for (const variant of refillVariants) {
+		const key = String(variant.product_id)
+		if (!mixedProducts.has(key)) mixedProducts.set(key, [])
+		mixedProducts.get(key).push(variant)
+	}
 	// Only categories that already carry the taxonomy get the fifth filter; a category with no
 	// filament in it has no use for "котушка в комплекті".
 	const categoryDocs = await categories
@@ -92,6 +119,7 @@ async function migrate(db) {
 			existing.set(value, (existing.get(value) ?? 0) + 1)
 			continue
 		}
+		if (mixedProducts.has(String(doc._id))) continue
 		const result = withSpoolIncluded(doc.attributes)
 		if (!result.changed) continue
 		productChanges.push({
@@ -121,6 +149,22 @@ async function migrate(db) {
 	if (existing.size > 0) {
 		console.log('Already set (left untouched):')
 		for (const [value, count] of existing) console.log(`  ${JSON.stringify(value)} — ${count}`)
+	}
+	if (mixedProducts.size > 0) {
+		console.warn(
+			`\n⚠ ${mixedProducts.size} product(s) SKIPPED — a refill sits next to spooled variants, ` +
+				'so no single product-level value is true:'
+		)
+		for (const [productId, variants] of mixedProducts) {
+			const product = productDocs.find(d => String(d._id) === productId)
+			console.warn(`  "${product ? product.name : productId}"`)
+			for (const v of variants) {
+				console.warn(`    refill variant ${v.sku} — ${JSON.stringify(v.v_value)}`)
+			}
+		}
+		console.warn(
+			'  Fix by splitting the refill into its own product (TD-0002 §5.2.1 assumed one), then re-run.'
+		)
 	}
 	for (const change of categoryChanges) {
 		console.log(`  category "${change.name}" (${change._id}) gains the "${LABEL}" filter`)
@@ -182,7 +226,11 @@ async function migrate(db) {
 	}
 
 	// ---------- verify ----------
-	const missing = await products.countDocuments({ 'attributes.k': { $ne: KEY } })
+	const skippedIds = [...mixedProducts.keys()].map(id => new mongoose.Types.ObjectId(id))
+	const missing = await products.countDocuments({
+		'attributes.k': { $ne: KEY },
+		_id: { $nin: skippedIds }
+	})
 	// $and, not two keys in one object: a repeated field name would silently keep only the
 	// last condition and the check would always pass.
 	const categoriesWithoutFilter = await categories.countDocuments({
@@ -193,7 +241,7 @@ async function migrate(db) {
 	})
 
 	const checks = {
-		'products without the attribute (the filter would hide them)': missing,
+		'products without the attribute, excluding the reported refills': missing,
 		'filament categories not offering the filter': categoriesWithoutFilter,
 		'documents changed by someone else mid-run (skipped, re-run to fix)': skipped
 	}
@@ -239,7 +287,15 @@ async function main() {
 	}
 }
 
-module.exports = { KEY, LABEL, DEFAULT_VALUE, REFILL_VALUE, withSpoolIncluded, withSpoolFilter }
+module.exports = {
+	KEY,
+	LABEL,
+	DEFAULT_VALUE,
+	REFILL_VALUE,
+	isRefillVariant,
+	withSpoolIncluded,
+	withSpoolFilter
+}
 
 if (require.main === module) {
 	main().catch(err => {

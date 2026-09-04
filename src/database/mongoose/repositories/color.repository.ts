@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
-import { HydratedDocument, Model } from 'mongoose'
+import { HydratedDocument, Model, Types } from 'mongoose'
 import { Color } from '../schemas/color.schema'
 import { BaseRepository } from './base.repository'
 
@@ -17,5 +17,17 @@ export class ColorRepository extends BaseRepository<Color> {
 
 	findBySlug(slug: string): Promise<HydratedDocument<Color> | null> {
 		return this.findOne({ slug })
+	}
+
+	/**
+	 * Dictionary rows for a set of ids in one query. Renaming a product has to relabel every
+	 * one of its variants, and each needs its own Ukrainian colour name — a lookup per variant
+	 * would make an ordinary admin save issue a dozen round trips.
+	 */
+	findByIds(ids: Types.ObjectId[]): Promise<(Color & { _id: Types.ObjectId })[]> {
+		return this.model
+			.find({ _id: { $in: ids } })
+			.lean<(Color & { _id: Types.ObjectId })[]>()
+			.exec()
 	}
 }

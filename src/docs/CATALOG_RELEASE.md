@@ -10,7 +10,7 @@ Everything below is already merged into `dev` in both repositories and **not dep
 
 ## 0. Before you start
 
-Three decisions are still open. None of them blocks the deploy, but each one leaves something
+Four decisions are still open. None of them blocks the deploy, but each one leaves something
 half-finished until it is made.
 
 | # | Decision | Consequence of leaving it |
@@ -18,10 +18,24 @@ half-finished until it is made.
 | 1 | One product has an **empty `material`**: *Філамент Kingroon PETG (CoPET) 1,75 мм 3 кг* (`6a81a21315e62e1899044300`). | It is skipped by the taxonomy migration, so it appears under no polymer filter and on no landing. Set `Матеріал = PETG` in the admin, then re-run step 3b. |
 | 2 | **49 colour spellings** the dictionary cannot identify, listed in `scripts/migrations/reports/color-report.json` after a dry run. | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete. |
 | 3 | The **refill is a variant, not a product** (`FL-000253`, "Clear Безбарвний Refill"). TD-0002 assumed a separate product. | `spool_included` cannot describe that product, `/filament/refill` matches nothing, and the migrations deliberately skip it. Splitting it into its own product makes all three work with no code change. |
+| 4 | **Two 'Candy' variants sit on one product** — `FL-000157` and `FL-000162` on *Kingroon PLA Silk Rainbow*, same `v_value`, different prices and `prom_id`s, only one of them carrying the `-candy` slug suffix. A Prom-import duplicate that predates the taxonomy work. | Renaming that product is refused with a 409 naming both SKUs (see §4), so the product cannot be edited until they are merged or given different variant values. Nothing else is affected. |
 
-The same product also carries `category_id` as a **string** rather than an ObjectId. It is
+The same product as #1 also carries `category_id` as a **string** rather than an ObjectId. It is
 harmless today (its variant has the right type), but any future query that filters products by
 `category_id` must compare with `$toString` or it will silently skip this one.
+
+Find every latent pair of #4's shape before the deploy. A rename regenerates all of a product's
+slugs at once, so two variants whose values collapse to the same slug block that product. Collide
+on the generated slug, not on `v_value` — different values can still slugify to one address:
+
+```js
+// node, from the backend project root, against production
+const { generateSlug } = require('./dist/common/utils/attribute.utils')
+// for each product, group its variants by generateSlug(`${product.name} ${v.v_value}`)
+// and report every group holding more than one SKU
+```
+
+On `fillando-dev` this reports exactly one group: `FL-000157 + FL-000162`.
 
 ---
 
@@ -170,6 +184,31 @@ every old → new address and is merged across runs, never truncated, so it surv
    mapping, then re-run 3d and 3f. Both are idempotent.
 4. Resubmit the sitemap in Search Console — it now carries the legal pages, the price sheet and
    the published landings.
+
+**Editing a migrated product is safe from here on, and this is worth knowing why.** 3f writes
+`v_value` as the English `colors.name_en` but the display `name` as `"<product> — <name_uk>"`.
+`ProductService` builds `name` from the dictionary whenever the variant points at it and falls
+back to `v_value` only for variants without a colour, so re-saving a product reproduces the name
+it already had. Before that, every save regenerated the name from `v_value` and quietly renamed
+the variant to English — on current data 243 of 301 variants, one admin edit at a time, visible
+in the catalogue listing, the `ItemList` markup, the cart rows and the price-list PDF (where the
+variant name is also the sort key). The slug is still built from `v_value`, so addresses do not
+move.
+
+Renames are handled in three parts, and only an actual change of name triggers any of them — the
+admin form posts `name` on every save, so keying off its presence would re-plan on edits that
+have nothing to do with it:
+
+1. The whole batch is planned and vetted **before the first write**. Two variants of one product
+   heading for the same slug get a 409 naming both SKUs, as does an address already held by
+   another product. Previously the duplicate surfaced partway through `Promise.all` as an
+   unhandled `E11000`, which — with no transaction available on a standalone MongoDB — left the
+   product renamed and only some of its variants rewritten.
+2. Slugs can **rotate** within a product: the address one variant is moving to may still belong
+   to a sibling that is moving too. That is not a conflict, but it is a race, so the writes go in
+   two passes — every mover is parked on a temporary `…-moving-<id>` address first, which empties
+   the target range before anyone claims it.
+3. Variants whose slug does not change are written once, in the second pass.
 
 ---
 

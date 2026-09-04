@@ -25,7 +25,14 @@ const buildService = (
 	}
 	const productVariantRepository = {
 		create: jest.fn().mockImplementation((data: unknown) => Promise.resolve(data)),
-		update: jest.fn().mockImplementation((_f: unknown, data: unknown) => Promise.resolve(data))
+		update: jest.fn().mockImplementation((_f: unknown, data: unknown) => Promise.resolve(data)),
+		// `updateVariant` reads the variant first: a request that omits `color_id` still needs the
+		// colour already stored on it to rebuild the display name.
+		findOne: jest.fn().mockResolvedValue({
+			_id: new Types.ObjectId(VARIANT_ID),
+			v_value: 'Red',
+			color_id: null
+		})
 	}
 	const numbersRepository = { increment: jest.fn().mockResolvedValue({ value: 42 }) }
 	const colorRepository = { findById: jest.fn().mockResolvedValue(color) }
@@ -42,7 +49,7 @@ describe('addVariant — colour', () => {
 	it('stores the dictionary family alongside the id', async () => {
 		const { service, productVariantRepository } = buildService()
 
-		await service.addVariant(PRODUCT_ID, { price: 100, color_id: COLOR_ID } as never)
+		await service.addVariant(PRODUCT_ID, { price: 100, color_id: COLOR_ID })
 
 		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
 		expect(written.color_family).toBe(ColorFamily.RED)
@@ -52,7 +59,7 @@ describe('addVariant — colour', () => {
 	it('stores color_id as an ObjectId, not the string it arrived as', async () => {
 		const { service, productVariantRepository } = buildService()
 
-		await service.addVariant(PRODUCT_ID, { price: 100, color_id: COLOR_ID } as never)
+		await service.addVariant(PRODUCT_ID, { price: 100, color_id: COLOR_ID })
 
 		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
 		expect(written.color_id).toBeInstanceOf(Types.ObjectId)
@@ -74,7 +81,7 @@ describe('addVariant — colour', () => {
 	it('leaves both fields alone when the request says nothing about colour', async () => {
 		const { service, productVariantRepository, colorRepository } = buildService()
 
-		await service.addVariant(PRODUCT_ID, { price: 100 } as never)
+		await service.addVariant(PRODUCT_ID, { price: 100 })
 
 		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
 		expect(written).not.toHaveProperty('color_family')
@@ -85,7 +92,7 @@ describe('addVariant — colour', () => {
 		const { service, productVariantRepository } = buildService(null)
 
 		await expect(
-			service.addVariant(PRODUCT_ID, { price: 100, color_id: COLOR_ID } as never)
+			service.addVariant(PRODUCT_ID, { price: 100, color_id: COLOR_ID })
 		).rejects.toBeInstanceOf(BadRequestException)
 		expect(productVariantRepository.create).not.toHaveBeenCalled()
 	})
@@ -94,7 +101,7 @@ describe('addVariant — colour', () => {
 		const { service, colorRepository } = buildService()
 
 		await expect(
-			service.addVariant(PRODUCT_ID, { price: 100, color_id: 'not-an-id' } as never)
+			service.addVariant(PRODUCT_ID, { price: 100, color_id: 'not-an-id' })
 		).rejects.toBeInstanceOf(BadRequestException)
 		expect(colorRepository.findById).not.toHaveBeenCalled()
 	})
@@ -104,7 +111,7 @@ describe('updateVariant — colour', () => {
 	it('rewrites both fields together', async () => {
 		const { service, productVariantRepository } = buildService()
 
-		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: COLOR_ID } as never)
+		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: COLOR_ID })
 
 		const patch = productVariantRepository.update.mock.calls[0][1] as Record<string, unknown>
 		expect(patch.color_family).toBe(ColorFamily.RED)
@@ -116,7 +123,7 @@ describe('updateVariant — colour', () => {
 		// longer belongs to.
 		const { service, productVariantRepository } = buildService()
 
-		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: null } as never)
+		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: null })
 
 		const patch = productVariantRepository.update.mock.calls[0][1] as Record<string, unknown>
 		expect(patch.color_id).toBeNull()
@@ -126,7 +133,7 @@ describe('updateVariant — colour', () => {
 	it('does not touch colour on an unrelated edit', async () => {
 		const { service, productVariantRepository } = buildService()
 
-		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { price: 250 } as never)
+		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { price: 250 })
 
 		const patch = productVariantRepository.update.mock.calls[0][1] as Record<string, unknown>
 		expect(patch).not.toHaveProperty('color_id')
@@ -138,13 +145,13 @@ describe('updateVariant — colour', () => {
 		const productRepository = { findById: jest.fn().mockResolvedValue(null) }
 		const scoped = new ProductService(
 			productRepository as never,
-			{ update: jest.fn() } as never,
+			{ update: jest.fn(), findOne: jest.fn() } as never,
 			{} as never,
 			colorRepository as never
 		)
 
 		await expect(
-			scoped.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: COLOR_ID } as never)
+			scoped.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: COLOR_ID })
 		).rejects.toBeInstanceOf(NotFoundException)
 		expect(colorRepository.findById).not.toHaveBeenCalled()
 	})

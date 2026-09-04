@@ -35,6 +35,16 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		return this.findOne({ sku })
 	}
 
+	/**
+	 * Every variant already occupying one of these slugs. Renaming a product regenerates the
+	 * slug of each of its variants, and `slug` is unique — this is the pre-flight that turns a
+	 * collision into a 409 naming the SKUs instead of a duplicate-key error halfway through the
+	 * batch.
+	 */
+	findBySlugs(slugs: string[]): Promise<ProductVariant[]> {
+		return this.findAll({ slug: { $in: slugs } })
+	}
+
 	findByProductId(productId: string): Promise<ProductVariant[]> {
 		return this.findAll({ product_id: new Types.ObjectId(productId) })
 	}

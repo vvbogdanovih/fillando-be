@@ -397,6 +397,68 @@ write rather than on read means the stored value is the reviewed one, and every 
 
 ---
 
+### `numbers`
+
+Schema: `src/database/mongoose/schemas/numbers.schema.ts`
+
+| Field             | Type   | Notes                                   |
+| ----------------- | ------ | --------------------------------------- |
+| `sku`             | number | default: `0` — last internal article     |
+| `order`           | number | default: `0` — last order number         |
+| `discount_coupon` | number | default: `0` — last generated coupon code |
+
+No timestamps. **A single document** holds every counter: `NumbersRepository.increment`
+does a `findOneAndUpdate({}, { $inc }, { upsert: true })`, so the first call creates it and
+each later one hands out the next value atomically. That atomicity is the point — two
+concurrent checkouts must not receive the same order number.
+
+Consumers format the raw counter: `FL-000123` for a variant SKU
+(`ProductService.generateSku`), `FO-0000123` for an order number
+(`OrderService.formatOrderNumber`). The stored value is the bare integer.
+
+---
+
+### `payment_details`
+
+Schema: `src/database/mongoose/schemas/payment-details.schema.ts`
+
+| Field                     | Type    | Notes                                             |
+| ------------------------- | ------- | ------------------------------------------------- |
+| `last_name`               | string  | required — beneficiary surname                    |
+| `first_name`              | string  | required                                          |
+| `middle_name`             | string  | optional                                          |
+| `iban`                    | string  | required, unique                                  |
+| `edrpou`                  | string  | required — tax identifier of the beneficiary      |
+| `bank_name`               | string  | required                                          |
+| `is_available`            | boolean | default: `false` — offer IBAN transfer at checkout |
+| `createdAt` / `updatedAt` | Date    | auto-managed (timestamps)                          |
+
+The bank details a customer paying by transfer is shown. Writes are ADMIN-only; the
+storefront reads them only through the checkout flow. See `src/docs/RBAC.md`.
+
+---
+
+### `payment_providers`
+
+Schema: `src/database/mongoose/schemas/payment-provider.schema.ts`
+
+| Field                     | Type                    | Notes                                                       |
+| ------------------------- | ----------------------- | ----------------------------------------------------------- |
+| `provider`                | `PaymentProvider` enum  | required, indexed — `LIQPAY` \| `MONOPAY`                    |
+| `label`                   | string                  | required — shown in the admin, not to shoppers               |
+| `public_key`              | string                  | required — merchant public key                               |
+| `private_key_enc`         | string                  | required — **AES-256-GCM encrypted; never returned over HTTP** |
+| `is_active`               | boolean                 | default: `false`                                             |
+| `sandbox`                 | boolean                 | default: `false` — use the provider's test environment       |
+| `createdAt` / `updatedAt` | Date                    | auto-managed (timestamps)                                    |
+
+Gateway credentials. `private_key_enc` is encrypted at rest with `PAYMENT_ENCRYPTION_KEY` and
+is decrypted only inside the signing code — no endpoint, admin included, returns it. Adding a
+field that carries the plaintext key would defeat that, so treat this table as a security
+surface. See `src/docs/LIQPAY_FLOW.md`.
+
+---
+
 ### `nova_post_cities`
 
 Schema: `src/database/mongoose/schemas/nova-post-city.schema.ts`
@@ -425,6 +487,8 @@ Schema: `src/database/mongoose/schemas/nova-post-warehouse.schema.ts`
 | `cityRef`          | string | required — links to `nova_post_cities.ref` |
 | `cityName`         | string | required                                   |
 | `maxWeightAllowed` | number | required — kg                              |
+| `typeOfWarehouse`  | string | required — Nova Post branch type ref       |
+| `postalCode`       | string | required                                   |
 
 No timestamps. See `src/docs/NOVA_POST.md`.
 

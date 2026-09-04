@@ -11,6 +11,7 @@ const migration = require('../../../scripts/migrations/normalize-attr-keys.js') 
 	ATTR_KEY_OVERRIDES: Record<string, string>
 	normalizeAttrLabel: (label: string) => string
 	renameAttributeKeys: <T>(entries: T, fields: Fields) => RenameResult<T>
+	renameVariantTypeKey: <T>(variantType: T) => { variantType: T; rename: Rename | null }
 }
 
 const PRODUCT: Fields = { keyField: 'k', labelField: 'l' }
@@ -235,6 +236,58 @@ describe('normalize-attr-keys migration', () => {
 				expect(result.removedDuplicates).toBe(0)
 			}
 		)
+	})
+
+	describe('renameVariantTypeKey', () => {
+		// The API stores variant_type.key verbatim (VariantTypeDto.key is a plain @IsString()),
+		// so unlike attributes[].k it is never repaired by a later save — this rename is the
+		// only thing keeping it joinable with attributes[].k on the product page.
+		it('overrides the key and keeps the label', () => {
+			const input = { key: 'seriia', label: 'Серія' }
+			const result = migration.renameVariantTypeKey(input)
+
+			expect(result.variantType).toEqual({ key: 'series', label: 'Серія' })
+			expect(result.rename).toEqual({ label: 'Серія', from: 'seriia', to: 'series' })
+			expect(input).toEqual({ key: 'seriia', label: 'Серія' })
+		})
+
+		it('reaches the override through label normalization', () => {
+			expect(
+				migration.renameVariantTypeKey({ key: 'typ_plastyku', label: ' Тип  ПЛАСТИКУ ' })
+					.variantType
+			).toEqual({ key: 'polymer', label: ' Тип  ПЛАСТИКУ ' })
+		})
+
+		it('leaves the colour axis, the only one in production, untouched', () => {
+			const input = { key: 'kolir', label: 'Колір' }
+			const result = migration.renameVariantTypeKey(input)
+
+			expect(result.variantType).toBe(input)
+			expect(result.rename).toBeNull()
+		})
+
+		it('is idempotent once the key already matches', () => {
+			const input = { key: 'series', label: 'Серія' }
+			const result = migration.renameVariantTypeKey(input)
+
+			expect(result.variantType).toBe(input)
+			expect(result.rename).toBeNull()
+		})
+
+		it.each([[undefined], [null], ['color'], [42], [[{ key: 'seriia', label: 'Серія' }]]])(
+			'passes %p through untouched',
+			value => {
+				const result = migration.renameVariantTypeKey(value)
+
+				expect(result.variantType).toBe(value)
+				expect(result.rename).toBeNull()
+			}
+		)
+
+		it('ignores a variant type with a non-string label', () => {
+			const input = { key: 'seriia', label: 42 }
+			expect(migration.renameVariantTypeKey(input).rename).toBeNull()
+		})
 	})
 
 	describe('renameAttributeKeys — category shape', () => {

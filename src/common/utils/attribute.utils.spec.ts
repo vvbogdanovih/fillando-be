@@ -33,8 +33,9 @@ describe('normalizeAttrLabel', () => {
 
 	it('composes decomposed Unicode input (NFC)', () => {
 		// і + combining diaeresis → ї, и + combining breve → й
-		expect(normalizeAttrLabel('ї')).toBe('ї')
-		expect(normalizeAttrLabel('й')).toBe('й')
+		expect(normalizeAttrLabel('\u0456\u0308')).toBe('\u0457')
+		expect(normalizeAttrLabel('\u0438\u0306')).toBe('\u0439')
+		expect('\u0456\u0308').not.toBe('\u0457')
 	})
 })
 

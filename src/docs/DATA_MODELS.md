@@ -238,7 +238,7 @@ A product is the shared "header" of its variants. Slug, SKU, price, stock, image
 
 | Field   | Type   | Notes                                                                               |
 | ------- | ------ | ----------------------------------------------------------------------------------- |
-| `key`   | string | required — e.g. `'color'`                                                           |
+| `key`   | string | required — e.g. `'color'`; **sent by the client and stored verbatim**, unlike `attributes[].k` |
 | `label` | string | required — display label (e.g. `'Колір'`); drives the price-sheet colour derivation |
 
 #### Embedded: `Attribute` (`_id: false`)
@@ -255,8 +255,11 @@ Indexes: compound `{ 'attributes.k': 1, 'attributes.v': 1 }` for filter queries;
 `k` is never supplied by the client — it is derived from `l` in the service layer using
 `generateAttrKey`, which consults the `ATTR_KEY_OVERRIDES` table first (`'Серія'` → `'series'`)
 and transliterates otherwise (`'Виробник'` → `'vyrobnyk'`). When the override table changes,
-`scripts/migrations/normalize-attr-keys.js` renames keys already stored in `attributes[].k` and
-`categories.required_attributes[].key` — run it after deploying the new table (TD-0002 §5.2.1).
+`scripts/migrations/normalize-attr-keys.js` renames keys already stored in `attributes[].k`,
+`categories.required_attributes[].key` and `variant_type.key` — run it after deploying the new
+table (TD-0002 §5.2.1). `variant_type.key` matters most there: it is the one key the service does
+not recompute on save, so nothing else repairs it, and the product page joins it against
+`attributes[].k`.
 
 ---
 

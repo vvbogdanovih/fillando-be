@@ -8,6 +8,12 @@
  * is in the table but the key is not the override value:
  *   - categories.required_attributes[].key
  *   - products.attributes[].k
+ *   - products.variant_type.key
+ *
+ * The first two are also recomputed from their label by the API on every save, so for them
+ * this script only closes the gap until the next save. `variant_type.key` is NOT recomputed
+ * (`VariantTypeDto.key` is a plain @IsString() the API stores verbatim), so there the rename
+ * is the only thing that keeps it joinable with attributes[].k.
  * Deduplication is narrow: among entries whose key is a rename target in the SAME
  * document, later entries equal to an earlier one on every own property are dropped
  * (so a pre-existing entry already carrying the target key counts too). Multi-valued
@@ -115,6 +121,25 @@ function renameAttributeKeys(entries, { keyField, labelField }) {
 	return { entries: deduped, renames, removedDuplicates }
 }
 
+/**
+ * Pure: the embedded `variant_type` with its key overridden, or the input untouched.
+ *
+ * @returns {{ variantType: unknown, rename: { label: string, from: unknown, to: string } | null }}
+ */
+function renameVariantTypeKey(variantType) {
+	if (variantType === null || typeof variantType !== 'object' || Array.isArray(variantType)) {
+		return { variantType, rename: null }
+	}
+	const label = variantType.label
+	if (typeof label !== 'string') return { variantType, rename: null }
+	const normalized = normalizeAttrLabel(label)
+	if (!Object.hasOwn(ATTR_KEY_OVERRIDES, normalized)) return { variantType, rename: null }
+	const to = ATTR_KEY_OVERRIDES[normalized]
+	const from = variantType.key
+	if (from === to) return { variantType, rename: null }
+	return { variantType: { ...variantType, key: to }, rename: { label, from, to } }
+}
+
 /** Same override key under two different labels in one document (e.g. `Серія` + `Series`). */
 function findLabelConflicts(entries, { keyField, labelField }) {
 	const targets = new Set(Object.values(ATTR_KEY_OVERRIDES))
@@ -129,24 +154,55 @@ function findLabelConflicts(entries, { keyField, labelField }) {
 		.map(([key, labels]) => ({ key, labels: [...labels] }))
 }
 
-/** Runs renameAttributeKeys over every document; returns only the documents that change. */
-function planCollection(docs, arrayField, fields) {
+/**
+ * Runs renameAttributeKeys (and, for products, renameVariantTypeKey) over every document.
+ * Returns only the documents that change, each with the exact `$set` to write and the
+ * fields to pin in the filter so a concurrent edit is skipped rather than overwritten.
+ */
+function planCollection(docs, arrayField, fields, { withVariantType = false } = {}) {
 	const changes = []
 	for (const doc of docs) {
 		const result = renameAttributeKeys(doc[arrayField], fields)
-		if (result.renames.length === 0 && result.removedDuplicates === 0) continue
+		const vt = withVariantType
+			? renameVariantTypeKey(doc.variant_type)
+			: { variantType: undefined, rename: null }
+
+		const arrayChanged = result.renames.length > 0 || result.removedDuplicates > 0
+		if (!arrayChanged && !vt.rename) continue
+
+		const set = {}
+		const filter = { _id: doc._id }
+		if (arrayChanged) {
+			set[arrayField] = result.entries
+			filter[arrayField] = doc[arrayField]
+		}
+		if (vt.rename) {
+			set.variant_type = vt.variantType
+			filter.variant_type = doc.variant_type
+		}
+
 		changes.push({
 			_id: doc._id,
 			name: doc.name,
-			// Kept for the optimistic write filter: the array exactly as it was read.
-			original: doc[arrayField],
+			set,
+			filter,
 			entries: result.entries,
-			renames: result.renames,
+			renames: [...result.renames, ...(vt.rename ? [vt.rename] : [])],
+			variantTypeRename: vt.rename,
 			removedDuplicates: result.removedDuplicates,
 			conflicts: findLabelConflicts(result.entries, fields)
 		})
 	}
 	return changes
+}
+
+/** `variant_type.key` entries whose label is in the map but whose key is not the override. */
+function countStaleVariantTypes(docs) {
+	let stale = 0
+	for (const doc of docs) {
+		if (renameVariantTypeKey(doc.variant_type).rename) stale++
+	}
+	return stale
 }
 
 /** Entries whose normalized label is in the map but whose key is not the override value. */
@@ -172,6 +228,7 @@ function describeRenames(change) {
 	const unique = new Map()
 	for (const r of change.renames) unique.set(`${r.from}→${r.to}`, `${r.from} → ${r.to}`)
 	let text = [...unique.values()].join(', ')
+	if (change.variantTypeRename) text += ' (variant axis)'
 	if (change.removedDuplicates > 0) {
 		const n = change.removedDuplicates
 		text += ` (${n} duplicate${n === 1 ? '' : 's'} removed)`
@@ -234,12 +291,14 @@ async function migrate(db) {
 		.toArray()
 	const productDocs = await products
 		.find({})
-		.project({ _id: 1, name: 1, attributes: 1 })
+		.project({ _id: 1, name: 1, attributes: 1, variant_type: 1 })
 		.toArray()
 	console.log(`Scanned ${categoryDocs.length} categories and ${productDocs.length} products.`)
 
 	const categoryChanges = planCollection(categoryDocs, 'required_attributes', CATEGORY_FIELDS)
-	const productChanges = planCollection(productDocs, 'attributes', PRODUCT_FIELDS)
+	const productChanges = planCollection(productDocs, 'attributes', PRODUCT_FIELDS, {
+		withVariantType: true
+	})
 
 	if (categoryChanges.length === 0 && productChanges.length === 0) {
 		console.log('Nothing to do.')
@@ -262,10 +321,7 @@ async function migrate(db) {
 	if (categoryChanges.length > 0) {
 		const res = await categories.bulkWrite(
 			categoryChanges.map(c => ({
-				updateOne: {
-					filter: { _id: c._id, required_attributes: c.original },
-					update: { $set: { required_attributes: c.entries } }
-				}
+				updateOne: { filter: c.filter, update: { $set: c.set } }
 			}))
 		)
 		skipped += categoryChanges.length - res.matchedCount
@@ -276,10 +332,7 @@ async function migrate(db) {
 	if (productChanges.length > 0) {
 		const res = await products.bulkWrite(
 			productChanges.map(p => ({
-				updateOne: {
-					filter: { _id: p._id, attributes: p.original },
-					update: { $set: { attributes: p.entries } }
-				}
+				updateOne: { filter: p.filter, update: { $set: p.set } }
 			}))
 		)
 		skipped += productChanges.length - res.matchedCount
@@ -299,6 +352,9 @@ async function migrate(db) {
 			await products.find({}).project({ attributes: 1 }).toArray(),
 			'attributes',
 			PRODUCT_FIELDS
+		),
+		'products.variant_type with a stale key': countStaleVariantTypes(
+			await products.find({}).project({ variant_type: 1 }).toArray()
 		),
 		'documents changed by someone else mid-run (skipped, re-run to fix)': skipped
 	}
@@ -342,7 +398,12 @@ async function main() {
 	}
 }
 
-module.exports = { ATTR_KEY_OVERRIDES, normalizeAttrLabel, renameAttributeKeys }
+module.exports = {
+	ATTR_KEY_OVERRIDES,
+	normalizeAttrLabel,
+	renameAttributeKeys,
+	renameVariantTypeKey
+}
 
 if (require.main === module) {
 	main().catch(err => {

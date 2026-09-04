@@ -74,6 +74,22 @@ INTERNAL_API_TOKEN (optional, min 32 chars — requests with `X-Internal-Token` 
 
 **Enums** (`Role`, `AuthMethod`) are defined in `src/common/types/enums.ts` — import from there, not from any ORM client.
 
+**Attribute keys** — `generateAttrKey(label)` in `src/common/utils/attribute.utils.ts` derives `products.attributes[].k` and `categories.required_attributes[].key` from the label on every save (`ProductService.create`/`update`, `CategoryService.mapRequiredAttributes`). It first consults `ATTR_KEY_OVERRIDES` (normalized label → key; normalization = NFC, trim, whitespace collapsed to single spaces, lower-case) and falls back to Ukrainian→Latin transliteration otherwise. The overridden keys are the catalogue filter dimensions from TD-0002 §5.2.1 (`fillando-meta` repo, `docs/designs/TD-0002-catalog-taxonomy-and-landings.md`): migrations write them, landings pin them and the storefront filters by them, so they must be stable English identifiers rather than transliterated Ukrainian.
+
+| Label               | Key              |
+| ------------------- | ---------------- |
+| Тип пластику        | `polymer`        |
+| Ефект поверхні      | `finish`         |
+| Армування           | `reinforcement`  |
+| Серія               | `series`         |
+| Котушка в комплекті | `spool_included` |
+
+Rules:
+
+- Keys are never supplied by the client — they are always derived from the label server-side.
+- Adding a catalogue filter dimension means adding the pair in three places: `ATTR_KEY_OVERRIDES` here, the frontend mirror `toAttrKey` in `fillando-fe/src/common/utils/slug.utils.ts`, and `scripts/migrations/normalize-attr-keys.js` (a unit test enforces BE↔migration sync). Then deploy and run the migration (`node scripts/migrations/normalize-attr-keys.js --dry-run`, then without the flag) to rename keys already stored — the override applies on the next save, not retroactively.
+- Attribute values must not contain commas: the catalogue query splits multi-value filters (`?polymer=PLA,PETG`) on `,`.
+
 **Repository pattern** — services never use `@InjectModel` directly; all DB access goes through a repository that extends `BaseRepository<T>` (`src/database/mongoose/repositories/base.repository.ts`). Register the repository in the module's `providers` array alongside the `MongooseModule.forFeature` schema. See `src/docs/REPOSITORY_PATTERN.md` for the full pattern and a step-by-step example.
 
 **New feature modules** go in `src/modules/`. The nest-cli is configured with `generate.options.baseDir = "modules"`, so `nest g module foo` places it there automatically.

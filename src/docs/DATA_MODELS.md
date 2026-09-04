@@ -195,16 +195,18 @@ survived the migration.
 
 #### Embedded: `RequiredAttribute` (`_id: false`)
 
-| Field         | Type                        | Notes                                                                            |
-| ------------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `key`         | string                      | required — auto-generated from `label` via `generateAttrKey` (e.g. `'vyrobnyk'`) |
-| `label`       | string                      | required — display label (e.g. `'Виробник'`)                                     |
-| `filter_type` | `'multi-select' \| 'range'` | required — controls filter UI type                                               |
-| `unit`        | string \| null              | nullable — e.g. `'мм'`, `'кг'`; `null` when not applicable                       |
+| Field         | Type                        | Notes                                                                                                                                                       |
+| ------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`         | string                      | required — auto-generated from `label` via `generateAttrKey` — `ATTR_KEY_OVERRIDES` lookup first, transliteration otherwise (e.g. `'vyrobnyk'`, `'series'`) |
+| `label`       | string                      | required — display label (e.g. `'Виробник'`)                                                                                                                |
+| `filter_type` | `'multi-select' \| 'range'` | required — controls filter UI type                                                                                                                          |
+| `unit`        | string \| null              | nullable — e.g. `'мм'`, `'кг'`; `null` when not applicable                                                                                                  |
 
 `RequiredAttribute` has `_id: false` because it has no identity of its own; it only describes
 what attributes a product in this category must have. `key` is never supplied by the
-client — it is derived from `label` in the service layer using `generateAttrKey`.
+client — it is derived from `label` in the service layer using `generateAttrKey`, which consults
+the `ATTR_KEY_OVERRIDES` table first (`'Серія'` → `'series'`) and transliterates otherwise
+(`'Виробник'` → `'vyrobnyk'`).
 
 ---
 
@@ -241,16 +243,20 @@ A product is the shared "header" of its variants. Slug, SKU, price, stock, image
 
 #### Embedded: `Attribute` (`_id: false`)
 
-| Field | Type                        | Notes                                                                      |
-| ----- | --------------------------- | -------------------------------------------------------------------------- |
-| `k`   | string                      | required — auto-generated key via `generateAttrKey(l)` (e.g. `'vyrobnyk'`) |
-| `l`   | string                      | required — human-readable label (e.g. `'Виробник'`)                        |
-| `v`   | string \| number \| boolean | required — attribute value (e.g. `'Sony'`, `1.75`)                         |
+| Field | Type                        | Notes                                                                                                                                             |
+| ----- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `k`   | string                      | required — auto-generated via `generateAttrKey(l)` — `ATTR_KEY_OVERRIDES` lookup first, transliteration otherwise (e.g. `'vyrobnyk'`, `'series'`) |
+| `l`   | string                      | required — human-readable label (e.g. `'Виробник'`)                                                                                               |
+| `v`   | string \| number \| boolean | required — attribute value (e.g. `'Sony'`, `1.75`)                                                                                                |
 
 Indexes: compound `{ 'attributes.k': 1, 'attributes.v': 1 }` for filter queries; text index
 `product_text_search` over `name` (10), `attributes.v` (5), `attributes.l` (3), `description.html`
 (1) with `default_language: 'none'` — used by `GET /products/search`.
-`k` is never supplied by the client — it is derived from `l` in the service layer using `generateAttrKey`.
+`k` is never supplied by the client — it is derived from `l` in the service layer using
+`generateAttrKey`, which consults the `ATTR_KEY_OVERRIDES` table first (`'Серія'` → `'series'`)
+and transliterates otherwise (`'Виробник'` → `'vyrobnyk'`). When the override table changes,
+`scripts/migrations/normalize-attr-keys.js` renames keys already stored in `attributes[].k` and
+`categories.required_attributes[].key` — run it after deploying the new table (TD-0002 §5.2.1).
 
 ---
 

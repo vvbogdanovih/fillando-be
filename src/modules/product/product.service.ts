@@ -122,25 +122,15 @@ export class ProductService {
 	}
 
 	async getCatalog(rawQuery: Record<string, string>) {
-		const { category_id, page, limit, price_min, price_max, sort, ...rest } = rawQuery
+		const { category_id, page, limit, price_min, price_max, sort, color_family, ...rest } =
+			rawQuery
 
 		if (!category_id) throw new BadRequestException('category_id is required')
 
-		const knownKeys = new Set([
-			'category_id',
-			'page',
-			'limit',
-			'price_min',
-			'price_max',
-			'sort'
-		])
 		const attrFilters: Record<string, string[]> = {}
 		for (const [key, value] of Object.entries(rest)) {
-			if (!knownKeys.has(key) && typeof value === 'string') {
-				attrFilters[key] = value
-					.split(',')
-					.map(v => v.trim())
-					.filter(Boolean)
+			if (!CATALOG_RESERVED_KEYS.has(key) && typeof value === 'string') {
+				attrFilters[key] = splitFilterValues(value)
 			}
 		}
 
@@ -151,7 +141,10 @@ export class ProductService {
 			price_min: price_min !== undefined ? parseFloat(price_min) : undefined,
 			price_max: price_max !== undefined ? parseFloat(price_max) : undefined,
 			sort: sort ?? 'newest',
-			attrFilters
+			attrFilters,
+			// Colour lives on the variant, not in `product.attributes`, so it cannot go through
+			// `attrFilters` — an `$elemMatch` on `attributes` would match nothing at all.
+			colorFamilies: color_family ? splitFilterValues(color_family) : []
 		})
 	}
 
@@ -399,4 +392,27 @@ function formatColorLabel(
 	if (!nameUk) return nameEn as string
 	if (!nameEn || nameEn === nameUk) return nameUk
 	return `${nameUk} (${nameEn})`
+}
+
+/**
+ * Query parameters the catalogue handles itself. Everything else is treated as a product
+ * attribute filter, so a new reserved parameter MUST be listed here — otherwise it is sent to
+ * Mongo as `attributes.k` and silently matches nothing.
+ */
+const CATALOG_RESERVED_KEYS = new Set([
+	'category_id',
+	'page',
+	'limit',
+	'price_min',
+	'price_max',
+	'sort',
+	'color_family'
+])
+
+/** `?polymer=PLA,PETG` is an OR within one dimension. Values may never contain a comma. */
+function splitFilterValues(value: string): string[] {
+	return value
+		.split(',')
+		.map(v => v.trim())
+		.filter(Boolean)
 }

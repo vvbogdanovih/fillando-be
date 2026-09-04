@@ -177,6 +177,73 @@ describe('ProductVariantRepository — colour join (MongoDB integration)', () =>
 		})
 	})
 
+	describe('findCatalogItems — colour filter and swatch options', () => {
+		const base = {
+			category_id: categoryId.toString(),
+			page: 1,
+			limit: 50,
+			sort: 'default',
+			attrFilters: {}
+		}
+
+		it('narrows the listing to the selected family', async () => {
+			const { items, pagination } = await repo.findCatalogItems({
+				...base,
+				colorFamilies: [ColorFamily.RED]
+			})
+
+			expect(pagination.total).toBe(1)
+			expect(items[0].slug).toBe('coloured-slug')
+		})
+
+		it('treats several families as an OR', async () => {
+			const { pagination } = await repo.findCatalogItems({
+				...base,
+				colorFamilies: [ColorFamily.RED, ColorFamily.BLACK]
+			})
+
+			expect(pagination.total).toBe(1)
+		})
+
+		it('returns nothing for a family no variant carries', async () => {
+			const { items, pagination } = await repo.findCatalogItems({
+				...base,
+				colorFamilies: [ColorFamily.GOLD]
+			})
+
+			expect(pagination.total).toBe(0)
+			expect(items).toHaveLength(0)
+		})
+
+		it('excludes colourless variants from a colour selection', async () => {
+			const { items } = await repo.findCatalogItems({
+				...base,
+				colorFamilies: [ColorFamily.RED]
+			})
+
+			expect(items.map((i: { slug: string }) => i.slug)).not.toContain('colourless-slug')
+		})
+
+		it('offers one swatch per family present, with a count and a colour to paint it', async () => {
+			const { color_options } = await repo.findCatalogItems(base)
+
+			expect(color_options).toEqual([
+				{ family: ColorFamily.RED, count: 1, hex_stops: ['#e53e3e'] }
+			])
+		})
+
+		it('keeps every swatch visible while one is selected, so the filter can be widened', async () => {
+			const { color_options } = await repo.findCatalogItems({
+				...base,
+				colorFamilies: [ColorFamily.GOLD]
+			})
+
+			expect(color_options).toEqual([
+				{ family: ColorFamily.RED, count: 1, hex_stops: ['#e53e3e'] }
+			])
+		})
+	})
+
 	describe('findVariantWithProduct', () => {
 		it('resolves the colour of the requested variant and of its siblings', async () => {
 			const result = await repo.findVariantWithProduct('coloured-slug')

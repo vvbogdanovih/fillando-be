@@ -11,6 +11,13 @@ import {
 import type { Color } from '../schemas/color.schema'
 import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
 
+/** One swatch in the catalogue colour filter: what to paint, and how many variants it covers. */
+export interface CatalogColorOption {
+	family: string
+	count: number
+	hex_stops: string[]
+}
+
 /** The dictionary fields the public colour payload is built from. */
 type PublicColorSource = Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'>
 
@@ -219,7 +226,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 		const matchConditions: any[] = []
 		if (productIds.length > 0) {
-			matchConditions.push({ product_id: { $in: productIds }, status: 'active' })
+			matchConditions.push({ product_id: { $in: productIds }, status: ProductStatus.ACTIVE })
 		}
 		if (skuVariantIds.length > 0) {
 			matchConditions.push({ _id: { $in: skuVariantIds } })
@@ -428,13 +435,28 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		price_max?: number
 		sort: string
 		attrFilters: Record<string, string[]>
+		colorFamilies?: string[]
 	}) {
-		const { category_id, page, limit, price_min, price_max, sort, attrFilters } = params
+		const {
+			category_id,
+			page,
+			limit,
+			price_min,
+			price_max,
+			sort,
+			attrFilters,
+			colorFamilies = []
+		} = params
 		const skip = (page - 1) * limit
 
 		const variantMatch: Record<string, any> = {
 			category_id: new Types.ObjectId(category_id),
-			status: 'active'
+			status: ProductStatus.ACTIVE
+		}
+		// Matched on the variant itself, before the product join, so the index
+		// { category_id, status, color_family } can serve it.
+		if (colorFamilies.length > 0) {
+			variantMatch.color_family = { $in: colorFamilies }
 		}
 		if (price_min !== undefined || price_max !== undefined) {
 			variantMatch.price = {}
@@ -529,12 +551,12 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		const categoryObjectId = new Types.ObjectId(category_id)
 
 		const priceRangePipeline: any[] = [
-			{ $match: { category_id: categoryObjectId, status: 'active' } },
+			{ $match: { category_id: categoryObjectId, status: ProductStatus.ACTIVE } },
 			{ $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' } } }
 		]
 
 		const filterOptionsPipeline: any[] = [
-			{ $match: { category_id: categoryObjectId, status: 'active' } },
+			{ $match: { category_id: categoryObjectId, status: ProductStatus.ACTIVE } },
 			{
 				$lookup: {
 					from: 'products',
@@ -553,11 +575,59 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			}
 		]
 
-		const [catalogResult, priceRangeResult, filterOptionsResult] = await Promise.all([
-			this.model.aggregate(pipeline).exec(),
-			this.model.aggregate(priceRangePipeline).exec(),
-			this.model.aggregate(filterOptionsPipeline).exec()
-		])
+		/**
+		 * Swatch options for the colour sidebar. Like `filter_options` above, this is computed
+		 * over the whole category rather than the current selection, so ticking one colour does
+		 * not make the others disappear.
+		 *
+		 * Grouped by family, because the family is what the query filters on; the representative
+		 * `hex_stops` come from the lowest-`order` colour of that family, so the admin controls
+		 * which shade paints the circle.
+		 */
+		const colorOptionsPipeline: any[] = [
+			{
+				$match: {
+					category_id: categoryObjectId,
+					status: ProductStatus.ACTIVE,
+					color_id: { $ne: null }
+				}
+			},
+			{
+				$lookup: {
+					from: 'colors',
+					localField: 'color_id',
+					foreignField: '_id',
+					as: 'color'
+				}
+			},
+			{ $unwind: '$color' },
+			{ $sort: { 'color.order': 1, 'color.name_en': 1 } },
+			{
+				$group: {
+					_id: '$color.family',
+					count: { $sum: 1 },
+					hex_stops: { $first: '$color.hex_stops' },
+					order: { $min: '$color.order' }
+				}
+			},
+			{ $sort: { order: 1, _id: 1 } },
+			{
+				$project: {
+					_id: 0,
+					family: '$_id',
+					count: 1,
+					hex_stops: 1
+				}
+			}
+		]
+
+		const [catalogResult, priceRangeResult, filterOptionsResult, colorOptionsResult] =
+			await Promise.all([
+				this.model.aggregate(pipeline).exec(),
+				this.model.aggregate(priceRangePipeline).exec(),
+				this.model.aggregate(filterOptionsPipeline).exec(),
+				this.model.aggregate(colorOptionsPipeline).exec()
+			])
 
 		const items = catalogResult[0]?.items ?? []
 		const total = catalogResult[0]?.meta[0]?.total ?? 0
@@ -572,7 +642,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			items,
 			pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
 			price_range: { min: priceRange.min ?? 0, max: priceRange.max ?? 0 },
-			filter_options: filterOptions
+			filter_options: filterOptions,
+			color_options: colorOptionsResult as CatalogColorOption[]
 		}
 	}
 }

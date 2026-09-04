@@ -203,6 +203,7 @@ async function migrate(db) {
 			product_id: 1,
 			name: 1,
 			slug: 1,
+			sku: 1,
 			v_value: 1,
 			v_value_legacy: 1,
 			color_id: 1,

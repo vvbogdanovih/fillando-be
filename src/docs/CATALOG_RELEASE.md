@@ -16,7 +16,7 @@ half-finished until it is made.
 | # | Decision | Consequence of leaving it |
 | --- | --- | --- |
 | 1 | One product has an **empty `material`**: *Філамент Kingroon PETG (CoPET) 1,75 мм 3 кг* (`6a81a21315e62e1899044300`). | It is skipped by the taxonomy migration, so it appears under no polymer filter and on no landing. Set `Матеріал = PETG` in the admin, then re-run step 3b. |
-| 2 | **49 colour spellings** the dictionary cannot identify, and **2 slug collisions**, listed in `scripts/migrations/reports/color-report.json` after a dry run. | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete. |
+| 2 | **49 colour spellings** the dictionary cannot identify, listed in `scripts/migrations/reports/color-report.json` after a dry run. | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete. |
 | 3 | The **refill is a variant, not a product** (`FL-000253`, "Clear Безбарвний Refill"). TD-0002 assumed a separate product. | `spool_included` cannot describe that product, `/filament/refill` matches nothing, and the migrations deliberately skip it. Splitting it into its own product makes all three work with no code change. |
 
 The same product also carries `category_id` as a **string** rather than an ObjectId. It is
@@ -118,7 +118,7 @@ node scripts/migrations/seed-colors.js --dry-run
 node scripts/migrations/seed-colors.js
 ```
 
-Inserts 53 dictionary colours. Non-destructive: an existing colour matched on `name_en` is left
+Inserts 56 dictionary colours. Non-destructive: an existing colour matched on `name_en` is left
 untouched, so a hex tweaked in the admin survives a re-run.
 
 ### 3e. `seed-landings.js`
@@ -146,9 +146,10 @@ node scripts/migrations/normalize-variant-colors.js --dry-run
 node scripts/migrations/normalize-variant-colors.js
 ```
 
-Expect on current data: 242 of 292 colour variants matched (83%), 49 spellings left untouched,
-1 refill variant skipped, and 2 slug collisions. **A collision aborts the run** rather than half-applying it — resolve it (rename
-a variant, or split the dictionary entry) and re-run. `--force` applies everything else and
+Expect on current data: about 244 of 292 colour variants matched (84%), 49 spellings left
+untouched and 1 refill variant skipped. **A slug collision aborts the run** rather than
+half-applying it — resolve it (rename a variant, or split the dictionary entry into two
+colours) and re-run. `--force` applies everything else and
 leaves the collisions for later; use it deliberately, not to get past the message.
 
 Variant **slugs change without a 301** — the owner's decision. `reports/slug-map.json` records

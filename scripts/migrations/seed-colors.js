@@ -135,8 +135,11 @@ const COLORS = [
 		name_uk: 'Блакитний',
 		family: 'blue',
 		hex_stops: ['#00b7eb'],
-		synonyms: ['Небесно-блакитний', 'Blue Grey Сіро-блакитний']
+		synonyms: ['Небесно-блакитний']
 	},
+	// Bambu's "Blue Grey" is a muted slate, not cyan — and both sit on the same product.
+	// `family` is a judgement call between `gray` and `blue`; it is editable in the admin.
+	{ name_en: 'Blue Grey', name_uk: 'Сіро-блакитний', family: 'gray', hex_stops: ['#5b6579'] },
 	{ name_en: 'Azure', name_uk: 'Лазуровий', family: 'blue', hex_stops: ['#007fff'] },
 	{
 		name_en: 'Teal',
@@ -191,19 +194,28 @@ const COLORS = [
 	{ name_en: 'Rose Gold', name_uk: 'Рожеве золото', family: 'gold', hex_stops: ['#b76e79'] },
 	{ name_en: 'Champagne', name_uk: 'Шампань', family: 'gold', hex_stops: ['#f7e7ce'] },
 	{ name_en: 'Bronze', name_uk: 'Бронзовий', family: 'gold', hex_stops: ['#cd7f32'] },
+	{ name_en: 'Copper', name_uk: 'Мідний', family: 'gold', hex_stops: ['#b87333'] },
+	// Metallic finishes are their own colours, not spellings of the plain ones: Kingroon's
+	// PETG carries "Сріблястий" and "Металік сріблястий" as two separate variants of one
+	// product, so folding them together collided on the slug.
 	{
-		name_en: 'Copper',
-		name_uk: 'Мідний',
+		name_en: 'Metallic Copper',
+		name_uk: 'Металік мідний',
 		family: 'gold',
-		hex_stops: ['#b87333'],
-		synonyms: ['Металік мідний']
+		hex_stops: ['#a55a2a', '#e0a070']
 	},
 	{
 		name_en: 'Silver',
 		name_uk: 'Сріблястий',
 		family: 'silver',
 		hex_stops: ['#c0c0c0'],
-		synonyms: ['Срібний', 'Металік сріблястий']
+		synonyms: ['Срібний']
+	},
+	{
+		name_en: 'Metallic Silver',
+		name_uk: 'Металік сріблястий',
+		family: 'silver',
+		hex_stops: ['#9a9a9a', '#e8e8e8']
 	},
 	{
 		name_en: 'Clear',

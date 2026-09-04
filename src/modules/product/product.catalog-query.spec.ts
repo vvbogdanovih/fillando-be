@@ -10,7 +10,12 @@ import { ProductService } from './product.service'
  */
 const buildService = () => {
 	const findCatalogItems = jest.fn().mockResolvedValue({ items: [] })
-	const service = new ProductService({} as never, { findCatalogItems } as never, {} as never)
+	const service = new ProductService(
+		{} as never,
+		{ findCatalogItems } as never,
+		{} as never,
+		{} as never
+	)
 	return { service, findCatalogItems }
 }
 

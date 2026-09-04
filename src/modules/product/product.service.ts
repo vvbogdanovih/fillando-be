@@ -12,6 +12,8 @@ import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
 import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
+import { ColorRepository } from 'src/database/mongoose/repositories/color.repository'
+import { ColorFamily } from 'src/common/types/enums'
 import {
 	MANUFACTURER_PATTERNS,
 	MATERIAL_PATTERNS,
@@ -43,8 +45,33 @@ export class ProductService {
 	constructor(
 		private readonly productRepository: ProductRepository,
 		private readonly productVariantRepository: ProductVariantRepository,
-		private readonly numbersRepository: NumbersRepository
+		private readonly numbersRepository: NumbersRepository,
+		private readonly colorRepository: ColorRepository
 	) {}
+
+	/**
+	 * Resolves an incoming `color_id` into the pair actually stored on a variant.
+	 *
+	 * `color_family` is denormalized from the dictionary (TD-0002 §5.2.2), so it can never be
+	 * accepted from the client — it is looked up here, on every write, or the catalogue filter
+	 * ends up disagreeing with the colour shown on the product. A `color_id` the dictionary does
+	 * not know is refused rather than stored as a dangling reference.
+	 *
+	 * Returns `undefined` when the request said nothing about colour, so a partial update leaves
+	 * the existing values alone.
+	 */
+	private async resolveColor(
+		colorId: string | null | undefined
+	): Promise<{ color_id: Types.ObjectId | null; color_family: ColorFamily | null } | undefined> {
+		if (colorId === undefined) return undefined
+		if (colorId === null || colorId === '') return { color_id: null, color_family: null }
+
+		if (!Types.ObjectId.isValid(colorId)) throw new BadRequestException('Unknown colour')
+		const color = await this.colorRepository.findById(colorId)
+		if (!color) throw new BadRequestException('Unknown colour')
+
+		return { color_id: color._id, color_family: color.family }
+	}
 
 	private async generateSku(): Promise<string> {
 		const num = await this.numbersRepository.increment('sku')
@@ -184,8 +211,13 @@ export class ProductService {
 						const slug = generateSlug(
 							variant.v_value ? `${product.name} ${variant.v_value}` : product.name
 						)
+						// `color_id` arrives as a string and is replaced by the resolved pair,
+						// so it must not survive the spread.
+						const { color_id: _colorId, ...variantData } = variant
+						const color = await this.resolveColor(variant.color_id)
 						return this.productVariantRepository.create({
-							...variant,
+							...variantData,
+							...(color ?? {}),
 							sku: systemSku,
 							vendor_product_sku: variant.vendor_product_sku ?? systemSku,
 							product_id: product._id,
@@ -294,8 +326,11 @@ export class ProductService {
 		if (!product) throw new NotFoundException('Product not found')
 
 		const systemSku = await this.generateSku()
+		const { color_id: _colorId, ...variantData } = dto
+		const color = await this.resolveColor(dto.color_id)
 		return this.productVariantRepository.create({
-			...dto,
+			...variantData,
+			...(color ?? {}),
 			sku: systemSku,
 			vendor_product_sku: dto.vendor_product_sku ?? systemSku,
 			product_id: product._id,
@@ -314,6 +349,8 @@ export class ProductService {
 		if (!product) throw new NotFoundException('Product not found')
 
 		const patch: Record<string, any> = { ...dto }
+		const color = await this.resolveColor(dto.color_id)
+		if (color) Object.assign(patch, color)
 		if ('v_value' in dto) {
 			patch.name = dto.v_value ? `${product.name} — ${dto.v_value}` : product.name
 			patch.slug = generateSlug(dto.v_value ? `${product.name} ${dto.v_value}` : product.name)

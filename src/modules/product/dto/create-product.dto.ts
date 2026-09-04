@@ -8,6 +8,7 @@ import {
 	IsObject,
 	IsOptional,
 	IsString,
+	ValidateIf,
 	ValidateNested
 } from 'class-validator'
 import { API_PROPERTY } from 'src/common/constants/docs'
@@ -81,6 +82,17 @@ export class CreateVariantDto {
 	@IsOptional()
 	@IsString()
 	prom_id?: string
+
+	@ApiProperty({
+		example: '69b7c630ff27ba94157052dd',
+		description: 'Colour dictionary entry; null clears it',
+		nullable: true,
+		required: false
+	})
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@IsMongoId()
+	color_id?: string | null
 }
 
 export class CreateProductDto {

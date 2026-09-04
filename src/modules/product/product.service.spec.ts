@@ -14,10 +14,12 @@ const buildService = () => {
 		delete: jest.fn().mockResolvedValue(null)
 	}
 	const numbersRepository = { increment: jest.fn() }
+	const colorRepository = { findById: jest.fn().mockResolvedValue(null) }
 	const service = new ProductService(
 		productRepository as never,
 		productVariantRepository as never,
-		numbersRepository as never
+		numbersRepository as never,
+		colorRepository as never
 	)
 	return { service, productRepository, productVariantRepository }
 }

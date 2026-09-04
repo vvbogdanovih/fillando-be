@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsArray, IsEnum, IsNumber, IsOptional, IsString } from 'class-validator'
+import {
+	IsArray,
+	IsEnum,
+	IsMongoId,
+	IsNumber,
+	IsOptional,
+	IsString,
+	ValidateIf
+} from 'class-validator'
 import { ProductStatus } from 'src/common/types/enums'
 
 export class UpdateVariantDto {
@@ -43,6 +51,17 @@ export class UpdateVariantDto {
 	@IsOptional()
 	@IsEnum(ProductStatus)
 	status?: ProductStatus
+
+	@ApiProperty({
+		example: '69b7c630ff27ba94157052dd',
+		description: 'Colour dictionary entry; null clears it',
+		nullable: true,
+		required: false
+	})
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@IsMongoId()
+	color_id?: string | null
 }
 
 export class AddVariantDto {
@@ -85,4 +104,15 @@ export class AddVariantDto {
 	@IsOptional()
 	@IsEnum(ProductStatus)
 	status?: ProductStatus
+
+	@ApiProperty({
+		example: '69b7c630ff27ba94157052dd',
+		description: 'Colour dictionary entry; null clears it',
+		nullable: true,
+		required: false
+	})
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@IsMongoId()
+	color_id?: string | null
 }

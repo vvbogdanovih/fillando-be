@@ -3340,6 +3340,12 @@
             "type": "string",
             "example": "3012625429",
             "description": "Prom (npshop) product id taken from the product URL"
+          },
+          "color_id": {
+            "type": "object",
+            "example": "69b7c630ff27ba94157052dd",
+            "description": "Colour dictionary entry; null clears it",
+            "nullable": true
           }
         },
         "required": [
@@ -3429,6 +3435,12 @@
               "archived"
             ],
             "default": "active"
+          },
+          "color_id": {
+            "type": "object",
+            "example": "69b7c630ff27ba94157052dd",
+            "description": "Colour dictionary entry; null clears it",
+            "nullable": true
           }
         },
         "required": [
@@ -3476,6 +3488,12 @@
               "active",
               "archived"
             ]
+          },
+          "color_id": {
+            "type": "object",
+            "example": "69b7c630ff27ba94157052dd",
+            "description": "Colour dictionary entry; null clears it",
+            "nullable": true
           }
         }
       },

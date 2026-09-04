@@ -70,3 +70,35 @@ export enum PageOrientation {
 	PORTRAIT = 'portrait',
 	LANDSCAPE = 'landscape'
 }
+
+/**
+ * Colour families a visitor can filter by (TD-0002 §5.2.2). Deliberately coarse: these are
+ * swatch buckets in the catalogue sidebar, not the manufacturer's colour names, which live
+ * in `Color.name_en` / `Color.name_uk`.
+ */
+export enum ColorFamily {
+	BLACK = 'black',
+	WHITE = 'white',
+	GRAY = 'gray',
+	RED = 'red',
+	ORANGE = 'orange',
+	YELLOW = 'yellow',
+	GREEN = 'green',
+	BLUE = 'blue',
+	PURPLE = 'purple',
+	PINK = 'pink',
+	BROWN = 'brown',
+	GOLD = 'gold',
+	SILVER = 'silver',
+	TRANSPARENT = 'transparent',
+	MULTICOLOR = 'multicolor'
+}
+
+/**
+ * A landing page is only reachable by the public once its copy is written — until then it
+ * stays a draft, exactly like an unpublished product (`ProductStatus.DRAFT`).
+ */
+export enum LandingStatus {
+	DRAFT = 'draft',
+	ACTIVE = 'active'
+}

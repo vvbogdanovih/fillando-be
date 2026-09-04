@@ -2,13 +2,17 @@ import { Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { HydratedDocument, Model, Types } from 'mongoose'
 import { ProductVariant } from '../schemas/product-variant.schema'
-import { ProductStatus } from 'src/common/types/enums'
+import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { BaseRepository } from './base.repository'
 import {
 	PRICE_SHEET_PUBLIC_PROJECTION,
 	toPublicVariant
 } from 'src/modules/product/product-public.mappers'
+import type { Color } from '../schemas/color.schema'
 import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
+
+/** The dictionary fields the public colour payload is built from. */
+type PublicColorSource = Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'>
 
 @Injectable()
 export class ProductVariantRepository extends BaseRepository<ProductVariant> {
@@ -30,6 +34,52 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 	findByIds(ids: Types.ObjectId[]): Promise<ProductVariant[]> {
 		return this.findAll({ _id: { $in: ids } })
+	}
+
+	/**
+	 * Rewrites the denormalized `color_family` on every variant of one dictionary colour.
+	 *
+	 * This deployment runs a standalone MongoDB, so the colour update and this backfill cannot
+	 * share a transaction (TD-0002 §5.2.2 assumed one). The service therefore writes the
+	 * dictionary first and calls this second: `Color.family` stays the source of truth, and a
+	 * failure here leaves variants recomputable from it — re-issuing the same PATCH repairs them.
+	 *
+	 * @returns how many variants were changed
+	 */
+	async updateColorFamilyByColorId(colorId: string, family: ColorFamily): Promise<number> {
+		const result = await this.model
+			.updateMany(
+				{ color_id: new Types.ObjectId(colorId), color_family: { $ne: family } },
+				{ $set: { color_family: family } }
+			)
+			.exec()
+		return result.modifiedCount
+	}
+
+	/** Variants still pointing at a colour — a dictionary entry may not be deleted under them. */
+	countByColorId(colorId: string): Promise<number> {
+		return this.model.countDocuments({ color_id: new Types.ObjectId(colorId) }).exec()
+	}
+
+	/** Variants whose denormalized family disagrees with the dictionary, per colour. */
+	async countColorFamilyDrift(): Promise<number> {
+		const [row] = await this.model
+			.aggregate<{ n: number }>([
+				{ $match: { color_id: { $ne: null } } },
+				{
+					$lookup: {
+						from: 'colors',
+						localField: 'color_id',
+						foreignField: '_id',
+						as: 'color'
+					}
+				},
+				{ $unwind: '$color' },
+				{ $match: { $expr: { $ne: ['$color_family', '$color.family'] } } },
+				{ $count: 'n' }
+			])
+			.exec()
+		return row?.n ?? 0
 	}
 
 	async updateCategoryByProductId(productId: string, categoryId: string): Promise<void> {
@@ -93,7 +143,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						images: 1,
 						stock: 1,
 						price_updated_at: 1,
-						status: 1
+						status: 1,
+						color_id: 1
 					}
 				)
 				.lean()
@@ -105,8 +156,15 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 		if (!product) return null
 
+		// One query for every colour on the page: the variant and its siblings usually differ
+		// only by colour, so this is a handful of ids and saves a lookup per sibling.
+		const colorIds = [variant, ...siblings]
+			.map(v => v.color_id)
+			.filter((id): id is Types.ObjectId => Boolean(id))
+		const colorsById = await this.loadColorsById(colorIds)
+
 		return {
-			variant: toPublicVariant(variant),
+			variant: toPublicVariant(variant, colorsById.get(String(variant.color_id))),
 			product: {
 				id: String((product as any)._id),
 				name: (product as any).name,
@@ -115,10 +173,27 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				variant_type: (product as any).variant_type
 			},
 			// Same public allowlist as `variant` — one projection for the whole public page.
-			siblings: siblings.map(s => toPublicVariant(s)),
+			siblings: siblings.map(s => toPublicVariant(s, colorsById.get(String(s.color_id)))),
 			category_slug: (category as any)?.slug ?? null,
 			category_name: (category as any)?.name ?? null
 		}
+	}
+
+	/** Dictionary rows for the given colour ids, keyed by id string. */
+	private async loadColorsById(
+		ids: Types.ObjectId[]
+	): Promise<Map<string, PublicColorSource | undefined>> {
+		const unique = [...new Map(ids.map(id => [String(id), id])).values()]
+		if (unique.length === 0) return new Map()
+
+		const rows = await this.model.db
+			.collection('colors')
+			.find(
+				{ _id: { $in: unique } },
+				{ projection: { name_uk: 1, name_en: 1, family: 1, hex_stops: 1 } }
+			)
+			.toArray()
+		return new Map(rows.map(row => [String(row._id), row as unknown as PublicColorSource]))
 	}
 
 	async findBySkuPrefix(prefix: string): Promise<Array<{ _id: Types.ObjectId }>> {
@@ -232,7 +307,18 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					as: 'product'
 				}
 			},
-			{ $unwind: '$product' }
+			{ $unwind: '$product' },
+			// Left join: variants without a dictionary colour keep a null here and the service
+			// falls back to the attribute-derived name.
+			{
+				$lookup: {
+					from: 'colors',
+					localField: 'color_id',
+					foreignField: '_id',
+					as: 'color'
+				}
+			},
+			{ $unwind: { path: '$color', preserveNullAndEmptyArrays: true } }
 		]
 
 		const term = (q ?? '').trim()
@@ -366,7 +452,16 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					as: 'product'
 				}
 			},
-			{ $unwind: '$product' }
+			{ $unwind: '$product' },
+			{
+				$lookup: {
+					from: 'colors',
+					localField: 'color_id',
+					foreignField: '_id',
+					as: 'color'
+				}
+			},
+			{ $unwind: { path: '$color', preserveNullAndEmptyArrays: true } }
 		]
 
 		const attrConditions: any[] = []
@@ -408,7 +503,21 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 								price_updated_at: 1,
 								v_value: 1,
 								attributes: '$product.attributes',
-								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] }
+								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
+								// Same four fields as PublicColor; null for variants with no
+								// dictionary colour, so the card falls back to `v_value`.
+								color: {
+									$cond: [
+										{ $ifNull: ['$color', false] },
+										{
+											name_uk: '$color.name_uk',
+											name_en: '$color.name_en',
+											family: '$color.family',
+											hex_stops: '$color.hex_stops'
+										},
+										null
+									]
+								}
 							}
 						}
 					],

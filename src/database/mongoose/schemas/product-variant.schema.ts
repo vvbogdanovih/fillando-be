@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { HydratedDocument, Types } from 'mongoose'
-import { ProductStatus } from 'src/common/types/enums'
+import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 
 @Schema({ collection: 'product_variants', timestamps: true })
 export class ProductVariant {
@@ -61,11 +61,26 @@ export class ProductVariant {
 
 	@Prop({ type: String, enum: ProductStatus, default: ProductStatus.ACTIVE })
 	status: ProductStatus
+
+	/** Colour dictionary entry; null for categories that have no colour axis. */
+	@Prop({ type: Types.ObjectId, ref: 'Color', default: null })
+	color_id: Types.ObjectId | null
+
+	/**
+	 * Denormalized copy of `Color.family`, kept here so the catalogue filter is one indexed
+	 * match instead of a second `$lookup` on every request (TD-0002 §5.2.2). The colour service
+	 * rewrites it across the affected variants whenever a dictionary entry changes family.
+	 */
+	@Prop({ type: String, enum: ColorFamily, default: null })
+	color_family: ColorFamily | null
 }
 
 export const ProductVariantSchema = SchemaFactory.createForClass(ProductVariant)
 ProductVariantSchema.index({ product_id: 1 })
 ProductVariantSchema.index({ category_id: 1, status: 1 })
+// Serves the catalogue colour filter: category + status are always matched, and
+// color_family is the only extra predicate the swatch sidebar adds.
+ProductVariantSchema.index({ category_id: 1, status: 1, color_family: 1 })
 ProductVariantSchema.index({ slug: 1 }, { unique: true })
 ProductVariantSchema.index({ sku: 1 }, { unique: true })
 export type ProductVariantDocument = HydratedDocument<ProductVariant>

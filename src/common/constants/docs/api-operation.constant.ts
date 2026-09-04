@@ -47,6 +47,70 @@ export const API_OPERATION = {
 			description: 'Updates name, phone, or profile picture for the authenticated user'
 		}
 	},
+	COLORS: {
+		GET_ALL: {
+			summary: 'Get the colour dictionary',
+			description:
+				'Public. Every colour, ordered by `order` then `name_en`. Drives the catalogue swatch filter and the "Чорний (Black)" labels.'
+		},
+		GET_BY_ID: {
+			summary: 'Get colour by id',
+			description: 'Public. A single colour dictionary entry.'
+		},
+		CREATE: {
+			summary: 'Create colour',
+			description: 'Admin only. `name_en` and `slug` must be unique.'
+		},
+		UPDATE: {
+			summary: 'Update colour',
+			description:
+				'Admin only. Changing `family` also rewrites `color_family` on every variant of this colour, so the catalogue filter stays consistent with the dictionary.'
+		},
+		DELETE: {
+			summary: 'Delete colour',
+			description:
+				'Admin only. Refused while variants still reference the colour — clear or repoint them first.'
+		}
+	},
+	LANDINGS: {
+		GET_ALL: {
+			summary: 'Get published landings',
+			description:
+				'Public. Active landings only, optionally narrowed to one category with `category_id`. Drafts are never returned here.'
+		},
+		GET_SLUGS: {
+			summary: 'Get published landing slugs',
+			description:
+				'Public. Category slug + landing slug + updatedAt for every active landing — the sitemap builds its URLs from this.'
+		},
+		GET_ADMIN_ALL: {
+			summary: 'Get all landings (admin)',
+			description:
+				'Admin only. Every landing including drafts, optionally filtered by `category_id`.'
+		},
+		GET_BY_SLUG: {
+			summary: 'Get landing by category and landing slug',
+			description:
+				'Public. Active landings only; an unknown or draft address is a 404 so the page can render `notFound()`.'
+		},
+		GET_BY_ID: {
+			summary: 'Get landing by id (admin)',
+			description: 'Admin only. Returns drafts too — this is what the edit form loads.'
+		},
+		CREATE: {
+			summary: 'Create landing',
+			description:
+				'Admin only. `slug` is unique within the category. Rich-text fields are sanitized on write.'
+		},
+		UPDATE: {
+			summary: 'Update landing',
+			description: 'Admin only. Rich-text fields are sanitized on write.'
+		},
+		DELETE: {
+			summary: 'Delete landing',
+			description: 'Admin only.'
+		}
+	},
 	CATEGORIES: {
 		GET_ALL: {
 			summary: 'Get all categories',

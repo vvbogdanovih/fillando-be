@@ -33,6 +33,64 @@ export const API_PROPERTY = {
 		example: 'Fillando',
 		description: 'Vendor name'
 	},
+	COLOR_NAME_EN: {
+		example: 'Bambu Green',
+		description: 'Canonical manufacturer colour name; unique'
+	},
+	COLOR_NAME_UK: {
+		example: 'Зелений Bambu',
+		description: 'Ukrainian colour name shown to shoppers'
+	},
+	COLOR_FAMILY: {
+		example: 'green',
+		description: 'Swatch bucket the catalogue filter groups this colour under'
+	},
+	COLOR_HEX_STOPS: {
+		example: ['#2F855A'],
+		description:
+			'1..6 ordered #RRGGBB stops. One stop renders a solid swatch, several a gradient; hex_stops[0] is the primary colour'
+	},
+	COLOR_ORDER: {
+		example: 0,
+		description: 'Display order in the swatch filter — lower first'
+	},
+	LANDING_CATEGORY_ID: {
+		example: '69b7c630ff27ba94157052dd',
+		description: 'Category this landing narrows'
+	},
+	LANDING_SLUG: {
+		example: 'pla-silk',
+		description: 'URL segment, unique within the category'
+	},
+	LANDING_H1: {
+		example: 'PLA Silk філамент',
+		description: 'Page heading'
+	},
+	LANDING_TITLE: {
+		example: 'PLA Silk філамент — купити в Україні | Fillando',
+		description: 'Contents of the <title> tag'
+	},
+	LANDING_META_DESCRIPTION: {
+		example: 'PLA Silk філамент з шовковим блиском. Понад 20 кольорів, доставка по Україні.',
+		description: 'Meta description'
+	},
+	LANDING_INTRO_HTML: {
+		example: '<p>Короткий вступ над сіткою товарів.</p>',
+		description: 'Rich text rendered above the product grid; sanitized on write'
+	},
+	LANDING_BOTTOM_HTML: {
+		example: '<h2>Про PLA Silk</h2><p>Основний SEO-текст.</p>',
+		description: 'Rich text rendered below the product grid; sanitized on write'
+	},
+	LANDING_FILTERS: {
+		example: { polymer: ['PLA'], finish: ['Silk'] },
+		description:
+			'Pinned catalogue filters, attribute key to values. Values must not contain a comma — the catalogue query splits on it'
+	},
+	LANDING_STATUS: {
+		example: 'draft',
+		description: 'draft keeps the page off the public site until its copy is written'
+	},
 	CATEGORY_NAME: {
 		example: 'Electronics',
 		description: 'Category name'

@@ -4,6 +4,7 @@ import { ProductRepository } from 'src/database/mongoose/repositories/product.re
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
 import { generateAttrKey, generateSlug } from 'src/common/utils/attribute.utils'
+import { sanitizeRichText } from 'src/common/utils/html.utils'
 import { CreateProductDto } from './dto/create-product.dto'
 import { UpdateProductDto } from './dto/update-product.dto'
 import { ValidateProductDto, ValidateProductResponseDto } from './dto/validate-product.dto'
@@ -25,6 +26,8 @@ interface PriceSheetRaw {
 	slug: string
 	v_value: string | null
 	sku: string
+	color_name_uk?: string | null
+	color_name_en?: string | null
 	price: number
 	stock?: number
 	stock_updated_at?: Date | null
@@ -92,7 +95,12 @@ export class ProductService {
 				name: item.product_name,
 				manufacturer: pickAttr(attributes, MANUFACTURER_PATTERNS),
 				material: pickAttr(attributes, MATERIAL_PATTERNS),
-				color: pickColor(item.v_value, attributes, item.variant_type),
+				// Dictionary first: after the colour migration `v_value` is the English name, so
+				// deriving the label from the variant alone would flip the sheet to English.
+				// Kept a plain string — the storefront validates this field as one.
+				color:
+					formatColorLabel(item.color_name_uk, item.color_name_en) ??
+					pickColor(item.v_value, attributes, item.variant_type),
 				article: item.sku || null,
 				price: item.price,
 				in_stock: (item.stock ?? 0) > 0,
@@ -173,7 +181,7 @@ export class ProductService {
 			v: attr.v
 		}))
 
-		const { variants, ...productData } = dto
+		const { variants, ...productData } = withSanitizedDescription(dto)
 		const product = await this.productRepository.create({ ...productData, attributes } as any)
 
 		const createdVariants = variants?.length
@@ -212,7 +220,7 @@ export class ProductService {
 		const updated = await this.productRepository.update(
 			{ _id: id },
 			{
-				...dto,
+				...withSanitizedDescription(dto),
 				attributes
 			}
 		)
@@ -361,4 +369,34 @@ export class ProductService {
 		if (!updated) throw new NotFoundException('Variant not found')
 		return updated
 	}
+}
+
+/**
+ * Product descriptions are admin-authored HTML rendered with `dangerouslySetInnerHTML` on the
+ * product page, so they go through the same allowlist as landing copy (TD-0002 §5.2.3 asked
+ * for a shared helper). `json` is the editor's own delta and is never rendered as markup.
+ */
+function withSanitizedDescription<T extends { description?: { json: unknown; html: string } }>(
+	dto: T
+): T {
+	if (!dto.description) return dto
+	return {
+		...dto,
+		description: { ...dto.description, html: sanitizeRichText(dto.description.html) }
+	}
+}
+
+/**
+ * "Чорний (Black)" — the Ukrainian name a shopper reads plus the canonical name a reseller
+ * orders by (TD-0002 §5.2.2). Null when the variant has no dictionary colour, so the caller
+ * can fall back to the attribute-derived one.
+ */
+function formatColorLabel(
+	nameUk: string | null | undefined,
+	nameEn: string | null | undefined
+): string | null {
+	if (!nameUk && !nameEn) return null
+	if (!nameUk) return nameEn as string
+	if (!nameEn || nameEn === nameUk) return nameUk
+	return `${nameUk} (${nameEn})`
 }

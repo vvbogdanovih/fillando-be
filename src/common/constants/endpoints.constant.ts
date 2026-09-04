@@ -24,6 +24,27 @@ export const ENDPOINTS = {
 		REPLACE: '/:id',
 		DELETE: '/:id'
 	},
+	COLORS: {
+		BASE: '/colors',
+		GET_ALL: '/',
+		GET_BY_ID: '/:id',
+		CREATE: '/',
+		UPDATE: '/:id',
+		DELETE: '/:id'
+	},
+	LANDINGS: {
+		BASE: '/landings',
+		GET_ALL: '/',
+		// Declared before GET_BY_ID in the controller — '/slugs' and '/admin' would otherwise
+		// be swallowed by the ':id' parameter route.
+		GET_SLUGS: '/slugs',
+		GET_ADMIN_ALL: '/admin',
+		GET_BY_SLUG: '/slug/:categorySlug/:landingSlug',
+		GET_BY_ID: '/:id',
+		CREATE: '/',
+		UPDATE: '/:id',
+		DELETE: '/:id'
+	},
 	VENDORS: {
 		BASE: '/vendors',
 		GET_ALL: '/',

@@ -1011,6 +1011,331 @@
         ]
       }
     },
+    "/colors": {
+      "get": {
+        "description": "Public. Every colour, ordered by `order` then `name_en`. Drives the catalogue swatch filter and the \"Чорний (Black)\" labels.",
+        "operationId": "ColorController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get the colour dictionary",
+        "tags": [
+          "/colors"
+        ]
+      },
+      "post": {
+        "description": "Admin only. `name_en` and `slug` must be unique.",
+        "operationId": "ColorController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateColorDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create colour",
+        "tags": [
+          "/colors"
+        ]
+      }
+    },
+    "/colors/{id}": {
+      "get": {
+        "description": "Public. A single colour dictionary entry.",
+        "operationId": "ColorController_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get colour by id",
+        "tags": [
+          "/colors"
+        ]
+      },
+      "patch": {
+        "description": "Admin only. Changing `family` also rewrites `color_family` on every variant of this colour, so the catalogue filter stays consistent with the dictionary.",
+        "operationId": "ColorController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateColorDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Update colour",
+        "tags": [
+          "/colors"
+        ]
+      },
+      "delete": {
+        "description": "Admin only. Refused while variants still reference the colour — clear or repoint them first.",
+        "operationId": "ColorController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Delete colour",
+        "tags": [
+          "/colors"
+        ]
+      }
+    },
+    "/landings/slugs": {
+      "get": {
+        "description": "Public. Category slug + landing slug + updatedAt for every active landing — the sitemap builds its URLs from this.",
+        "operationId": "LandingController_findSlugs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get published landing slugs",
+        "tags": [
+          "/landings"
+        ]
+      }
+    },
+    "/landings/admin": {
+      "get": {
+        "description": "Admin only. Every landing including drafts, optionally filtered by `category_id`.",
+        "operationId": "LandingController_findAllForAdmin",
+        "parameters": [
+          {
+            "name": "category_id",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get all landings (admin)",
+        "tags": [
+          "/landings"
+        ]
+      }
+    },
+    "/landings/slug/{categorySlug}/{landingSlug}": {
+      "get": {
+        "description": "Public. Active landings only; an unknown or draft address is a 404 so the page can render `notFound()`.",
+        "operationId": "LandingController_findBySlugs",
+        "parameters": [
+          {
+            "name": "categorySlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "landingSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get landing by category and landing slug",
+        "tags": [
+          "/landings"
+        ]
+      }
+    },
+    "/landings": {
+      "get": {
+        "description": "Public. Active landings only, optionally narrowed to one category with `category_id`. Drafts are never returned here.",
+        "operationId": "LandingController_findActive",
+        "parameters": [
+          {
+            "name": "category_id",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get published landings",
+        "tags": [
+          "/landings"
+        ]
+      },
+      "post": {
+        "description": "Admin only. `slug` is unique within the category. Rich-text fields are sanitized on write.",
+        "operationId": "LandingController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLandingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create landing",
+        "tags": [
+          "/landings"
+        ]
+      }
+    },
+    "/landings/{id}": {
+      "get": {
+        "description": "Admin only. Returns drafts too — this is what the edit form loads.",
+        "operationId": "LandingController_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get landing by id (admin)",
+        "tags": [
+          "/landings"
+        ]
+      },
+      "patch": {
+        "description": "Admin only. Rich-text fields are sanitized on write.",
+        "operationId": "LandingController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLandingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Update landing",
+        "tags": [
+          "/landings"
+        ]
+      },
+      "delete": {
+        "description": "Admin only.",
+        "operationId": "LandingController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Delete landing",
+        "tags": [
+          "/landings"
+        ]
+      }
+    },
     "/upload/presign": {
       "post": {
         "description": "Returns presigned S3 PUT URLs and public URLs for direct client-side upload. URLs expire in 15 minutes.",
@@ -3198,6 +3523,320 @@
             "items": {
               "$ref": "#/components/schemas/AttributeDto"
             }
+          }
+        }
+      },
+      "CreateColorDto": {
+        "type": "object",
+        "properties": {
+          "name_en": {
+            "type": "string",
+            "example": "Bambu Green",
+            "description": "Canonical manufacturer colour name; unique"
+          },
+          "name_uk": {
+            "type": "string",
+            "example": "Зелений Bambu",
+            "description": "Ukrainian colour name shown to shoppers"
+          },
+          "slug": {
+            "type": "string",
+            "example": "my-slug",
+            "description": "URL-friendly identifier"
+          },
+          "family": {
+            "type": "string",
+            "example": "green",
+            "description": "Swatch bucket the catalogue filter groups this colour under",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "blue",
+              "purple",
+              "pink",
+              "brown",
+              "gold",
+              "silver",
+              "transparent",
+              "multicolor"
+            ]
+          },
+          "hex_stops": {
+            "example": [
+              "#2F855A"
+            ],
+            "description": "1..6 ordered #RRGGBB stops. One stop renders a solid swatch, several a gradient; hex_stops[0] is the primary colour",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "order": {
+            "type": "number",
+            "example": 0,
+            "description": "Display order in the swatch filter — lower first"
+          }
+        },
+        "required": [
+          "name_en",
+          "name_uk",
+          "family",
+          "hex_stops"
+        ]
+      },
+      "UpdateColorDto": {
+        "type": "object",
+        "properties": {
+          "name_en": {
+            "type": "string",
+            "example": "Bambu Green",
+            "description": "Canonical manufacturer colour name; unique"
+          },
+          "name_uk": {
+            "type": "string",
+            "example": "Зелений Bambu",
+            "description": "Ukrainian colour name shown to shoppers"
+          },
+          "slug": {
+            "type": "string",
+            "example": "my-slug",
+            "description": "URL-friendly identifier"
+          },
+          "family": {
+            "type": "string",
+            "example": "green",
+            "description": "Swatch bucket the catalogue filter groups this colour under",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "blue",
+              "purple",
+              "pink",
+              "brown",
+              "gold",
+              "silver",
+              "transparent",
+              "multicolor"
+            ]
+          },
+          "hex_stops": {
+            "example": [
+              "#2F855A"
+            ],
+            "description": "1..6 ordered #RRGGBB stops. One stop renders a solid swatch, several a gradient; hex_stops[0] is the primary colour",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "order": {
+            "type": "number",
+            "example": 0,
+            "description": "Display order in the swatch filter — lower first"
+          }
+        }
+      },
+      "LandingFaqItemDto": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "example": "Чим PLA Silk відрізняється від звичайного PLA?"
+          },
+          "a": {
+            "type": "string",
+            "example": "Шовковим блиском поверхні за тих самих температур друку."
+          }
+        },
+        "required": [
+          "q",
+          "a"
+        ]
+      },
+      "CreateLandingDto": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "example": "69b7c630ff27ba94157052dd",
+            "description": "Category this landing narrows"
+          },
+          "slug": {
+            "type": "string",
+            "example": "pla-silk",
+            "description": "URL segment, unique within the category"
+          },
+          "h1": {
+            "type": "string",
+            "example": "PLA Silk філамент",
+            "description": "Page heading"
+          },
+          "title": {
+            "type": "string",
+            "example": "PLA Silk філамент — купити в Україні | Fillando",
+            "description": "Contents of the <title> tag"
+          },
+          "meta_description": {
+            "type": "string",
+            "example": "PLA Silk філамент з шовковим блиском. Понад 20 кольорів, доставка по Україні.",
+            "description": "Meta description"
+          },
+          "intro_html": {
+            "type": "string",
+            "example": "<p>Короткий вступ над сіткою товарів.</p>",
+            "description": "Rich text rendered above the product grid; sanitized on write"
+          },
+          "bottom_html": {
+            "type": "string",
+            "example": "<h2>Про PLA Silk</h2><p>Основний SEO-текст.</p>",
+            "description": "Rich text rendered below the product grid; sanitized on write"
+          },
+          "faq": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LandingFaqItemDto"
+            }
+          },
+          "filters": {
+            "type": "object",
+            "example": {
+              "polymer": [
+                "PLA"
+              ],
+              "finish": [
+                "Silk"
+              ]
+            },
+            "description": "Pinned catalogue filters, attribute key to values. Values must not contain a comma — the catalogue query splits on it"
+          },
+          "price_min": {
+            "type": "object",
+            "example": 500,
+            "nullable": true
+          },
+          "price_max": {
+            "type": "object",
+            "example": 1500,
+            "nullable": true
+          },
+          "image": {
+            "type": "object",
+            "example": "https://cdn.example.com/landings/pla-silk.webp"
+          },
+          "order": {
+            "type": "number",
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "example": "draft",
+            "description": "draft keeps the page off the public site until its copy is written",
+            "enum": [
+              "draft",
+              "active"
+            ]
+          }
+        },
+        "required": [
+          "category_id",
+          "slug",
+          "h1",
+          "title",
+          "meta_description"
+        ]
+      },
+      "UpdateLandingDto": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "example": "69b7c630ff27ba94157052dd",
+            "description": "Category this landing narrows"
+          },
+          "slug": {
+            "type": "string",
+            "example": "pla-silk",
+            "description": "URL segment, unique within the category"
+          },
+          "h1": {
+            "type": "string",
+            "example": "PLA Silk філамент",
+            "description": "Page heading"
+          },
+          "title": {
+            "type": "string",
+            "example": "PLA Silk філамент — купити в Україні | Fillando",
+            "description": "Contents of the <title> tag"
+          },
+          "meta_description": {
+            "type": "string",
+            "example": "PLA Silk філамент з шовковим блиском. Понад 20 кольорів, доставка по Україні.",
+            "description": "Meta description"
+          },
+          "intro_html": {
+            "type": "string",
+            "example": "<p>Короткий вступ над сіткою товарів.</p>",
+            "description": "Rich text rendered above the product grid; sanitized on write"
+          },
+          "bottom_html": {
+            "type": "string",
+            "example": "<h2>Про PLA Silk</h2><p>Основний SEO-текст.</p>",
+            "description": "Rich text rendered below the product grid; sanitized on write"
+          },
+          "faq": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LandingFaqItemDto"
+            }
+          },
+          "filters": {
+            "type": "object",
+            "example": {
+              "polymer": [
+                "PLA"
+              ],
+              "finish": [
+                "Silk"
+              ]
+            },
+            "description": "Pinned catalogue filters, attribute key to values. Values must not contain a comma — the catalogue query splits on it"
+          },
+          "price_min": {
+            "type": "object",
+            "example": 500,
+            "nullable": true
+          },
+          "price_max": {
+            "type": "object",
+            "example": 1500,
+            "nullable": true
+          },
+          "image": {
+            "type": "object",
+            "example": "https://cdn.example.com/landings/pla-silk.webp"
+          },
+          "order": {
+            "type": "number",
+            "example": 0
+          },
+          "status": {
+            "type": "string",
+            "example": "draft",
+            "description": "draft keeps the page off the public site until its copy is written",
+            "enum": [
+              "draft",
+              "active"
+            ]
           }
         }
       },

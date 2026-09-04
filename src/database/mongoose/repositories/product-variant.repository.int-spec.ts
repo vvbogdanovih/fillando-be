@@ -45,7 +45,9 @@ const PRICE_SHEET_PUBLIC_KEYS = [
 	'stock_updated_at',
 	'image',
 	'attributes',
-	'variant_type'
+	'variant_type',
+	'color_name_uk',
+	'color_name_en'
 ] as const
 
 const PRODUCT_NAME = 'PLA Filament Test Product'

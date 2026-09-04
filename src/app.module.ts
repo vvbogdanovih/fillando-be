@@ -10,6 +10,8 @@ import { AuthModule } from './modules/auth/auth.module'
 import { VendorModule } from './modules/vendor/vendor.module'
 import { CategoryModule } from './modules/category/category.module'
 import { ProductModule } from './modules/product/product.module'
+import { ColorModule } from './modules/color/color.module'
+import { LandingModule } from './modules/landing/landing.module'
 import { UploadModule } from './modules/upload/upload.module'
 import { NumbersModule } from './modules/numbers/numbers.module'
 import { CartModule } from './modules/cart/cart.module'
@@ -63,6 +65,8 @@ import { ENV } from './common/constants'
 		VendorModule,
 		CategoryModule,
 		ProductModule,
+		ColorModule,
+		LandingModule,
 		UploadModule,
 		NumbersModule,
 		CartModule,

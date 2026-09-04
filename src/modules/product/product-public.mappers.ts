@@ -1,5 +1,6 @@
 import { Types } from 'mongoose'
-import { ProductStatus } from 'src/common/types/enums'
+import { ColorFamily, ProductStatus } from 'src/common/types/enums'
+import { Color } from 'src/database/mongoose/schemas/color.schema'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 
 /**
@@ -22,10 +23,36 @@ export const PUBLIC_VARIANT_FIELDS = [
 	'stock',
 	'images',
 	'v_value',
-	'status'
+	'status',
+	'color'
 ] as const
 
 export type PublicVariantField = (typeof PUBLIC_VARIANT_FIELDS)[number]
+
+/**
+ * The colour of a variant as the storefront needs it: the Ukrainian name it displays, the
+ * canonical English one it shows in brackets, the family the filter groups by, and the stops
+ * the swatch is painted from (TD-0002 §5.2.2).
+ */
+export type PublicColor = {
+	name_uk: string
+	name_en: string
+	family: ColorFamily
+	hex_stops: string[]
+}
+
+/** Allowlist copy of a dictionary colour. Never spread the source. */
+export function toPublicColor(
+	color: Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'> | null | undefined
+): PublicColor | null {
+	if (!color) return null
+	return {
+		name_uk: color.name_uk,
+		name_en: color.name_en,
+		family: color.family,
+		hex_stops: color.hex_stops ?? []
+	}
+}
 
 export type PublicVariant = {
 	id: string
@@ -38,13 +65,17 @@ export type PublicVariant = {
 	images: string[]
 	v_value: string | null
 	status: ProductStatus
+	color: PublicColor | null
 }
 
 /**
  * Explicit allowlist copy of a variant document for public responses. Never spread the
  * source here — a new schema field must not reach the storefront by accident.
  */
-export function toPublicVariant(variant: ProductVariant & { _id: Types.ObjectId }): PublicVariant {
+export function toPublicVariant(
+	variant: ProductVariant & { _id: Types.ObjectId },
+	color?: Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'> | null
+): PublicVariant {
 	return {
 		id: variant._id.toString(),
 		name: variant.name,
@@ -55,7 +86,10 @@ export function toPublicVariant(variant: ProductVariant & { _id: Types.ObjectId 
 		stock: variant.stock,
 		images: variant.images ?? [],
 		v_value: variant.v_value ?? null,
-		status: variant.status
+		status: variant.status,
+		// The dictionary entry, not `color_id`: an internal id is of no use to the storefront,
+		// and `v_value` alone turns English after the colour migration (TD-0002 §5.2.2).
+		color: toPublicColor(color)
 	}
 }
 
@@ -76,5 +110,11 @@ export const PRICE_SHEET_PUBLIC_PROJECTION = {
 	stock_updated_at: 1,
 	image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
 	attributes: '$product.attributes',
-	variant_type: '$product.variant_type'
+	variant_type: '$product.variant_type',
+	// Joined dictionary names. The price sheet keeps `color` a plain string in its response
+	// (the storefront validates it as one), so the service formats these two into it.
+	// $ifNull, not a bare path: a variant with no dictionary colour would otherwise be missing
+	// the keys entirely and the row shape would vary between records.
+	color_name_uk: { $ifNull: ['$color.name_uk', null] },
+	color_name_en: { $ifNull: ['$color.name_en', null] }
 } as const

@@ -39,7 +39,7 @@ NestJS backend with MongoDB (via Mongoose). No global prefix in the app (nginx a
 
 **Module layout under `src/`:**
 
-- `app.module.ts` — root module; imports LoggerModule, MongooseModule, AuthModule, VendorModule, CategoryModule, ProductModule, UploadModule, NumbersModule, CartModule, EmailModule, PaymentDetailsModule, PaymentProvidersModule, LiqpayModule, NovaPostModule, PromModule, OrderModule, DiscountCouponModule, UsersModule, WholesaleInquiryModule
+- `app.module.ts` — root module; imports LoggerModule, MongooseModule, AuthModule, VendorModule, CategoryModule, ProductModule, ColorModule, LandingModule, UploadModule, NumbersModule, CartModule, EmailModule, PaymentDetailsModule, PaymentProvidersModule, LiqpayModule, NovaPostModule, PromModule, OrderModule, DiscountCouponModule, UsersModule, WholesaleInquiryModule
 - `common/` — shared code: configs, constants, decorators, guards, passport strategies, types, services
 - `database/mongoose/schemas/` — Mongoose schema classes (one file per domain)
 - `database/mongoose/repositories/` — data access layer; `base.repository.ts` + concrete repos
@@ -90,6 +90,13 @@ Rules:
 - Adding a catalogue filter dimension means adding the pair in three places: `ATTR_KEY_OVERRIDES` here, the frontend mirror `toAttrKey` in `fillando-fe/src/common/utils/slug.utils.ts`, and `scripts/migrations/normalize-attr-keys.js` (a unit test enforces BE↔migration sync). Then deploy and run the migration (`node scripts/migrations/normalize-attr-keys.js --dry-run`, then without the flag) to rename keys already stored — the override applies on the next save, not retroactively.
 - `Product.variant_type.key` is the exception to "derived server-side": `VariantTypeDto.key` is a plain `@IsString()` that `ProductService.create`/`update` store verbatim, so the frontend is its only author. A later save does not repair it, which is why the migration renames it too — otherwise it stops matching the `attributes[].k` it points at.
 - Attribute values must not contain commas: the catalogue query splits multi-value filters (`?polymer=PLA,PETG`) on `,`.
+
+**Catalogue colour & landings** (TD-0002, `fillando-meta`) — `colors` is the colour dictionary and `landings` the SEO pages over a category. Two rules are easy to break:
+
+- `ProductVariant.color_family` is a denormalized copy of `Color.family`. `ColorService.update` writes the dictionary **first** and backfills the variants **second**. That order is the compensation for a missing transaction: this deployment runs a **standalone MongoDB**, where `session.withTransaction` fails outright, so the design's "one transaction" (TD-0002 §5.2.2) is not available. Because the dictionary is the source of truth, a failed backfill is repairable — re-issuing the same `PATCH /colors/:id` backfills again, since the update filters on drift rather than on a changed value. Making transactions possible means converting the server to a single-node replica set.
+- Landing reads come in two flavours: the public ones (`GET /landings`, `/landings/slugs`, `/landings/slug/:categorySlug/:landingSlug`) filter `status: 'active'`; the draft-exposing ones (`GET /landings/admin`, `GET /landings/:id`) are ADMIN-only. Never widen a public one to all statuses — that is the defect Plan-0003 closed for products.
+
+**Admin-authored HTML** is sanitized on write by `sanitizeRichText` / `sanitizePlainText` (`src/common/utils/html.utils.ts`): landing copy, FAQ entries and product descriptions. The storefront renders these with `dangerouslySetInnerHTML`, so an allowlist is the only thing between an admin account and stored XSS for every visitor. `sanitize-html` is pinned to **2.17.0** on purpose — 2.17.7 moved to an ESM-only `htmlparser2`, which Jest's CommonJS runtime cannot load, so every suite importing it fails to parse.
 
 **Repository pattern** — services never use `@InjectModel` directly; all DB access goes through a repository that extends `BaseRepository<T>` (`src/database/mongoose/repositories/base.repository.ts`). Register the repository in the module's `providers` array alongside the `MongooseModule.forFeature` schema. See `src/docs/REPOSITORY_PATTERN.md` for the full pattern and a step-by-step example.
 

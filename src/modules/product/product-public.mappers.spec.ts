@@ -1,5 +1,5 @@
 import { Types } from 'mongoose'
-import { ProductStatus } from 'src/common/types/enums'
+import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import {
 	PRICE_SHEET_PUBLIC_PROJECTION,
@@ -23,7 +23,11 @@ const INTERNAL_FIELDS = [
 	'category_id',
 	'createdAt',
 	'updatedAt',
-	'__v'
+	'__v',
+	// The raw pointer and its denormalized copy stay internal: the public payload carries the
+	// resolved `color` object instead.
+	'color_id',
+	'color_family'
 ] as const
 
 type LeanVariantDoc = ProductVariant & {
@@ -53,6 +57,8 @@ const fixture: LeanVariantDoc = {
 	price_updated_at: new Date('2026-08-20T08:00:00Z'),
 	stock_updated_at: new Date('2026-08-21T09:30:00Z'),
 	status: ProductStatus.ACTIVE,
+	color_id: new Types.ObjectId('000000000000000000000004'),
+	color_family: ColorFamily.RED,
 	createdAt: new Date('2026-01-01T00:00:00Z'),
 	updatedAt: new Date('2026-08-21T09:30:00Z'),
 	__v: 3
@@ -86,8 +92,30 @@ describe('toPublicVariant', () => {
 				'https://cdn.example.invalid/red-2.jpg'
 			],
 			v_value: 'Red',
-			status: ProductStatus.ACTIVE
+			status: ProductStatus.ACTIVE,
+			color: null
 		})
+	})
+
+	it('resolves the dictionary colour into the four public fields', () => {
+		const result = toPublicVariant(fixture, {
+			name_uk: 'Червоний',
+			name_en: 'Red',
+			family: ColorFamily.RED,
+			hex_stops: ['#e53e3e']
+		})
+
+		expect(result.color).toEqual({
+			name_uk: 'Червоний',
+			name_en: 'Red',
+			family: ColorFamily.RED,
+			hex_stops: ['#e53e3e']
+		})
+	})
+
+	it('emits color: null when the variant has no dictionary entry', () => {
+		expect(toPublicVariant(fixture).color).toBeNull()
+		expect(toPublicVariant(fixture, null).color).toBeNull()
 	})
 
 	it('normalises missing optional fields instead of dropping the keys', () => {
@@ -117,6 +145,8 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION', () => {
 [
   "_id",
   "attributes",
+  "color_name_en",
+  "color_name_uk",
   "id",
   "image",
   "price",
@@ -156,7 +186,9 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION (exact shape)', () => {
 			stock_updated_at: 1,
 			image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
 			attributes: '$product.attributes',
-			variant_type: '$product.variant_type'
+			variant_type: '$product.variant_type',
+			color_name_uk: { $ifNull: ['$color.name_uk', null] },
+			color_name_en: { $ifNull: ['$color.name_en', null] }
 		})
 	})
 })

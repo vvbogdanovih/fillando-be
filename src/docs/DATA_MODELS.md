@@ -286,10 +286,19 @@ Schema: `src/database/mongoose/schemas/product-variant.schema.ts`
 | `price_updated_at`        | Date \| null            | default: `null` — last successful price resolution (Prom sync)                                                                                                            |
 | `stock_updated_at`        | Date \| null            | default: `null` — last successful stock sync; shown as `synced_at` on the price sheet                                                                                     |
 | `status`                  | `ProductStatus` enum    | default: `ACTIVE` — `draft` \| `active` \| `archived`                                                                                                                     |
+| `color_id`                | ObjectId → `colors` \| null | default: `null` — dictionary colour; `null` for categories with no colour axis                                                                                        |
+| `color_family`            | `ColorFamily` \| null   | default: `null` — denormalized copy of `Color.family`; what the catalogue swatch filter matches on                                                                         |
 | `createdAt` / `updatedAt` | Date                    | auto-managed (timestamps)                                                                                                                                                 |
 
-Indexes: `{ product_id: 1 }`, `{ category_id: 1, status: 1 }`, unique `{ slug: 1 }`, unique
-`{ sku: 1 }`. How the `prom_*` fields are written: `src/docs/PROM_AVAILABILITY_SYNC.md`.
+Indexes: `{ product_id: 1 }`, `{ category_id: 1, status: 1 }`,
+`{ category_id: 1, status: 1, color_family: 1 }` (the catalogue colour filter), unique
+`{ slug: 1 }`, unique `{ sku: 1 }`. How the `prom_*` fields are written:
+`src/docs/PROM_AVAILABILITY_SYNC.md`.
+
+`color_family` is denormalized on purpose (TD-0002 §5.2.2): the catalogue aggregation already
+joins `products` on every request, and a second join into `colors` just to filter would cost more
+than keeping a copy that only changes when the dictionary is edited. `ColorService.update`
+rewrites it across the colour's variants right after it writes the dictionary.
 
 #### Public exposure
 
@@ -297,7 +306,9 @@ A public endpoint never returns a raw variant document. Responses go through the
 `src/modules/product/product-public.mappers.ts`:
 
 - `toPublicVariant` — `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`,
-  `v_value`, `status`. Used by `GET /products/by-slug/:slug` (the variant and its siblings).
+  `v_value`, `status`, `color`. Used by `GET /products/by-slug/:slug` (the variant and its
+  siblings). `color` is the resolved dictionary entry (`name_uk`, `name_en`, `family`,
+  `hex_stops`) or `null`; the raw `color_id` and `color_family` stay internal.
 - `PRICE_SHEET_PUBLIC_PROJECTION` — the `$project` stage of `GET /products/price-sheet`
   (see `src/docs/PRICE_SHEET.md`).
 
@@ -311,6 +322,78 @@ Only `status = active` variants are visible publicly: `GET /products/by-slug/:sl
 a `draft`/`archived` slug, and such variants are excluded from `catalog`, `search`, `price-sheet`,
 `variants/slugs` (the sitemap source) and `variants/count` (its cache key). Draft and archived
 variants are reachable only through the admin-only endpoints above.
+
+---
+
+### `colors`
+
+Schema: `src/database/mongoose/schemas/color.schema.ts`
+
+| Field                     | Type              | Notes                                                                              |
+| ------------------------- | ----------------- | ---------------------------------------------------------------------------------- |
+| `name_en`                 | string            | required, unique — canonical manufacturer name (`'Bambu Green'`)                    |
+| `name_uk`                 | string            | required — Ukrainian name shown to shoppers (`'Зелений Bambu'`)                     |
+| `slug`                    | string            | required, unique — derived from `name_en` when the client omits it                  |
+| `family`                  | `ColorFamily`     | required — one of 15 swatch buckets; the value the catalogue filter groups by       |
+| `hex_stops`               | string[]          | required — 1..6 ordered `#RRGGBB` stops; `hex_stops[0]` is the primary colour       |
+| `order`                   | number            | default: `0` — display order in the swatch filter                                   |
+| `createdAt` / `updatedAt` | Date              | auto-managed (timestamps)                                                          |
+
+Index: `{ order: 1, name_en: 1 }`.
+
+The stop count, not a separate flag, decides how a swatch is painted: one stop is a solid colour,
+two or more a linear gradient, and `family: multicolor` a conic one, so a rainbow reads as a ring
+rather than a stripe. The cap of six keeps a 22–30px swatch distinguishable.
+
+`GET /colors` and `GET /colors/:id` are public — the dictionary is storefront data with nothing to
+protect. Writes are ADMIN-only. A colour cannot be deleted while variants still reference it: the
+request answers 409 instead of stranding `color_id` and freezing `color_family` at a value no
+dictionary row explains.
+
+---
+
+### `landings`
+
+Schema: `src/database/mongoose/schemas/landing.schema.ts`
+
+| Field                     | Type                       | Notes                                                                                            |
+| ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `category_id`             | ObjectId → `categories`    | required — the category this page narrows                                                         |
+| `slug`                    | string                     | required, unique **within the category** — public URL `/{categorySlug}/{slug}`                    |
+| `h1`                      | string                     | required — page heading                                                                           |
+| `title`                   | string                     | required — `<title>`                                                                              |
+| `meta_description`        | string                     | required                                                                                          |
+| `intro_html`              | string                     | default: `''` — rich text above the grid; **sanitized on write**                                  |
+| `bottom_html`             | string                     | default: `''` — the main SEO copy below the grid; **sanitized on write**                          |
+| `faq`                     | `{ q, a }[]`               | default: `[]` — markup stripped on write                                                          |
+| `filters`                 | `Record<string, string[]>` | default: `{}` — pinned catalogue filters, attribute key to values                                 |
+| `price_min` / `price_max` | number \| null             | default: `null` — optional pinned price window                                                    |
+| `image`                   | string \| null             | default: `null`                                                                                   |
+| `order`                   | number                     | default: `0`                                                                                      |
+| `status`                  | `LandingStatus` enum       | default: `DRAFT` — `draft` \| `active`                                                            |
+| `createdAt` / `updatedAt` | Date                       | auto-managed (timestamps)                                                                         |
+
+Indexes: unique `{ category_id: 1, slug: 1 }`, `{ category_id: 1, status: 1, order: 1 }`.
+
+Categories stay flat: a landing is a separate entity with pinned filters, not a nested category
+(TD-0002 §5.2.3). `filters` keys are the ones `generateAttrKey` produces, so they move with
+`ATTR_KEY_OVERRIDES`; a value may not contain a comma, because `ProductService.getCatalog` splits
+query values on it — the DTO rejects one outright.
+
+#### Public exposure
+
+`draft` is unpublished copy and never leaves the backend through a public route:
+
+- `GET /landings`, `GET /landings/slugs` and `GET /landings/slug/:categorySlug/:landingSlug` filter
+  `status: 'active'`. An unknown category, an unknown slug and a draft are the same 404, so the
+  storefront renders `notFound()` and no one learns that an unpublished page exists at that address.
+- `GET /landings/admin` and `GET /landings/:id` return drafts and are therefore **ADMIN-only** —
+  they are what the editor lists and loads.
+
+`intro_html`, `bottom_html` and the FAQ entries are sanitized on write by
+`src/common/utils/html.utils.ts`, the same helper product descriptions go through. Sanitizing on
+write rather than on read means the stored value is the reviewed one, and every later consumer
+(sitemap, Merchant feed) reuses it as-is.
 
 ---
 

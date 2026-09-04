@@ -2,6 +2,7 @@ import {
 	createCipheriv,
 	createDecipheriv,
 	createHash,
+	createHmac,
 	randomBytes,
 	timingSafeEqual
 } from 'node:crypto'
@@ -65,5 +66,39 @@ export function verifyLiqpaySignature(
 	const expected = Buffer.from(liqpaySignature(privateKey, data))
 	const received = Buffer.from(signature ?? '')
 	if (expected.length !== received.length) return false
+	return timingSafeEqual(expected, received)
+}
+
+const ORDER_ACCESS_TOKEN_PREFIX = 'order-lookup:'
+const ORDER_ACCESS_TOKEN_LENGTH = 32
+
+/**
+ * Stateless HMAC token that grants public read access to an order's payment status
+ * (GET /orders/lookup/:orderNumber?token=...). Derived from `PAYMENT_ENCRYPTION_KEY`,
+ * so nothing is persisted and the token cannot be forged without the server secret.
+ * Output: first 32 chars of hex(HMAC-SHA256(key, `order-lookup:<orderNumber>`)).
+ */
+export function orderAccessToken(orderNumber: string): string {
+	return createHmac('sha256', ENV.PAYMENT_ENCRYPTION_KEY)
+		.update(`${ORDER_ACCESS_TOKEN_PREFIX}${orderNumber}`)
+		.digest('hex')
+		.slice(0, ORDER_ACCESS_TOKEN_LENGTH)
+}
+
+/**
+ * Constant-time check of a token produced by {@link orderAccessToken}.
+ * Never throws: any malformed input (non-string, wrong length, wrong bytes) yields `false`.
+ * Comparison is byte-exact — the token is issued as lowercase hex and an uppercase
+ * variant is deliberately REJECTED rather than normalised, so callers cannot widen
+ * the accepted input space.
+ */
+export function verifyOrderAccessToken(orderNumber: string, token: string): boolean {
+	if (typeof orderNumber !== 'string' || typeof token !== 'string') return false
+	if (token.length !== ORDER_ACCESS_TOKEN_LENGTH) return false
+	const expected = Buffer.from(orderAccessToken(orderNumber))
+	const received = Buffer.from(token)
+	if (expected.length !== ORDER_ACCESS_TOKEN_LENGTH || received.length !== expected.length) {
+		return false
+	}
 	return timingSafeEqual(expected, received)
 }

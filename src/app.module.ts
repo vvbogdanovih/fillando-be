@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { isInternalRequest } from './common/guards/internal-request.util'
 import { LoggerModule } from 'nestjs-pino'
+import { stdSerializers } from 'pino-http'
 
 import { AuthModule } from './modules/auth/auth.module'
 import { VendorModule } from './modules/vendor/vendor.module'
@@ -33,7 +34,20 @@ import { ENV } from './common/constants'
 					ENV.NODE_ENV !== 'production'
 						? { target: 'pino-pretty', options: { colorize: true } }
 						: undefined,
-				autoLogging: true
+				autoLogging: true,
+				// The order payment-status lookup carries its access token in the query string
+				// and is polled by the success page — keep it (and auth material) out of logs.
+				redact: {
+					paths: ['req.query.token', 'req.headers.cookie', 'req.headers.authorization'],
+					censor: '[redacted]'
+				},
+				serializers: {
+					req: req => {
+						const serialized = stdSerializers.req(req)
+						serialized.url = serialized.url.replace(/([?&]token=)[^&]*/, '$1[redacted]')
+						return serialized
+					}
+				}
 			}
 		}),
 		// Rate limiting is opt-in per endpoint (@UseGuards(ThrottlerGuard) + @Throttle) — there is

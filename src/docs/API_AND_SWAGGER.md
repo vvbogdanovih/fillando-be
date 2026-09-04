@@ -237,15 +237,15 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 login(...) {}
 ```
 
-| Endpoint | Limit (per IP, per minute) |
-| --- | --- |
-| `POST /auth/login`, `POST /auth/register` | 10 |
-| `POST /auth/refresh` | 30 |
-| `POST /orders` | 10 |
-| `POST /liqpay/checkout` | 10 |
-| `POST /discount-coupons/validate` | 20 |
-| `GET /products/price-sheet` | 20 |
-| `GET /orders/lookup/:orderNumber` | 30 — add when the lookup endpoint (PR-4) is merged |
+| Endpoint                                  | Limit (per IP, per minute) |
+| ----------------------------------------- | -------------------------- |
+| `POST /auth/login`, `POST /auth/register` | 10                         |
+| `POST /auth/refresh`                      | 30                         |
+| `POST /orders`                            | 10                         |
+| `POST /liqpay/checkout`                   | 10                         |
+| `POST /discount-coupons/validate`         | 20                         |
+| `GET /products/price-sheet`               | 20                         |
+| `GET /orders/lookup/:orderNumber`         | 30                         |
 
 - The IP comes from `req.ips[0] ?? req.ip`; `main.ts` sets `trust proxy 1`, so behind the
   production Nginx (`X-Forwarded-For`) this is the real client.
@@ -265,14 +265,16 @@ login(...) {}
 Non-exhaustive — see `app.module.ts` for the full list (17 feature modules) and
 `src/docs/RBAC.md` for the current, accurate guard status per module.
 
-| Module           | Base path     | Guard (writes + admin-only reads)                                                                                                     |
-| ---------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `AuthModule`     | `/auth`       | Public (issues its own tokens)                                                                                                        |
-| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                   |
-| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                   |
-| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on writes **and** on `GET /`, `GET /:id/variants`, `GET /:id/variants/:variantId` |
-| `UploadModule`   | `/upload`     | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` (class-level, all)                                                                |
-| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)`                                                                |
+| Module           | Base path     | Guard (writes + admin-only reads)                                                                                                                                                                                                       |
+| ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AuthModule`     | `/auth`       | Public (issues its own tokens)                                                                                                                                                                                                          |
+| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                                                                                                                     |
+| `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                                                                                                                     |
+| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on writes **and** on `GET /`, `GET /:id/variants`, `GET /:id/variants/:variantId`                                                                                                   |
+| `UploadModule`   | `/upload`     | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` (class-level, all)                                                                                                                                                                  |
+| `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)`                                                                                                                                                                  |
+| `OrderModule`    | `/orders`     | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)` on admin routes; `POST /` uses `OptionalJwtAuthGuard` (guest checkout). Public read: `GET /orders/lookup/:orderNumber?token=…` — no guard, gated by an HMAC token (see `LIQPAY_FLOW.md`) |
+| `LiqpayModule`   | `/liqpay`     | Public — `POST /checkout` and `POST /callback` (LiqPay signature verified in the service), see `LIQPAY_FLOW.md`                                                                                                                         |
 
 `ProductModule` imports `NumbersModule` and `CategoryModule` — it does not import `VendorModule`.
 

@@ -1,7 +1,11 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { ENV } from 'src/common/constants'
-import { PaymentMethod, PaymentProvider } from 'src/common/types/enums'
-import { liqpaySignature, verifyLiqpaySignature } from 'src/common/services/crypto.util'
+import { OrderStatus, PaymentMethod, PaymentProvider, PaymentStatus } from 'src/common/types/enums'
+import {
+	liqpaySignature,
+	orderAccessToken,
+	verifyLiqpaySignature
+} from 'src/common/services/crypto.util'
 import { OrderService } from 'src/modules/order/order.service'
 import {
 	PaymentProvidersService,
@@ -39,6 +43,18 @@ export class LiqpayService {
 		if (order.payment_method !== PaymentMethod.LIQPAY) {
 			throw new BadRequestException('Order is not a LiqPay order')
 		}
+		if (order.payment_status === PaymentStatus.PAID) {
+			throw new BadRequestException('Order is already paid')
+		}
+		// A cancelled order must never reach the gateway: a stale "try again" tab would charge
+		// the buyer and land in the TD-0003 "paid after CANCELLED — refund manually" path.
+		if (
+			order.order_status === OrderStatus.CANCELLED ||
+			order.payment_status === PaymentStatus.VOIDED ||
+			order.payment_status === PaymentStatus.REFUNDED
+		) {
+			throw new BadRequestException('Order is cancelled')
+		}
 
 		const creds = await this.paymentProviders.getActiveCredentials(PaymentProvider.LIQPAY)
 
@@ -50,7 +66,7 @@ export class LiqpayService {
 			currency: 'UAH',
 			description: `Оплата замовлення ${order.order_number}`,
 			order_id: order.order_number,
-			result_url: `${ENV.FRONTEND_URL}/checkout/success?order=${order.order_number}&payment=LIQPAY`,
+			result_url: `${ENV.FRONTEND_URL}/checkout/success?order=${order.order_number}&payment=LIQPAY&token=${orderAccessToken(order.order_number)}`,
 			server_url: `${ENV.PUBLIC_API_URL}/liqpay/callback`,
 			sandbox: creds.sandbox ? '1' : '0'
 		}

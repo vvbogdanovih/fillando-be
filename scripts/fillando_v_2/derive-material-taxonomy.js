@@ -19,7 +19,7 @@
  *
  * Run AFTER deploying ATTR_KEY_OVERRIDES (fd7d898) — otherwise the keys written here are
  * regenerated as transliterated Ukrainian on the next admin save and the products drop out of
- * every filter. See scripts/migrations/normalize-attr-keys.js.
+ * every filter. See scripts/fillando_v_2/normalize-attr-keys.js.
  *
  * Idempotent: derived entries are rebuilt from `material` on every run, so a second run is a
  * no-op and a corrected mapping table can simply be re-applied.
@@ -27,11 +27,11 @@
  * Writes go through the raw driver: `updatedAt` is intentionally not touched.
  *
  * Usage:
- *   node scripts/migrations/derive-material-taxonomy.js --dry-run   # plan + report only
- *   node scripts/migrations/derive-material-taxonomy.js             # apply + verify
+ *   node scripts/fillando_v_2/derive-material-taxonomy.js --dry-run   # plan + report only
+ *   node scripts/fillando_v_2/derive-material-taxonomy.js             # apply + verify
  *
  * Unmatched `material` values are never guessed at: they are listed in
- * scripts/migrations/reports/taxonomy-report.json for a human to decide on.
+ * scripts/fillando_v_2/reports/taxonomy-report.json for a human to decide on.
  */
 
 const fs = require('node:fs')
@@ -40,7 +40,13 @@ const mongoose = require('mongoose')
 
 const DRY_RUN = process.argv.includes('--dry-run')
 
-const REPORT_PATH = path.join(__dirname, 'reports', 'taxonomy-report.json')
+/**
+ * Where reports land. `MIGRATION_REPORT_DIR` lets a rehearsal against a production dump write
+ * somewhere throwaway, so its output can never be mistaken for — or overwrite — the reports of
+ * a real run. Defaults to `scripts/fillando_v_2/reports/`, which is gitignored.
+ */
+const REPORT_DIR = process.env.MIGRATION_REPORT_DIR || path.join(__dirname, 'reports')
+const REPORT_PATH = path.join(REPORT_DIR, 'taxonomy-report.json')
 
 const KEYS = {
 	polymer: 'Тип пластику',

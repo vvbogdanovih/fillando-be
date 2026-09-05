@@ -19,8 +19,8 @@
  * so a hex tweaked in the admin survives a re-run.
  *
  * Usage:
- *   node scripts/migrations/seed-colors.js --dry-run
- *   node scripts/migrations/seed-colors.js
+ *   node scripts/fillando_v_2/seed-colors.js --dry-run
+ *   node scripts/fillando_v_2/seed-colors.js
  */
 
 const mongoose = require('mongoose')
@@ -48,7 +48,14 @@ const COLORS = [
 		hex_stops: ['#e3dac9'],
 		synonyms: ['Кістково-білий']
 	},
-	{ name_en: 'Beige', name_uk: 'Бежевий', family: 'brown', hex_stops: ['#e8d8b8'] },
+	{
+		name_en: 'Beige',
+		name_uk: 'Бежевий',
+		family: 'brown',
+		hex_stops: ['#e8d8b8'],
+		// Bambu Lab PLA Lite stores the whole label in the colour field, prefix and all.
+		synonyms: ['Matte Beige Бежевий (матовий)']
+	},
 	{
 		name_en: 'Gray',
 		name_uk: 'Сірий',
@@ -231,6 +238,361 @@ const COLORS = [
 		family: 'multicolor',
 		hex_stops: ['#e53e3e', '#ecc94b', '#38a169', '#3182ce', '#805ad5'],
 		synonyms: ['Веселковий']
+	},
+
+	// ---------------------------------------------------------------------------------
+	// Added 2026-09-05 from the 49 spellings `normalize-variant-colors.js` could not match on
+	// a production dump. The catalogue is frozen while this work lands, so the set is closed:
+	// every entry below exists to cover one exact stored value, carried verbatim in `synonyms`.
+	//
+	// Two variants on Kingroon PLA Silk Rainbow are both stored as "Candy" and are deliberately
+	// NOT covered: one product cannot give two variants the same colour without colliding on
+	// the variant slug, and which is which is a question about the photographs. See
+	// fix-known-data-defects.js.
+	// ---------------------------------------------------------------------------------
+	// Dual-Silk: two-tone shifts on one product, so each needs its own `name_en` or their slugs collide.
+	{
+		name_en: 'Red Gold Silk',
+		name_uk: 'Червоно-золотистий',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#d4af37'],
+		synonyms: ['Червоно-золотистий', 'Червоно-золотий']
+	},
+	{
+		name_en: 'Red Green Silk',
+		name_uk: 'Червоно-зелений',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#2e8b57'],
+		synonyms: ['Червоно-зелений']
+	},
+	{
+		name_en: 'Red Blue Silk',
+		name_uk: 'Червоно-синій',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#2b4fa2'],
+		synonyms: ['Червоно-синій']
+	},
+	{
+		name_en: 'Gold Silver Silk',
+		name_uk: 'Золотисто-срібний',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#c0c4c8'],
+		synonyms: ['Золотисто-срібний', 'Золото-срібний']
+	},
+	{
+		name_en: 'Gold Purple Silk',
+		name_uk: 'Золотисто-фіолетовий',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#7b4fa8'],
+		synonyms: ['Золотисто-фіолетовий']
+	},
+	{
+		name_en: 'Black Gold Silk',
+		name_uk: 'Чорно-золотистий',
+		family: 'multicolor',
+		hex_stops: ['#1f1f1f', '#d4af37'],
+		synonyms: ['Чорно-золотистий', 'Чорно-золотий']
+	},
+	{
+		name_en: 'Black Red Silk',
+		name_uk: 'Чорно-червоний',
+		family: 'multicolor',
+		hex_stops: ['#1f1f1f', '#c0392b'],
+		synonyms: ['Чорно-червоний']
+	},
+	{
+		name_en: 'Black Green Silk',
+		name_uk: 'Чорно-зелений',
+		family: 'multicolor',
+		hex_stops: ['#1f1f1f', '#2e8b57'],
+		synonyms: ['Чорно-зелений']
+	},
+	{
+		name_en: 'Dual Silk HC186',
+		name_uk: 'Двоколірний шовк HC186',
+		family: 'multicolor',
+		hex_stops: ['#c0c4c8', '#7e848a'],
+		synonyms: ['HC186', 'HC-186']
+	},
+
+	// Tri-Silk: three-tone shifts, fourteen variants on one product.
+	{
+		name_en: 'Red Yellow Blue Silk',
+		name_uk: 'Червоно-жовто-синій',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#e3c04a', '#2b4fa2'],
+		synonyms: ['Червоно-жовто-синій']
+	},
+	{
+		name_en: 'Red Green Blue Silk',
+		name_uk: 'Червоно-зелено-синій',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#2e8b57', '#2b4fa2'],
+		synonyms: ['Червоно-зелено-синій']
+	},
+	{
+		name_en: 'Yellow Blue Green Silk',
+		name_uk: 'Жовто-синьо-зелений',
+		family: 'multicolor',
+		hex_stops: ['#e3c04a', '#2b4fa2', '#2e8b57'],
+		synonyms: ['Жовто-синьо-зелений']
+	},
+	{
+		name_en: 'Gold Green Pink Silk',
+		name_uk: 'Золотисто-зелено-рожевий',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#2e8b57', '#dd8fa6'],
+		synonyms: ['Золотисто-зелено-рожевий']
+	},
+	{
+		name_en: 'Gold Silver Copper Silk',
+		name_uk: 'Золотисто-срібно-мідний',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#c0c4c8', '#b87333'],
+		synonyms: ['Золотисто-срібно-мідний']
+	},
+	{
+		name_en: 'Green Purple Copper Silk',
+		name_uk: 'Зелено-фіолетово-мідний',
+		family: 'multicolor',
+		hex_stops: ['#2e8b57', '#7b4fa8', '#b87333'],
+		synonyms: ['Зелено-фіолетово-мідний']
+	},
+	{
+		name_en: 'Red Gold Blue Silk',
+		name_uk: 'Червоно-золотисто-синій',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#d4af37', '#2b4fa2'],
+		synonyms: ['Червоно-золотисто-синій']
+	},
+	{
+		name_en: 'Black Blue Purple Silk',
+		name_uk: 'Чорно-синьо-фіолетовий',
+		family: 'multicolor',
+		hex_stops: ['#1f1f1f', '#2b4fa2', '#7b4fa8'],
+		synonyms: ['Чорно-синьо-фіолетовий']
+	},
+	{
+		name_en: 'Red Gold Purple Silk',
+		name_uk: 'Червоно-золотисто-фіолетовий',
+		family: 'multicolor',
+		hex_stops: ['#c0392b', '#d4af37', '#7b4fa8'],
+		synonyms: ['Червоно-золотисто-фіолетовий']
+	},
+	{
+		name_en: 'Blue Green Orange Silk',
+		name_uk: 'Синьо-зелено-помаранчевий',
+		family: 'multicolor',
+		hex_stops: ['#2b4fa2', '#2e8b57', '#d9772f'],
+		synonyms: ['Синьо-зелено-помаранчевий', 'Синьо-зелено-оранжевий']
+	},
+	{
+		name_en: 'Gold Magenta Black Silk',
+		name_uk: 'Золотисто-пурпурово-чорний',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#a53a7a', '#1f1f1f'],
+		synonyms: ['Золотисто-пурпурово-чорний', 'Золотисто-пурпурно-чорний']
+	},
+	{
+		name_en: 'Gold Magenta Blue Silk',
+		name_uk: 'Золотисто-пурпурово-синій',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#a53a7a', '#2b4fa2'],
+		synonyms: ['Золотисто-пурпурово-синій', 'Золотисто-пурпурно-синій']
+	},
+	{
+		name_en: 'Gold Green Black Silk',
+		name_uk: 'Золотисто-зелено-чорний',
+		family: 'multicolor',
+		hex_stops: ['#d4af37', '#2e8b57', '#1f1f1f'],
+		synonyms: ['Золотисто-зелено-чорний']
+	},
+	{
+		name_en: 'Magenta Blue Green Silk',
+		name_uk: 'Пурпурово-синьо-зелений',
+		family: 'multicolor',
+		hex_stops: ['#a53a7a', '#2b4fa2', '#2e8b57'],
+		synonyms: ['Пурпурово-синьо-зелений', 'Пурпурно-синьо-зелений']
+	},
+
+	// Silk Rainbow blends, sold under marketing names.
+	{
+		name_en: 'Universe Silk',
+		name_uk: 'Космічний перелив',
+		family: 'multicolor',
+		hex_stops: ['#141433', '#3c2a7a', '#6a3fa0', '#1f4f8f'],
+		synonyms: ['Universe']
+	},
+	{
+		name_en: 'Macaron Silk',
+		name_uk: 'Пастельний макарун',
+		family: 'multicolor',
+		hex_stops: ['#f6c6d7', '#fbe7a8', '#c3e6c9', '#c2d8f2'],
+		synonyms: ['Macaron']
+	},
+	{
+		name_en: 'Forest Silk',
+		name_uk: 'Лісовий зелений',
+		family: 'green',
+		hex_stops: ['#1f4d2e', '#3f7d4b', '#8fbf6a'],
+		synonyms: ['Forest']
+	},
+	{
+		name_en: 'Lovely Silk',
+		name_uk: 'Ніжно-рожевий перелив',
+		family: 'multicolor',
+		hex_stops: ['#f7b0c0', '#ea7d95', '#f3c6a1'],
+		synonyms: ['Lovely']
+	},
+
+	// Fluorescent and neon: single bright tones.
+	{
+		name_en: 'Fluorescent Yellow',
+		name_uk: 'Флуоресцентний жовтий',
+		family: 'yellow',
+		hex_stops: ['#e6f43c'],
+		synonyms: ['Флуоресцентний жовтий', 'Флуорисцентний жовтий']
+	},
+	{
+		name_en: 'Fluorescent Blue',
+		name_uk: 'Флуоресцентний синій',
+		family: 'blue',
+		hex_stops: ['#2b7ae5'],
+		synonyms: ['Флуоресцентний синій', 'Флуорисцентний синій']
+	},
+	{
+		name_en: 'Fluorescent Red',
+		name_uk: 'Флуоресцентний червоний',
+		family: 'red',
+		hex_stops: ['#f5402a'],
+		synonyms: ['Флуоресцентний червоний', 'Флуорисцентний червоний']
+	},
+	{
+		name_en: 'Neon Green',
+		name_uk: 'Неоново-зелений',
+		family: 'green',
+		hex_stops: ['#5cd93a'],
+		synonyms: ['Неоново-зелений', 'Неоновий зелений']
+	},
+
+	// One-off finishes.
+	{
+		name_en: 'Marble',
+		name_uk: 'Мармуровий',
+		family: 'white',
+		hex_stops: ['#f4f3f0', '#9aa1a8'],
+		synonyms: ['Мармур']
+	},
+	{
+		name_en: 'Combustion Titanium',
+		name_uk: 'Темний титан',
+		family: 'gray',
+		hex_stops: ['#2f343a', '#7b828a'],
+		synonyms: ['Combustion Titanium']
+	},
+	{
+		name_en: 'Ceramic',
+		name_uk: 'Керамічний',
+		family: 'white',
+		hex_stops: ['#ece4d8'],
+		synonyms: ['Керамічний', 'Кераміка']
+	},
+	{
+		name_en: 'Natural Wood',
+		name_uk: 'Натуральне дерево',
+		family: 'brown',
+		hex_stops: ['#c2a887'],
+		synonyms: ['Звичайне']
+	},
+
+	// Sunlu rainbow series: four numbered blends on one product, four distinct entries.
+	{
+		name_en: 'Rainbow R1',
+		name_uk: 'Веселковий R1',
+		family: 'multicolor',
+		hex_stops: ['#d94f4f', '#e08a3c', '#e3c74a', '#4f9e5c', '#3f6cb5'],
+		synonyms: ['Веселковий R1']
+	},
+	{
+		name_en: 'Rainbow R2',
+		name_uk: 'Веселковий R2',
+		family: 'multicolor',
+		hex_stops: ['#3fa08f', '#3f8fc4', '#4f63b8', '#7a56ab'],
+		synonyms: ['Веселковий R2']
+	},
+	{
+		name_en: 'Rainbow R3',
+		name_uk: 'Веселковий R3',
+		family: 'multicolor',
+		hex_stops: ['#f0a3b8', '#f3d79a', '#a8d5c2'],
+		synonyms: ['Веселковий R3']
+	},
+	{
+		name_en: 'Rainbow R4',
+		name_uk: 'Веселковий R4',
+		family: 'multicolor',
+		hex_stops: ['#57a85f', '#c9c04a', '#d0679f', '#8a4fa8'],
+		synonyms: ['Веселковий R4']
+	},
+
+	// Sunlu transparent rainbow: the value stored is the manufacturer's code.
+	{
+		name_en: 'Transparent Rainbow TR-1',
+		name_uk: 'Прозорий веселковий TR-1',
+		family: 'transparent',
+		hex_stops: ['#cfe9f2', '#d9e7c8', '#f2e6c2'],
+		synonyms: ['TR-1']
+	},
+	{
+		name_en: 'Transparent Rainbow TR-2',
+		name_uk: 'Прозорий веселковий TR-2',
+		family: 'transparent',
+		hex_stops: ['#e3d6f0', '#d3e2f5', '#cfeee8'],
+		synonyms: ['TR-2']
+	},
+	{
+		name_en: 'Transparent Rainbow TR-3',
+		name_uk: 'Прозорий веселковий TR-3',
+		family: 'transparent',
+		hex_stops: ['#f6dfe6', '#f7ecd4', '#dcefdc', '#d6e6f6'],
+		synonyms: ['TR-3']
+	},
+	{
+		name_en: 'Transparent Rainbow TR-4',
+		name_uk: 'Прозорий веселковий TR-4',
+		family: 'transparent',
+		hex_stops: ['#d9f0ea', '#e8f2cf', '#f7e2d2', '#e6d9f2'],
+		synonyms: ['TR-4']
+	},
+
+	// Thermochromic: the value names both states, cold first.
+	{
+		name_en: 'Thermal Teal to Lime',
+		name_uk: 'Синьо-зелений, при нагріванні жовто-зелений',
+		family: 'multicolor',
+		hex_stops: ['#2f8f86', '#b9cf46'],
+		synonyms: ['Синьо-зелений -Жовто-зелений', 'Синьо-зелений-Жовто-зелений']
+	},
+	{
+		name_en: 'Thermal Purple to Pink',
+		name_uk: 'Фіолетовий, при нагріванні рожевий',
+		family: 'multicolor',
+		hex_stops: ['#7b4fa8', '#e07aa8'],
+		synonyms: ['Фіолетовий-рожевий', 'Фіолетовий - рожевий']
+	},
+	{
+		name_en: 'Thermal Blue to White',
+		name_uk: 'Синій, при нагріванні білий',
+		family: 'multicolor',
+		hex_stops: ['#2f5fae', '#f2f4f7'],
+		synonyms: ['Синій-білий', 'Синій - білий']
+	},
+	{
+		name_en: 'Thermal Gray to White',
+		name_uk: 'Сірий, при нагріванні білий',
+		family: 'multicolor',
+		hex_stops: ['#8a8f96', '#f4f5f6'],
+		synonyms: ['Сірий-білий', 'Сірий - білий']
 	}
 ]
 

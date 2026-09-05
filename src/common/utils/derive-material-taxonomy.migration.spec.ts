@@ -4,7 +4,7 @@
  * all 29 rows, the shape of the derived entries, and the rules that keep a re-run safe.
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migration = require('../../../scripts/migrations/derive-material-taxonomy.js') as {
+const migration = require('../../../scripts/fillando_v_2/derive-material-taxonomy.js') as {
 	TAXONOMY: Record<
 		string,
 		{ polymer: string; finish: string[]; reinforcement: string | null; series: string }

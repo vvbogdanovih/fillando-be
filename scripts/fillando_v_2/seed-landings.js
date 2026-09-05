@@ -17,8 +17,8 @@
  * off `polymer` / `finish` / `reinforcement` / `spool_included`, which those two create.
  *
  * Usage:
- *   node scripts/migrations/seed-landings.js --dry-run
- *   node scripts/migrations/seed-landings.js
+ *   node scripts/fillando_v_2/seed-landings.js --dry-run
+ *   node scripts/fillando_v_2/seed-landings.js
  */
 
 const mongoose = require('mongoose')
@@ -56,7 +56,7 @@ const LANDINGS = [
 	{ slug: 'glow', h1: 'Філамент, що світиться', filters: { finish: ['Glow', 'Luminous'] } },
 	{
 		slug: 'refill',
-		h1: 'Філамент-рефіл — намотка без котушки',
+		h1: 'Філамент-рефіл без котушки',
 		filters: { spool_included: ['Ні (рефіл)'] }
 	}
 ]

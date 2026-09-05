@@ -30,8 +30,8 @@
  * See TD-0002 §5.2.1 and Plan-0004 PR-0a in the fillando-meta repo.
  *
  * Usage:
- *   node scripts/migrations/normalize-attr-keys.js --dry-run   # print the plan, change nothing
- *   node scripts/migrations/normalize-attr-keys.js             # apply + verify
+ *   node scripts/fillando_v_2/normalize-attr-keys.js --dry-run   # print the plan, change nothing
+ *   node scripts/fillando_v_2/normalize-attr-keys.js             # apply + verify
  *
  * ATTR_KEY_OVERRIDES below must stay identical to `src/common/utils/attribute.utils.ts`;
  * `src/common/utils/normalize-attr-keys.migration.spec.ts` enforces that.

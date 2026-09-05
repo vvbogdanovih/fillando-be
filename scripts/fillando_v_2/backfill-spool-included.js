@@ -26,8 +26,8 @@
  * Writes go through the raw driver: `updatedAt` is intentionally not touched.
  *
  * Usage:
- *   node scripts/migrations/backfill-spool-included.js --dry-run
- *   node scripts/migrations/backfill-spool-included.js
+ *   node scripts/fillando_v_2/backfill-spool-included.js --dry-run
+ *   node scripts/fillando_v_2/backfill-spool-included.js
  */
 
 const mongoose = require('mongoose')

@@ -69,3 +69,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # migration reports (data dumps, regenerated on every run)
 /scripts/migrations/reports/
+/scripts/fillando_v_2/reports/

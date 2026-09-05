@@ -5,7 +5,7 @@
  * (TD-0002 §5.2.1).
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migration = require('../../../scripts/migrations/backfill-spool-included.js') as {
+const migration = require('../../../scripts/fillando_v_2/backfill-spool-included.js') as {
 	KEY: string
 	LABEL: string
 	DEFAULT_VALUE: string

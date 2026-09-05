@@ -1,7 +1,7 @@
 import { generateSlug } from './attribute.utils'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const seed = require('../../../scripts/migrations/seed-colors.js') as {
+const seed = require('../../../scripts/fillando_v_2/seed-colors.js') as {
 	COLORS: {
 		name_en: string
 		name_uk: string
@@ -14,7 +14,7 @@ const seed = require('../../../scripts/migrations/seed-colors.js') as {
 	buildAliasIndex: (colors: unknown[]) => Map<string, string>
 	slugFor: (nameEn: string) => string
 }
-const normalizer = require('../../../scripts/migrations/normalize-variant-colors.js') as {
+const normalizer = require('../../../scripts/fillando_v_2/normalize-variant-colors.js') as {
 	generateSlug: (text: string) => string
 	isColorAxis: (variantType: unknown) => boolean
 	isRefillVariant: (variant: unknown) => boolean
@@ -210,7 +210,7 @@ describe('isRefillVariant', () => {
 
 	it('agrees with the spool migration, which keys off the same marker', () => {
 		// eslint-disable-next-line @typescript-eslint/no-require-imports
-		const spool = require('../../../scripts/migrations/backfill-spool-included.js') as {
+		const spool = require('../../../scripts/fillando_v_2/backfill-spool-included.js') as {
 			isRefillVariant: (variant: unknown) => boolean
 		}
 		for (const value of ['Clear Безбарвний Refill', 'Безбарвний рефіл', 'Чорний', null]) {

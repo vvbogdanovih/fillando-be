@@ -7,7 +7,7 @@ type RenameResult<T> = { entries: T; renames: Rename[]; removedDuplicates: numbe
 // The migration duplicates the override table because it runs with plain `node`;
 // this spec is the guard that keeps the copy in sync with the TypeScript source.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migration = require('../../../scripts/migrations/normalize-attr-keys.js') as {
+const migration = require('../../../scripts/fillando_v_2/normalize-attr-keys.js') as {
 	ATTR_KEY_OVERRIDES: Record<string, string>
 	normalizeAttrLabel: (label: string) => string
 	renameAttributeKeys: <T>(entries: T, fields: Fields) => RenameResult<T>

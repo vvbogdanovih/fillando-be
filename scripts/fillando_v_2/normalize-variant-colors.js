@@ -26,9 +26,9 @@
  * Writes go through the raw driver: `updatedAt` is intentionally not touched.
  *
  * Usage:
- *   node scripts/migrations/normalize-variant-colors.js --dry-run   # report only
- *   node scripts/migrations/normalize-variant-colors.js
- *   node scripts/migrations/normalize-variant-colors.js --force     # apply despite collisions
+ *   node scripts/fillando_v_2/normalize-variant-colors.js --dry-run   # report only
+ *   node scripts/fillando_v_2/normalize-variant-colors.js
+ *   node scripts/fillando_v_2/normalize-variant-colors.js --force     # apply despite collisions
  */
 
 const fs = require('node:fs')
@@ -40,7 +40,12 @@ const DRY_RUN = process.argv.includes('--dry-run')
 /** Apply the non-colliding changes even though some slugs collide. Deliberate, never default. */
 const FORCE = process.argv.includes('--force')
 
-const REPORT_DIR = path.join(__dirname, 'reports')
+/**
+ * Where reports land. `MIGRATION_REPORT_DIR` lets a rehearsal against a production dump write
+ * somewhere throwaway, so its output can never be mistaken for — or overwrite — the reports of
+ * a real run. Defaults to `scripts/fillando_v_2/reports/`, which is gitignored.
+ */
+const REPORT_DIR = process.env.MIGRATION_REPORT_DIR || path.join(__dirname, 'reports')
 const COLOR_REPORT = path.join(REPORT_DIR, 'color-report.json')
 const SLUG_MAP = path.join(REPORT_DIR, 'slug-map.json')
 
@@ -453,7 +458,7 @@ async function main() {
 	}
 }
 
-module.exports = { generateSlug, isColorAxis, isRefillVariant, buildIndex, matchColor }
+module.exports = { generateSlug, isColorAxis, isRefillVariant, buildIndex, matchColor, mergeSlugMap }
 
 if (require.main === module) {
 	main().catch(err => {

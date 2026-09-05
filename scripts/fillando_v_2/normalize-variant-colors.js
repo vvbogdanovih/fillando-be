@@ -267,10 +267,12 @@ async function migrate(db) {
 		// «Чорний (Black)» — the same shopper-facing form ProductService.variantName writes, so a
 		// migrated variant and one saved through the admin read identically, and the cart, the
 		// order snapshot and the confirmation e-mail all carry it without joining the dictionary.
-		const colorLabel =
-			color.name_en && color.name_en !== color.name_uk
-				? `${color.name_uk} (${color.name_en})`
-				: color.name_uk
+		// Same three branches and the same trim as ProductService.formatColorLabel — a dictionary
+		// row holding a blank-looking name_uk is truthy as a string, and without the trim this
+		// wrote "PLA Basic —    (Black)" onto the variant.
+		const uk = (color.name_uk || '').trim()
+		const en = (color.name_en || '').trim()
+		const colorLabel = !uk ? en : !en || en === uk ? uk : `${uk} (${en})`
 		const newName = `${product.name} — ${colorLabel}`
 
 		const owner = claimedSlugs.get(newSlug)

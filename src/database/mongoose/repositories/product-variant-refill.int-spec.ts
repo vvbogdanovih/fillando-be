@@ -125,7 +125,8 @@ describe('ProductVariantRepository — spooled counterpart of a refill (MongoDB 
 		expect(result?.spooled_counterpart).toEqual({
 			slug: 'petg-natural',
 			name: 'petg-natural',
-			price: 579
+			price: 579,
+			matched_colour: true
 		})
 	})
 
@@ -133,6 +134,15 @@ describe('ProductVariantRepository — spooled counterpart of a refill (MongoDB 
 		const result = await repo.findVariantWithProduct('petg-refill-nocolour')
 
 		expect(result?.spooled_counterpart?.slug).toBe('petg-black')
+	})
+
+	/** The page words an unmatched figure as "from", so it has to know which branch answered. */
+	it('says whether the counterpart is the same colour', async () => {
+		const matched = await repo.findVariantWithProduct('petg-refill-natural')
+		const fallback = await repo.findVariantWithProduct('petg-refill-nocolour')
+
+		expect(matched?.spooled_counterpart?.matched_colour).toBe(true)
+		expect(fallback?.spooled_counterpart?.matched_colour).toBe(false)
 	})
 
 	it('never quotes a non-active variant, however cheap', async () => {

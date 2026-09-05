@@ -18,6 +18,18 @@ export interface CatalogColorOption {
 	hex_stops: string[]
 }
 
+/**
+ * The spooled version of a refill, for the price reference on its page. `matched_colour` says
+ * whether it is the same colour — when it is not, the figure is a "from", not this filament's
+ * price on a spool.
+ */
+export interface SpooledCounterpart {
+	slug: string
+	name: string
+	price: number
+	matched_colour: boolean
+}
+
 /** The dictionary fields the public colour payload is built from. */
 type PublicColorSource = Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'>
 
@@ -303,7 +315,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	private async findSpooledCounterpart(
 		spooledProductId: Types.ObjectId | null | undefined,
 		colorId: Types.ObjectId | null | undefined
-	): Promise<{ slug: string; name: string; price: number } | null> {
+	): Promise<SpooledCounterpart | null> {
 		if (!spooledProductId) return null
 
 		const projection = { _id: 0, slug: 1, name: 1, price: 1 }
@@ -320,13 +332,16 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					.lean<{ slug: string; name: string; price: number }>()
 					.exec()
 			: null
-		if (sameColour) return sameColour
+		if (sameColour) return { ...sameColour, matched_colour: true }
 
-		return this.model
+		// A refill whose own colour has no spool left is not the same offer, so this is the
+		// cheapest one — the page words it as "from" rather than as the price of this filament.
+		const cheapest = await this.model
 			.findOne({ product_id: spooledProductId, status: ProductStatus.ACTIVE }, projection)
 			.sort({ price: 1 })
 			.lean<{ slug: string; name: string; price: number }>()
 			.exec()
+		return cheapest ? { ...cheapest, matched_colour: false } : null
 	}
 
 	/** Dictionary rows for the given colour ids, keyed by id string. */

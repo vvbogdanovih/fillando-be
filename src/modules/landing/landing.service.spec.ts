@@ -370,3 +370,34 @@ describe('LandingService — publishing a landing that matches nothing (Plan-000
 		expect(landingRepository.update).toHaveBeenCalledTimes(1)
 	})
 })
+
+describe('LandingService.findActive — counts for the «Популярні види» tiles', () => {
+	const rows = [
+		{
+			_id: LANDING_ID,
+			category_id: new Types.ObjectId(CATEGORY_ID),
+			filters: { polymer: ['PLA'] }
+		}
+	]
+
+	it('carries product_count on the public listing too', async () => {
+		const { service, landingRepository } = buildService({
+			productCounts: new Map([[LANDING_ID, 64]])
+		})
+		landingRepository.findActive.mockResolvedValue(rows)
+
+		await expect(service.findActive()).resolves.toEqual([
+			expect.objectContaining({ product_count: 64 })
+		])
+	})
+
+	it('still reads only the active-only repository method', async () => {
+		const { service, landingRepository } = buildService()
+		landingRepository.findActive.mockResolvedValue(rows)
+
+		await service.findActive()
+
+		expect(landingRepository.findActive).toHaveBeenCalledTimes(1)
+		expect(landingRepository.findAllForAdmin).not.toHaveBeenCalled()
+	})
+})

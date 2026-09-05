@@ -16,10 +16,29 @@ export class LandingService {
 		private readonly productVariantRepository: ProductVariantRepository
 	) {}
 
-	/** PUBLIC — active landings only. */
-	findActive(categoryId?: string) {
+	/**
+	 * PUBLIC — active landings only, each with `product_count`.
+	 *
+	 * The count is on the public listing because the category page's «Популярні види» tiles show
+	 * it («64 товари»), and it is not private information: the same number is visible by opening
+	 * the landing. It costs one `$facet` over the active variants — the page already runs the
+	 * catalogue aggregation, so this is one more pass over the same collection, not a query per
+	 * tile.
+	 */
+	async findActive(categoryId?: string) {
 		if (categoryId) this.assertObjectId(categoryId)
-		return this.landingRepository.findActive(categoryId)
+		const landings = await this.landingRepository.findActive(categoryId)
+		const counts = await this.productVariantRepository.countVariantsForLandings(
+			landings.map(landing => ({
+				id: String(landing._id),
+				category_id: landing.category_id,
+				filters: landing.filters
+			}))
+		)
+		return landings.map(landing => ({
+			...landing,
+			product_count: counts.get(String(landing._id)) ?? 0
+		}))
 	}
 
 	/** PUBLIC — the sitemap's source of landing URLs; active only. */

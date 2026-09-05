@@ -81,7 +81,7 @@ export const API_OPERATION = {
 		GET_ALL: {
 			summary: 'Get published landings',
 			description:
-				'Public. Active landings only, optionally narrowed to one category with `category_id`. Drafts are never returned here.'
+				'Public. Active landings only, optionally narrowed to one category with `category_id`. Drafts are never returned here. Each row carries `product_count` — the category page shows it on the «Популярні види» tiles.'
 		},
 		GET_SLUGS: {
 			summary: 'Get published landing slugs',

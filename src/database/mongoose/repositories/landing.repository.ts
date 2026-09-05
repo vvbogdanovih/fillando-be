@@ -22,10 +22,14 @@ export class LandingRepository extends BaseRepository<Landing> {
 	 * PUBLIC SURFACE — active landings only. A draft is unpublished copy; returning it here
 	 * would repeat the defect Plan-0003 closed for draft products.
 	 */
-	findActive(categoryId?: string): Promise<Landing[]> {
+	findActive(categoryId?: string): Promise<(Landing & { _id: Types.ObjectId })[]> {
 		const filter: Record<string, unknown> = { status: LandingStatus.ACTIVE }
 		if (categoryId) filter.category_id = new Types.ObjectId(categoryId)
-		return this.model.find(filter).sort({ order: 1, h1: 1 }).lean().exec()
+		return this.model
+			.find(filter)
+			.sort({ order: 1, h1: 1 })
+			.lean<(Landing & { _id: Types.ObjectId })[]>()
+			.exec()
 	}
 
 	/** Admin listing — drafts included, since that is what the editor works on. */

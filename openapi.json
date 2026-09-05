@@ -1224,7 +1224,7 @@
     },
     "/landings": {
       "get": {
-        "description": "Public. Active landings only, optionally narrowed to one category with `category_id`. Drafts are never returned here.",
+        "description": "Public. Active landings only, optionally narrowed to one category with `category_id`. Drafts are never returned here. Each row carries `product_count` — the category page shows it on the «Популярні види» tiles.",
         "operationId": "LandingController_findActive",
         "parameters": [
           {

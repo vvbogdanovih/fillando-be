@@ -395,7 +395,17 @@ query values on it — the DTO rejects one outright.
   `status: 'active'`. An unknown category, an unknown slug and a draft are the same 404, so the
   storefront renders `notFound()` and no one learns that an unpublished page exists at that address.
 - `GET /landings/admin` and `GET /landings/:id` return drafts and are therefore **ADMIN-only** —
-  they are what the editor lists and loads.
+  they are what the editor lists and loads. The listing adds `product_count` per landing: how many
+  ACTIVE variants of its category carry every pinned attribute, matched the same way
+  `findCatalogItems` matches them, in one `$facet` with a branch per landing rather than a query
+  each. The landing's `price_min`/`price_max` are not applied — the storefront builds a landing's
+  catalogue query from `filters` alone, so applying them would make the number disagree with the
+  page it describes.
+- A landing may not be **published** while that count is zero: `POST` and `PATCH` answer 409. The
+  check runs against the state the save would leave behind, so narrowing the filters of an already
+  active landing is refused the same as flipping its status. Otherwise the sitemap advertises an
+  address that renders "нічого не знайдено", which is the acceptance criterion Plan-0004 set for
+  the 14 landings.
 
 `intro_html`, `bottom_html` and the FAQ entries are sanitized on write by
 `src/common/utils/html.utils.ts`, the same helper product descriptions go through. Sanitizing on

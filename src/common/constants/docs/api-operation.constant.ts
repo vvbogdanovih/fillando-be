@@ -91,7 +91,7 @@ export const API_OPERATION = {
 		GET_ADMIN_ALL: {
 			summary: 'Get all landings (admin)',
 			description:
-				'Admin only. Every landing including drafts, optionally filtered by `category_id`.'
+				'Admin only. Every landing including drafts, optionally filtered by `category_id`. Each row carries `product_count` — how many ACTIVE catalogue variants its pinned filters match, counted the same way the landing page is filled, and the same number publishing is refused on when it is zero.'
 		},
 		GET_BY_SLUG: {
 			summary: 'Get landing by category and landing slug',
@@ -105,11 +105,12 @@ export const API_OPERATION = {
 		CREATE: {
 			summary: 'Create landing',
 			description:
-				'Admin only. `slug` is unique within the category. Rich-text fields are sanitized on write.'
+				'Admin only. `slug` is unique within the category. Rich-text fields are sanitized on write. Creating one already `active` whose filters match no product answers 409 — a published landing that matches nothing is an indexed empty page.'
 		},
 		UPDATE: {
 			summary: 'Update landing',
-			description: 'Admin only. Rich-text fields are sanitized on write.'
+			description:
+				'Admin only. Rich-text fields are sanitized on write. Checked against the state the save would leave behind: if the landing ends up `active` and its filters match no product, the request answers 409 — narrowing the filters of an already published landing is refused just like flipping the status.'
 		},
 		DELETE: {
 			summary: 'Delete landing',

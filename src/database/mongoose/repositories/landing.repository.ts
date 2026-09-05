@@ -29,10 +29,14 @@ export class LandingRepository extends BaseRepository<Landing> {
 	}
 
 	/** Admin listing — drafts included, since that is what the editor works on. */
-	findAllForAdmin(categoryId?: string): Promise<Landing[]> {
+	findAllForAdmin(categoryId?: string): Promise<(Landing & { _id: Types.ObjectId })[]> {
 		const filter: Record<string, unknown> = {}
 		if (categoryId) filter.category_id = new Types.ObjectId(categoryId)
-		return this.model.find(filter).sort({ order: 1, h1: 1 }).lean().exec()
+		return this.model
+			.find(filter)
+			.sort({ order: 1, h1: 1 })
+			.lean<(Landing & { _id: Types.ObjectId })[]>()
+			.exec()
 	}
 
 	/** PUBLIC SURFACE — active only, so an unpublished address is a 404 for visitors. */

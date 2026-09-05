@@ -2,7 +2,9 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Types } from 'mongoose'
 import { CategoryRepository } from 'src/database/mongoose/repositories/category.repository'
 import { LandingRepository } from 'src/database/mongoose/repositories/landing.repository'
+import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { sanitizePlainText, sanitizeRichText } from 'src/common/utils'
+import { LandingStatus } from 'src/common/types/enums'
 import { CreateLandingDto } from './dto/create-landing.dto'
 import { UpdateLandingDto } from './dto/update-landing.dto'
 
@@ -10,7 +12,8 @@ import { UpdateLandingDto } from './dto/update-landing.dto'
 export class LandingService {
 	constructor(
 		private readonly landingRepository: LandingRepository,
-		private readonly categoryRepository: CategoryRepository
+		private readonly categoryRepository: CategoryRepository,
+		private readonly productVariantRepository: ProductVariantRepository
 	) {}
 
 	/** PUBLIC — active landings only. */
@@ -24,10 +27,29 @@ export class LandingService {
 		return this.landingRepository.findActiveSlugs()
 	}
 
-	/** ADMIN — drafts included. */
-	findAllForAdmin(categoryId?: string) {
+	/**
+	 * ADMIN — drafts included, each with `product_count`: how many catalogue variants its
+	 * pinned filters match (Plan-0005 D3).
+	 *
+	 * That number is the column the editor works from. A landing matching nothing is the
+	 * failure this screen exists to make visible — it would otherwise reach the sitemap as an
+	 * empty page — and it is the same count {@link assertLandingHasProducts} refuses to
+	 * publish on, so the screen and the guard can never disagree.
+	 */
+	async findAllForAdmin(categoryId?: string) {
 		if (categoryId) this.assertObjectId(categoryId)
-		return this.landingRepository.findAllForAdmin(categoryId)
+		const landings = await this.landingRepository.findAllForAdmin(categoryId)
+		const counts = await this.productVariantRepository.countVariantsForLandings(
+			landings.map(landing => ({
+				id: String(landing._id),
+				category_id: landing.category_id,
+				filters: landing.filters
+			}))
+		)
+		return landings.map(landing => ({
+			...landing,
+			product_count: counts.get(String(landing._id)) ?? 0
+		}))
 	}
 
 	/**
@@ -65,6 +87,10 @@ export class LandingService {
 		const slug = dto.slug.trim()
 		await this.assertSlugFree(dto.category_id, slug)
 
+		if (dto.status === LandingStatus.ACTIVE) {
+			await this.assertLandingHasProducts(dto.category_id, dto.filters ?? {})
+		}
+
 		return this.landingRepository.create({
 			...sanitizeLandingCopy(dto),
 			slug,
@@ -85,6 +111,14 @@ export class LandingService {
 			await this.assertSlugFree(categoryId, slug, id)
 		}
 
+		// Checked against the state the save would leave behind, not against the request: a
+		// PATCH that only narrows `filters` can empty an already published landing just as
+		// surely as one that flips `status`.
+		const status = dto.status ?? current.status
+		if (status === LandingStatus.ACTIVE) {
+			await this.assertLandingHasProducts(categoryId, dto.filters ?? current.filters)
+		}
+
 		const updated = await this.landingRepository.update(
 			{ _id: id },
 			{
@@ -102,6 +136,26 @@ export class LandingService {
 		const deleted = await this.landingRepository.delete({ _id: id })
 		if (!deleted) throw new NotFoundException('Landing not found')
 		return { success: true }
+	}
+
+	/**
+	 * A published landing that matches nothing is an indexed empty page: it enters the sitemap,
+	 * Google crawls it, and the shopper lands on "нічого не знайдено". Plan-0004's acceptance
+	 * criterion is that each of the 14 landings returns a non-empty listing, and until now that
+	 * held only by the editor's discipline (Plan-0005 D6).
+	 */
+	private async assertLandingHasProducts(
+		categoryId: string,
+		filters: Record<string, string[]>
+	): Promise<void> {
+		const counts = await this.productVariantRepository.countVariantsForLandings([
+			{ id: 'candidate', category_id: new Types.ObjectId(categoryId), filters }
+		])
+		if ((counts.get('candidate') ?? 0) === 0) {
+			throw new ConflictException(
+				'Під закріплені фільтри не підпадає жоден товар — такий лендінг не можна публікувати. Збережіть його як чернетку або змініть фільтри.'
+			)
+		}
 	}
 
 	private async assertCategoryExists(categoryId: string): Promise<void> {

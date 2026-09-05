@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
-import { HydratedDocument, Model, Types } from 'mongoose'
+import { HydratedDocument, Model, PipelineStage, Types } from 'mongoose'
 import { ProductVariant } from '../schemas/product-variant.schema'
 import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { BaseRepository } from './base.repository'
@@ -99,6 +99,65 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			])
 			.exec()
 		return new Map(rows.map(row => [String(row._id), row.count]))
+	}
+
+	/**
+	 * How many catalogue variants each landing's pinned filters match — the admin's «Товарів»
+	 * column, and the check that refuses to publish a landing matching nothing.
+	 *
+	 * Counted exactly the way the landing page is filled: ACTIVE variants of the landing's
+	 * category whose product carries every pinned attribute — one `$elemMatch` per key, AND
+	 * across keys — which is what {@link findCatalogItems} does for the same input. The
+	 * landing's `price_min`/`price_max` are deliberately ignored: the storefront builds the
+	 * landing's catalogue query from `filters` alone, so applying them here would make the
+	 * column disagree with the page it describes.
+	 *
+	 * One `$facet` over a single joined pass rather than a query per landing — every branch
+	 * reads the same piped input, so fourteen landings cost one scan instead of fourteen.
+	 */
+	async countVariantsForLandings(
+		landings: Array<{
+			id: string
+			category_id: Types.ObjectId
+			filters: Record<string, string[]>
+		}>
+	): Promise<Map<string, number>> {
+		if (landings.length === 0) return new Map()
+
+		const facet: Record<string, PipelineStage.FacetPipelineStage[]> = {}
+		for (const landing of landings) {
+			const conditions: Record<string, unknown>[] = [{ category_id: landing.category_id }]
+			for (const [key, values] of Object.entries(landing.filters ?? {})) {
+				if (values.length > 0) {
+					conditions.push({
+						'product.attributes': { $elemMatch: { k: key, v: { $in: values } } }
+					})
+				}
+			}
+			facet[facetKey(landing.id)] = [{ $match: { $and: conditions } }, { $count: 'n' }]
+		}
+
+		const [row] = await this.model
+			.aggregate<Record<string, Array<{ n: number }>>>([
+				{ $match: { status: ProductStatus.ACTIVE } },
+				{
+					$lookup: {
+						from: 'products',
+						localField: 'product_id',
+						foreignField: '_id',
+						as: 'product',
+						// Only the attributes are matched on — no point hauling descriptions.
+						pipeline: [{ $project: { _id: 0, attributes: 1 } }]
+					}
+				},
+				{ $unwind: '$product' },
+				{ $facet: facet }
+			])
+			.exec()
+
+		return new Map(
+			landings.map(landing => [landing.id, row?.[facetKey(landing.id)]?.[0]?.n ?? 0])
+		)
 	}
 
 	/** Variants whose denormalized family disagrees with the dictionary, per colour. */
@@ -679,4 +738,13 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			color_options: colorOptionsResult as CatalogColorOption[]
 		}
 	}
+}
+
+/**
+ * `$facet` branch names are document field names, so they may not start with `$` or contain a
+ * dot. An ObjectId hex string is safe on both counts, but it can start with a digit — the
+ * prefix keeps the key an ordinary identifier and makes the output readable in a profiler.
+ */
+function facetKey(landingId: string): string {
+	return `l_${landingId}`
 }

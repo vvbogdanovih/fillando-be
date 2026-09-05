@@ -325,6 +325,16 @@ variants are reachable only through the admin-only endpoints above.
 
 ---
 
+A refill product carries `spooled_product_id` — the product whose filament comes on a spool.
+`split-refill-products.js` sets it when it moves the refill variants onto a product of their own,
+and it is the only thing left connecting the two afterwards: they share no siblings, so the refill
+page reads the spooled price and its link from here. `GET /products/by-slug/:slug` answers with
+`spooled_counterpart` (`slug`, `name`, `price`) — the ACTIVE variant of that product in the same
+colour, or its cheapest ACTIVE variant when the refill carries no colour — and `null` for every
+ordinary product.
+
+---
+
 ### `colors`
 
 Schema: `src/database/mongoose/schemas/color.schema.ts`

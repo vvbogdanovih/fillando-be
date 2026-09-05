@@ -56,6 +56,18 @@ export class Product {
 
 	@Prop({ type: [AttributeSchema], default: [] })
 	attributes: Attribute[]
+
+	/**
+	 * Set on a refill product only: the product whose filament comes on a spool.
+	 *
+	 * `split-refill-products.js` creates the refill as a product of its own, and the pairing has
+	 * to survive that split — the shopper on a refill page needs to see what the spooled version
+	 * costs and be able to reach it. Before the split the two are variants of one product and
+	 * the storefront finds the counterpart among the siblings; afterwards there are no siblings
+	 * to look in, and this is the only thing that still connects them.
+	 */
+	@Prop({ type: Types.ObjectId, ref: 'Product', default: null })
+	spooled_product_id?: Types.ObjectId | null
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product)

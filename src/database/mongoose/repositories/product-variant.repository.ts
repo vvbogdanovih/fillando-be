@@ -227,7 +227,15 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				.collection('products')
 				.findOne(
 					{ _id: variant.product_id },
-					{ projection: { name: 1, description: 1, attributes: 1, variant_type: 1 } }
+					{
+						projection: {
+							name: 1,
+							description: 1,
+							attributes: 1,
+							variant_type: 1,
+							spooled_product_id: 1
+						}
+					}
 				),
 			this.model
 				.find(
@@ -262,6 +270,11 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			.filter((id): id is Types.ObjectId => Boolean(id))
 		const colorsById = await this.loadColorsById(colorIds)
 
+		const spooledCounterpart = await this.findSpooledCounterpart(
+			(product as any).spooled_product_id,
+			variant.color_id
+		)
+
 		return {
 			variant: toPublicVariant(variant, colorsById.get(String(variant.color_id))),
 			product: {
@@ -274,8 +287,46 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			// Same public allowlist as `variant` — one projection for the whole public page.
 			siblings: siblings.map(s => toPublicVariant(s, colorsById.get(String(s.color_id)))),
 			category_slug: (category as any)?.slug ?? null,
-			category_name: (category as any)?.name ?? null
+			category_name: (category as any)?.name ?? null,
+			spooled_counterpart: spooledCounterpart
 		}
+	}
+
+	/**
+	 * The spooled version of a refill, for the price reference and the link on its page.
+	 *
+	 * Same colour where there is one — a refill in Natural should quote the Natural spool, not
+	 * whichever variant happens to sort first — and the cheapest ACTIVE variant otherwise, since
+	 * the page shows the figure as "from". `null` for every ordinary product: only a refill
+	 * carries `spooled_product_id`.
+	 */
+	private async findSpooledCounterpart(
+		spooledProductId: Types.ObjectId | null | undefined,
+		colorId: Types.ObjectId | null | undefined
+	): Promise<{ slug: string; name: string; price: number } | null> {
+		if (!spooledProductId) return null
+
+		const projection = { _id: 0, slug: 1, name: 1, price: 1 }
+		const sameColour = colorId
+			? await this.model
+					.findOne(
+						{
+							product_id: spooledProductId,
+							color_id: colorId,
+							status: ProductStatus.ACTIVE
+						},
+						projection
+					)
+					.lean<{ slug: string; name: string; price: number }>()
+					.exec()
+			: null
+		if (sameColour) return sameColour
+
+		return this.model
+			.findOne({ product_id: spooledProductId, status: ProductStatus.ACTIVE }, projection)
+			.sort({ price: 1 })
+			.lean<{ slug: string; name: string; price: number }>()
+			.exec()
 	}
 
 	/** Dictionary rows for the given colour ids, keyed by id string. */

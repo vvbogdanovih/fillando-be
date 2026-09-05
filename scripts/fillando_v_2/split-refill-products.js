@@ -274,6 +274,9 @@ async function migrate(db) {
 				category_id: parent.category_id,
 				vendor_id: parent.vendor_id,
 				attributes: withSpoolValue(parent.attributes, REFILL_VALUE),
+				// The only thing that still connects the two after the split: the refill page
+				// shows what the spooled version costs and links to it.
+				spooled_product_id: parent._id,
 				createdAt: now,
 				updatedAt: now
 			}
@@ -287,7 +290,12 @@ async function migrate(db) {
 		} else {
 			await products.updateOne(
 				{ _id: targetId },
-				{ $set: { attributes: withSpoolValue(parent.attributes, REFILL_VALUE) } }
+				{
+					$set: {
+						attributes: withSpoolValue(parent.attributes, REFILL_VALUE),
+						spooled_product_id: parent._id
+					}
+				}
 			)
 			console.log(`\nReusing product "${newName}" (${targetId}).`)
 		}

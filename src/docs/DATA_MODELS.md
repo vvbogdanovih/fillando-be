@@ -350,6 +350,13 @@ protect. Writes are ADMIN-only. A colour cannot be deleted while variants still 
 request answers 409 instead of stranding `color_id` and freezing `color_family` at a value no
 dictionary row explains.
 
+`GET /colors/admin` is the same rows plus `variant_count` — how many variants point at each
+colour — and is **ADMIN-only**, because that count includes draft and archived variants. It is a
+single `$group` over `product_variants` by `color_id`, not a count per colour, and it counts the
+same set as the delete guard, so the column can never read 0 next to a 409 refusing the delete.
+The public listing deliberately does not carry it: the storefront has no use for it and would pay
+for the aggregation on every call.
+
 ---
 
 ### `landings`

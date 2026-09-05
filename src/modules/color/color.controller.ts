@@ -22,6 +22,16 @@ export class ColorController {
 		return this.colorService.findAll()
 	}
 
+	// Route order matters: '/admin' is declared before '/:id', which would otherwise capture
+	// it as an id.
+	@Get(ENDPOINTS.COLORS.GET_ADMIN_ALL)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.COLORS.GET_ADMIN_ALL)
+	findAllForAdmin() {
+		return this.colorService.findAllForAdmin()
+	}
+
 	@Get(ENDPOINTS.COLORS.GET_BY_ID)
 	@ApiOperation(API_OPERATION.COLORS.GET_BY_ID)
 	findById(@Param('id') id: string) {

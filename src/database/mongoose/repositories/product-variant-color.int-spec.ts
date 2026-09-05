@@ -274,6 +274,21 @@ describe('ProductVariantRepository — colour join (MongoDB integration)', () =>
 			await expect(repo.countByColorId(blackId.toString())).resolves.toBe(0)
 		})
 
+		/**
+		 * The admin "Варіантів" column (Plan-0005 D2). Grouping by `color_id` is the kind of
+		 * pipeline a unit test cannot vouch for: the ids are ObjectIds, the map is keyed by
+		 * string, and the `$match` has to drop the variants that carry no colour at all.
+		 */
+		it('groups the same counts by colour in one pass, keyed by id string', async () => {
+			const counts = await repo.countAllByColorId()
+
+			expect(counts.get(redId.toString())).toBe(1)
+			// Absent, not 0 — the dictionary row is what supplies the zero, not the aggregation.
+			expect(counts.has(blackId.toString())).toBe(false)
+			// The colourless variant is matched out rather than grouped under a null key.
+			expect(counts.size).toBe(1)
+		})
+
 		it('rewrites the denormalized family and reports how many rows moved', async () => {
 			const changed = await repo.updateColorFamilyByColorId(
 				redId.toString(),

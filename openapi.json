@@ -1051,6 +1051,22 @@
         ]
       }
     },
+    "/colors/admin": {
+      "get": {
+        "description": "Admin only. The same rows as `GET /colors`, each carrying `variant_count` — how many product variants point at that colour, in every status. The count matches the guard that refuses `DELETE /colors/:id`.",
+        "operationId": "ColorController_findAllForAdmin",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get the colour dictionary with usage counts",
+        "tags": [
+          "/colors"
+        ]
+      }
+    },
     "/colors/{id}": {
       "get": {
         "description": "Public. A single colour dictionary entry.",

@@ -10,6 +10,7 @@ const resolved = () => jest.fn().mockResolvedValue({})
 
 const colorService = {
 	findAll: resolved(),
+	findAllForAdmin: resolved(),
 	findById: resolved(),
 	create: resolved(),
 	update: resolved(),
@@ -81,6 +82,41 @@ describe('ColorController RBAC', () => {
 
 			expect(res.status).toBe(200)
 			expect(handler).toHaveBeenCalledTimes(1)
+		})
+	})
+
+	/**
+	 * The usage counts are the one part of the dictionary that is not storefront data: they
+	 * count draft and archived variants too, so this listing is ADMIN-only while `GET /colors`
+	 * stays open.
+	 */
+	describe('the admin listing is ADMIN-only', () => {
+		it('GET /colors/admin → 401 without a token', async () => {
+			const res = await send(app, 'get', '/colors/admin')
+
+			expect(res.status).toBe(401)
+			expect(colorService.findAllForAdmin).not.toHaveBeenCalled()
+		})
+
+		it('GET /colors/admin → 403 for USER', async () => {
+			const res = await send(app, 'get', '/colors/admin', { role: Role.USER })
+
+			expect(res.status).toBe(403)
+			expect(colorService.findAllForAdmin).not.toHaveBeenCalled()
+		})
+
+		it('GET /colors/admin → 200 for ADMIN', async () => {
+			const res = await send(app, 'get', '/colors/admin', { role: Role.ADMIN })
+
+			expect(res.status).toBe(200)
+			expect(colorService.findAllForAdmin).toHaveBeenCalledTimes(1)
+		})
+
+		/** '/admin' is declared before '/:id'; the reverse order would make this a public read. */
+		it("is not swallowed by the ':id' route", async () => {
+			await send(app, 'get', '/colors/admin', { role: Role.ADMIN })
+
+			expect(colorService.findById).not.toHaveBeenCalled()
 		})
 	})
 })

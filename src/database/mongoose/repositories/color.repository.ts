@@ -11,8 +11,12 @@ export class ColorRepository extends BaseRepository<Color> {
 	}
 
 	/** Dictionary order: explicit `order` first, then alphabetical so ties are stable. */
-	findAllOrdered(): Promise<Color[]> {
-		return this.model.find({}).sort({ order: 1, name_en: 1 }).lean().exec()
+	findAllOrdered(): Promise<(Color & { _id: Types.ObjectId })[]> {
+		return this.model
+			.find({})
+			.sort({ order: 1, name_en: 1 })
+			.lean<(Color & { _id: Types.ObjectId })[]>()
+			.exec()
 	}
 
 	findBySlug(slug: string): Promise<HydratedDocument<Color> | null> {

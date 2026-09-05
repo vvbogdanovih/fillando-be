@@ -19,6 +19,28 @@ export class ColorService {
 		return this.colorRepository.findAllOrdered()
 	}
 
+	/**
+	 * ADMIN — the dictionary plus how many variants use each entry (Plan-0005 D2).
+	 *
+	 * The count is what makes the unrecognized colour spellings tractable: it separates the
+	 * entries carrying the catalogue from the ones seeded and never matched, which is otherwise
+	 * invisible until a delete comes back 409.
+	 *
+	 * Deliberately not folded into the public {@link findAll}: that one is storefront data and
+	 * would then pay for an aggregation on every call, and the count includes draft and
+	 * archived variants, which is nobody's business outside the admin.
+	 */
+	async findAllForAdmin() {
+		const [colors, counts] = await Promise.all([
+			this.colorRepository.findAllOrdered(),
+			this.productVariantRepository.countAllByColorId()
+		])
+		return colors.map(color => ({
+			...color,
+			variant_count: counts.get(String(color._id)) ?? 0
+		}))
+	}
+
 	async findById(id: string) {
 		this.assertObjectId(id)
 		const color = await this.colorRepository.findById(id)

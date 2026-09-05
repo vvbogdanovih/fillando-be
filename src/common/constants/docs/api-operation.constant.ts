@@ -53,6 +53,11 @@ export const API_OPERATION = {
 			description:
 				'Public. Every colour, ordered by `order` then `name_en`. Drives the catalogue swatch filter and the "Чорний (Black)" labels.'
 		},
+		GET_ADMIN_ALL: {
+			summary: 'Get the colour dictionary with usage counts',
+			description:
+				'Admin only. The same rows as `GET /colors`, each carrying `variant_count` — how many product variants point at that colour, in every status. The count matches the guard that refuses `DELETE /colors/:id`.'
+		},
 		GET_BY_ID: {
 			summary: 'Get colour by id',
 			description: 'Public. A single colour dictionary entry.'

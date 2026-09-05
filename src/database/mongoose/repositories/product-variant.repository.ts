@@ -78,6 +78,29 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		return this.model.countDocuments({ color_id: new Types.ObjectId(colorId) }).exec()
 	}
 
+	/**
+	 * How many variants point at each dictionary colour, keyed by colour id.
+	 *
+	 * One grouped pass instead of a `countDocuments` per colour: the dictionary holds ~100
+	 * entries and the admin list needs every count at once.
+	 *
+	 * Counts variants in **every** status on purpose, so the number agrees with
+	 * {@link countByColorId} — the guard that refuses the delete. A column reading 0 next to a
+	 * 409 "still used by 4 variants" would be worse than no column at all.
+	 */
+	async countAllByColorId(): Promise<Map<string, number>> {
+		const rows = await this.model
+			.aggregate<{
+				_id: Types.ObjectId
+				count: number
+			}>([
+				{ $match: { color_id: { $ne: null } } },
+				{ $group: { _id: '$color_id', count: { $sum: 1 } } }
+			])
+			.exec()
+		return new Map(rows.map(row => [String(row._id), row.count]))
+	}
+
 	/** Variants whose denormalized family disagrees with the dictionary, per colour. */
 	async countColorFamilyDrift(): Promise<number> {
 		const [row] = await this.model

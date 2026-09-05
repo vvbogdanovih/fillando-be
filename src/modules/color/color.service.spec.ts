@@ -5,14 +5,21 @@ import { ColorService } from './color.service'
 const GOOD_ID = '000000000000000000000001'
 const BAD_ID = 'not-an-object-id'
 
-const buildService = (overrides: { color?: unknown; inUse?: number } = {}) => {
+const buildService = (
+	overrides: {
+		color?: unknown
+		inUse?: number
+		dictionary?: unknown[]
+		usage?: Map<string, number>
+	} = {}
+) => {
 	const updated = overrides.color ?? {
 		_id: GOOD_ID,
 		name_en: 'Bambu Green',
 		family: ColorFamily.GREEN
 	}
 	const colorRepository = {
-		findAllOrdered: jest.fn().mockResolvedValue([]),
+		findAllOrdered: jest.fn().mockResolvedValue(overrides.dictionary ?? []),
 		findById: jest.fn().mockResolvedValue(updated),
 		create: jest.fn().mockImplementation((data: unknown) => Promise.resolve(data)),
 		update: jest.fn().mockResolvedValue(updated),
@@ -20,7 +27,8 @@ const buildService = (overrides: { color?: unknown; inUse?: number } = {}) => {
 	}
 	const productVariantRepository = {
 		updateColorFamilyByColorId: jest.fn().mockResolvedValue(3),
-		countByColorId: jest.fn().mockResolvedValue(overrides.inUse ?? 0)
+		countByColorId: jest.fn().mockResolvedValue(overrides.inUse ?? 0),
+		countAllByColorId: jest.fn().mockResolvedValue(overrides.usage ?? new Map())
 	}
 	const service = new ColorService(colorRepository as never, productVariantRepository as never)
 	return { service, colorRepository, productVariantRepository }
@@ -169,5 +177,61 @@ describe('ColorService — malformed ids', () => {
 		expect(colorRepository.update).not.toHaveBeenCalled()
 		expect(colorRepository.delete).not.toHaveBeenCalled()
 		expect(productVariantRepository.countByColorId).not.toHaveBeenCalled()
+	})
+})
+
+describe('ColorService.findAllForAdmin — the "Варіантів" column (Plan-0005 D2)', () => {
+	const BLACK = '000000000000000000000011'
+	const GOLD = '000000000000000000000012'
+	const dictionary = [
+		{ _id: BLACK, name_en: 'Black', order: 10 },
+		{ _id: GOLD, name_en: 'Gold Silk', order: 20 }
+	]
+
+	it('carries the usage count of every dictionary row', async () => {
+		const { service } = buildService({
+			dictionary,
+			usage: new Map([
+				[BLACK, 34],
+				[GOLD, 9]
+			])
+		})
+
+		await expect(service.findAllForAdmin()).resolves.toEqual([
+			expect.objectContaining({ name_en: 'Black', variant_count: 34 }),
+			expect.objectContaining({ name_en: 'Gold Silk', variant_count: 9 })
+		])
+	})
+
+	/**
+	 * A seeded colour no variant matched is the whole point of the column: it is what tells the
+	 * admin which spellings are still unresolved. It has to read 0, not vanish and not be
+	 * `undefined`.
+	 */
+	it('reads 0 for a colour nothing points at', async () => {
+		const { service } = buildService({ dictionary, usage: new Map([[BLACK, 34]]) })
+
+		const rows = await service.findAllForAdmin()
+
+		expect(rows.find(row => row.name_en === 'Gold Silk')?.variant_count).toBe(0)
+	})
+
+	it('counts in one grouped query rather than one per colour', async () => {
+		const { service, productVariantRepository } = buildService({ dictionary })
+
+		await service.findAllForAdmin()
+
+		expect(productVariantRepository.countAllByColorId).toHaveBeenCalledTimes(1)
+		expect(productVariantRepository.countByColorId).not.toHaveBeenCalled()
+	})
+
+	/** The public dictionary must not start paying for the aggregation. */
+	it('leaves the public listing untouched', async () => {
+		const { service, productVariantRepository } = buildService({ dictionary })
+
+		const rows = await service.findAll()
+
+		expect(rows).toEqual(dictionary)
+		expect(productVariantRepository.countAllByColorId).not.toHaveBeenCalled()
 	})
 })

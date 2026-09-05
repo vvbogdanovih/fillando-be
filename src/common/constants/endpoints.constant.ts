@@ -27,6 +27,9 @@ export const ENDPOINTS = {
 	COLORS: {
 		BASE: '/colors',
 		GET_ALL: '/',
+		// Declared before GET_BY_ID in the controller — '/admin' would otherwise be swallowed
+		// by the ':id' parameter route.
+		GET_ADMIN_ALL: '/admin',
 		GET_BY_ID: '/:id',
 		CREATE: '/',
 		UPDATE: '/:id',

@@ -75,3 +75,30 @@ describe('sanitizePlainText', () => {
 		expect(sanitizePlainText(value)).toBe(value)
 	})
 })
+
+describe('sanitizeRichText — non-breaking spaces', () => {
+	/**
+	 * The bug this exists for: Quill writes `&nbsp;` between words, and a paragraph whose every
+	 * space is non-breaking reports its whole length as its minimum width. One save through the
+	 * admin stretched a landing's copy card to 3357px inside a 1248px page.
+	 */
+	it('turns the editor’s word spaces back into ordinary ones', () => {
+		expect(sanitizeRichText('<p>PLA виготовляють із крохмалю</p>')).toBe(
+			'<p>PLA виготовляють із крохмалю</p>'
+		)
+	})
+
+	it('keeps the one after a digit, which binds a number to its unit', () => {
+		expect(sanitizeRichText('<p>195 °C і 1,75 мм</p>')).toBe(
+			'<p>195 °C і 1,75 мм</p>'
+		)
+	})
+
+	it('leaves ordinary spaces alone', () => {
+		expect(sanitizeRichText('<p>звичайний текст</p>')).toBe('<p>звичайний текст</p>')
+	})
+
+	it('handles a paragraph that starts with one', () => {
+		expect(sanitizeRichText('<p> текст</p>')).toBe('<p> текст</p>')
+	})
+})

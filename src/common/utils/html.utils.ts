@@ -80,7 +80,24 @@ const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
 /** Sanitizes admin-authored rich text. `null`/`undefined` pass through unchanged. */
 export function sanitizeRichText<T extends string | null | undefined>(html: T): T {
 	if (typeof html !== 'string') return html
-	return sanitizeHtml(html, RICH_TEXT_OPTIONS) as T
+	return normalizeSpaces(sanitizeHtml(html, RICH_TEXT_OPTIONS)) as T
+}
+
+/**
+ * Turns the rich-text editor's non-breaking spaces back into ordinary ones.
+ *
+ * Quill writes `&nbsp;` for the spaces between words, and a paragraph whose every space is
+ * non-breaking has nowhere to wrap. It does not overflow quietly either: as a grid item it
+ * reports its whole length as its minimum width, so one edited paragraph stretched the landing's
+ * copy card to 3357px inside a 1248px page and took the whole document sideways with it.
+ * Measured on `/filament/pla` after one save through the admin — 358 non-breaking spaces against
+ * 12 ordinary ones.
+ *
+ * One is kept: a non-breaking space after a digit is the typographic kind, binding a number to
+ * its unit («100 °C», «1,75 мм»), and that one is meant not to break.
+ */
+function normalizeSpaces(html: string): string {
+	return html.replace(/(\D|^)\u00a0/g, '$1 ')
 }
 
 /**

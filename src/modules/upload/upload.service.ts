@@ -207,6 +207,8 @@ export class UploadService {
 				return `vendors/${file.entityId}/${uuid}.${ext}`
 			case UploadEntityType.CATEGORY:
 				return `categories/${file.entityId}/${uuid}.${ext}`
+			case UploadEntityType.LANDING:
+				return `landings/${file.entityId}/${uuid}.${ext}`
 		}
 	}
 }

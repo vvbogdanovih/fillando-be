@@ -3885,7 +3885,8 @@
               "product",
               "user",
               "vendor",
-              "category"
+              "category",
+              "landing"
             ]
           },
           "entityId": {

@@ -7,7 +7,9 @@ export enum UploadEntityType {
 	PRODUCT = 'product',
 	USER = 'user',
 	VENDOR = 'vendor',
-	CATEGORY = 'category'
+	CATEGORY = 'category',
+	/** The tile image a landing shows in the category's «Популярні види» block. */
+	LANDING = 'landing'
 }
 
 export enum UploadContentType {

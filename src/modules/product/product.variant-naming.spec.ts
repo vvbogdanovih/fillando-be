@@ -9,7 +9,9 @@ import { UpdateVariantDto } from './dto/update-variant.dto'
  * Three invariants of variant identity, all of which used to break silently.
  *
  * 1. **The name stays Ukrainian.** `normalize-variant-colors.js` wrote `v_value` as the canonical
- *    English dictionary name and `name` as `"<product> — <name_uk>"` (TD-0002 §5.2.2). The service
+ *    English dictionary name and `name` as `"<product> — <Чорний (Black)>"` — Ukrainian first,
+ *    the manufacturer's own spelling in brackets, the form the shopper reads (Plan-0005 C1;
+ *    TD-0002 §5.2.2). The service
  *    rebuilt `name` from `v_value`, so the first ordinary save — changing a price, fixing a
  *    description — renamed the variant to English. Nothing errored; the catalogue listing, the
  *    `ItemList` markup and the cart rows just drifted into two languages, one product at a time.
@@ -117,7 +119,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 		})
 
 		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
-		expect(written.name).toBe('PLA Basic — Чорний')
+		expect(written.name).toBe('PLA Basic — Чорний (Black)')
 		expect(written.slug).toBe('pla-basic-black')
 	})
 
@@ -131,7 +133,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 		})
 
 		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
-		expect(written.name).toBe('PLA Basic — Чорний')
+		expect(written.name).toBe('PLA Basic — Чорний (Black)')
 		expect(written.slug).toBe('pla-basic-black')
 	})
 
@@ -140,7 +142,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 
 		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { v_value: 'Black' })
 
-		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Чорний')
+		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Чорний (Black)')
 	})
 
 	it('changing only the colour still relabels the variant', async () => {
@@ -150,7 +152,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 
 		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { color_id: COLOR_ID })
 
-		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Чорний')
+		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Чорний (Black)')
 	})
 
 	it('falls back to v_value when the variant carries no colour', async () => {
@@ -178,7 +180,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Black')
 	})
 
-	it('a blank name_uk in the dictionary does not swallow the suffix', async () => {
+	it('a blank name_uk in the dictionary falls back to the canonical name, not to nothing', async () => {
 		const { service, productVariantRepository, colorRepository } = buildService()
 		colorRepository.findById.mockResolvedValue({ ...BLACK, name_uk: '   ' })
 
@@ -190,6 +192,19 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Black')
 	})
 
+	it('collapses the pair when both dictionary names are the same word', async () => {
+		const { service, productVariantRepository, colorRepository } = buildService()
+		colorRepository.findById.mockResolvedValue({ ...BLACK, name_uk: 'Candy', name_en: 'Candy' })
+
+		await service.updateVariant(PRODUCT_ID, VARIANT_ID, {
+			v_value: 'Candy',
+			color_id: COLOR_ID
+		})
+
+		// «Candy (Candy)» would be the literal reading of the rule and is nobody's idea of a name.
+		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — Candy')
+	})
+
 	it('a rename relabels every variant in Ukrainian', async () => {
 		const { service, productVariantRepository } = buildService({
 			variants: [migratedVariant()]
@@ -198,7 +213,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 		await service.update(PRODUCT_ID, { name: 'PLA Basic v2' })
 
 		const patch = lastPatch(productVariantRepository)
-		expect(patch.name).toBe('PLA Basic v2 — Чорний')
+		expect(patch.name).toBe('PLA Basic v2 — Чорний (Black)')
 		expect(patch.slug).toBe('pla-basic-v2-black')
 	})
 })

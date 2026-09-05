@@ -264,7 +264,14 @@ async function migrate(db) {
 		matchedTally.set(color.name_en, (matchedTally.get(color.name_en) ?? 0) + 1)
 
 		const newSlug = generateSlug(`${product.name} ${color.name_en}`)
-		const newName = `${product.name} — ${color.name_uk}`
+		// «Чорний (Black)» — the same shopper-facing form ProductService.variantName writes, so a
+		// migrated variant and one saved through the admin read identically, and the cart, the
+		// order snapshot and the confirmation e-mail all carry it without joining the dictionary.
+		const colorLabel =
+			color.name_en && color.name_en !== color.name_uk
+				? `${color.name_uk} (${color.name_en})`
+				: color.name_uk
+		const newName = `${product.name} — ${colorLabel}`
 
 		const owner = claimedSlugs.get(newSlug)
 		if (owner && String(owner) !== String(variant._id)) {

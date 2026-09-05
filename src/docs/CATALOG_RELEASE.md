@@ -373,7 +373,8 @@ every old → new address and is merged across runs, never truncated, so it surv
    the published landings.
 
 **Editing a migrated product is safe from here on, and this is worth knowing why.** 3i writes
-`v_value` as the English `colors.name_en` but the display `name` as `"<product> — <name_uk>"`.
+`v_value` as the English `colors.name_en` but the display `name` as `"<product> — Чорний (Black)"`
+— Ukrainian first, the manufacturer's own spelling in brackets.
 `ProductService` builds `name` from the dictionary whenever the variant points at it and falls
 back to `v_value` only for variants without a colour, so re-saving a product reproduces the name
 it already had. Before that, every save regenerated the name from `v_value` and quietly renamed

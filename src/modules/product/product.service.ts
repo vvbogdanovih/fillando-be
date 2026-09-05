@@ -32,7 +32,8 @@ import {
 /** What a `color_id` on the wire resolves to: the pair stored on the variant, plus its label. */
 interface ResolvedColor {
 	stored: { color_id: Types.ObjectId | null; color_family: ColorFamily | null }
-	name_uk: string | null
+	/** «Чорний (Black)» — the shopper-facing spelling, already formatted. */
+	label: string | null
 }
 
 /** A stored variant as the rename planner reads it — `_id` is not declared on the schema class. */
@@ -91,7 +92,7 @@ export class ProductService {
 	): Promise<ResolvedColor | undefined> {
 		if (colorId === undefined) return undefined
 		if (colorId === null || colorId === '')
-			return { stored: { color_id: null, color_family: null }, name_uk: null }
+			return { stored: { color_id: null, color_family: null }, label: null }
 
 		if (!Types.ObjectId.isValid(colorId)) throw new BadRequestException('Unknown colour')
 		const color = await this.colorRepository.findById(colorId)
@@ -99,15 +100,15 @@ export class ProductService {
 
 		return {
 			stored: { color_id: color._id, color_family: color.family },
-			name_uk: color.name_uk
+			label: formatColorLabel(color.name_uk, color.name_en)
 		}
 	}
 
-	/** Ukrainian dictionary spelling behind a colour already stored on a variant. */
-	private async storedColorName(colorId: Types.ObjectId | null | undefined) {
+	/** Dictionary spelling behind a colour already stored on a variant, formatted for a shopper. */
+	private async storedColorLabel(colorId: Types.ObjectId | null | undefined) {
 		if (!colorId) return null
 		const color = await this.colorRepository.findById(String(colorId))
-		return color?.name_uk ?? null
+		return color ? formatColorLabel(color.name_uk, color.name_en) : null
 	}
 
 	/**
@@ -115,8 +116,10 @@ export class ProductService {
 	 *
 	 * `v_value` holds the canonical English dictionary spelling (`colors.name_en`) and the slug
 	 * is built from it, but the name shown in the catalogue listing, the price sheet, the cart
-	 * and the order snapshot has to stay Ukrainian — that is the form `normalize-variant-colors.js`
-	 * wrote (TD-0002 §5.2.2). Deriving the name from `v_value` instead renamed every migrated
+	 * and the order snapshot is the shopper-facing «Чорний (Black)» — Ukrainian first, the
+	 * manufacturer's own spelling in brackets, the same form the product page prints. Storing it
+	 * here is what makes the cart, the order snapshot and the confirmation e-mail agree with the
+	 * page the shopper bought from, none of which joins the dictionary itself (Plan-0005 C1). Deriving the name from `v_value` instead renamed every migrated
 	 * variant to English on the first save, one product at a time, leaving the catalogue in two
 	 * languages. The dictionary wins whenever the variant points at it; `v_value` is the fallback
 	 * for variants that carry no colour.
@@ -124,11 +127,11 @@ export class ProductService {
 	private variantName(
 		productName: string,
 		vValue: string | null | undefined,
-		colorNameUk: string | null
+		colorLabel: string | null
 	): string {
-		// `||`, not `??`: a dictionary row saved with a blank `name_uk` would otherwise swallow the
+		// `||`, not `??`: a dictionary row saved with a blank name would otherwise swallow the
 		// suffix entirely and silently rename the variant to the bare product name.
-		const suffix = colorNameUk?.trim() || vValue
+		const suffix = colorLabel?.trim() || vValue
 		return suffix ? `${productName} — ${suffix}` : productName
 	}
 
@@ -284,7 +287,7 @@ export class ProductService {
 							name: this.variantName(
 								product.name,
 								variant.v_value,
-								color?.name_uk ?? null
+								color?.label ?? null
 							),
 							slug,
 							stock: variant.stock ?? 0,
@@ -384,7 +387,9 @@ export class ProductService {
 
 		const colorIds = variants.map(v => v.color_id).filter((id): id is Types.ObjectId => !!id)
 		const colors = colorIds.length ? await this.colorRepository.findByIds(colorIds) : []
-		const nameByColorId = new Map(colors.map(c => [String(c._id), c.name_uk]))
+		const nameByColorId = new Map(
+			colors.map(c => [String(c._id), formatColorLabel(c.name_uk, c.name_en)])
+		)
 
 		const planned = variants.map(v => ({
 			id: v._id,
@@ -485,7 +490,7 @@ export class ProductService {
 			vendor_product_sku: dto.vendor_product_sku ?? systemSku,
 			product_id: product._id,
 			category_id: new Types.ObjectId(String(product.category_id)),
-			name: this.variantName(product.name, dto.v_value, color?.name_uk ?? null),
+			name: this.variantName(product.name, dto.v_value, color?.label ?? null),
 			slug: generateSlug(dto.v_value ? `${product.name} ${dto.v_value}` : product.name),
 			stock: dto.stock ?? 0,
 			images: dto.images ?? []
@@ -518,10 +523,8 @@ export class ProductService {
 			// Either half can be the one that moved: a request that changes only the colour still
 			// needs a new name, and one that changes only `v_value` needs the colour already stored.
 			const vValue = dto.v_value !== undefined ? dto.v_value : existing.v_value
-			const colorNameUk = color
-				? color.name_uk
-				: await this.storedColorName(existing.color_id)
-			patch.name = this.variantName(product.name, vValue, colorNameUk)
+			const colorLabel = color ? color.label : await this.storedColorLabel(existing.color_id)
+			patch.name = this.variantName(product.name, vValue, colorLabel)
 			patch.slug = generateSlug(vValue ? `${product.name} ${vValue}` : product.name)
 		}
 		if (dto.price !== undefined) patch.price_updated_at = new Date()
@@ -594,10 +597,15 @@ function formatColorLabel(
 	nameUk: string | null | undefined,
 	nameEn: string | null | undefined
 ): string | null {
-	if (!nameUk && !nameEn) return null
-	if (!nameUk) return nameEn as string
-	if (!nameEn || nameEn === nameUk) return nameUk
-	return `${nameUk} (${nameEn})`
+	// Trimmed before the emptiness checks, not after: a dictionary row saved with a blank-looking
+	// `name_uk` is truthy as a string, and the untrimmed version answered « (Black)» — a label
+	// starting with a space, which reached the price sheet and now the variant name too.
+	const uk = nameUk?.trim()
+	const en = nameEn?.trim()
+	if (!uk && !en) return null
+	if (!uk) return en as string
+	if (!en || en === uk) return uk
+	return `${uk} (${en})`
 }
 
 /**

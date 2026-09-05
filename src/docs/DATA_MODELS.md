@@ -332,7 +332,7 @@ Schema: `src/database/mongoose/schemas/color.schema.ts`
 | Field                     | Type              | Notes                                                                              |
 | ------------------------- | ----------------- | ---------------------------------------------------------------------------------- |
 | `name_en`                 | string            | required, unique — canonical manufacturer name (`'Bambu Green'`)                    |
-| `name_uk`                 | string            | required — Ukrainian name shown to shoppers (`'Зелений Bambu'`)                     |
+| `name_uk`                 | string            | required — Ukrainian name shown to shoppers (`'Зелений Bambu'`); the variant name carries `"name_uk (name_en)"` |
 | `slug`                    | string            | required, unique — derived from `name_en` when the client omits it                  |
 | `family`                  | `ColorFamily`     | required — one of 15 swatch buckets; the value the catalogue filter groups by       |
 | `hex_stops`               | string[]          | required — 1..6 ordered `#RRGGBB` stops; `hex_stops[0]` is the primary colour       |

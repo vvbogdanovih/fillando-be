@@ -242,7 +242,7 @@ export class LandingService {
 			slug
 		)
 		if (existing && String(existing._id) !== exceptId) {
-			throw new ConflictException(`Landing "${slug}" already exists in this category`)
+			throw new ConflictException(`Лендінг «${slug}» уже існує в цій категорії`)
 		}
 	}
 

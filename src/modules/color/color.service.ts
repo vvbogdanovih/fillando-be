@@ -98,7 +98,7 @@ export class ColorService {
 		const inUse = await this.productVariantRepository.countByColorId(id)
 		if (inUse > 0) {
 			throw new ConflictException(
-				`Colour is still used by ${inUse} variant(s) — reassign them before deleting`
+				`Колір використовують ${inUse} варіант(ів) — спершу перепризначте їм інший колір`
 			)
 		}
 		const deleted = await this.colorRepository.delete({ _id: id })

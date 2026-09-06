@@ -80,12 +80,20 @@ Public endpoint. Body: `{ "order_number": "FO-0000123" }` (validated against `/^
 `LiqpayService.buildCheckout`:
 
 - loads the order by number — `404` if it does not exist;
-- `400 Order is not a LiqPay order` if `payment_method !== LIQPAY`;
-- `400 Order is already paid` if `payment_status === PAID` (a paid order can never be sent to
+- `400 Це замовлення не оплачується карткою` if `payment_method !== LIQPAY`;
+- `400 Замовлення вже оплачено` if `payment_status === PAID` (a paid order can never be sent to
   the gateway again);
-- `400 Order is cancelled` if `order_status === CANCELLED` or `payment_status` is `VOIDED` /
+- `400 Замовлення скасовано` if `order_status === CANCELLED` or `payment_status` is `VOIDED` /
   `REFUNDED` — a cancelled order must never be charged from a stale "try again" tab. Only
   `PENDING` and `FAILED` orders reach the gateway; that is how a retry works;
+- claims the session with one conditional write (`OrderService.claimLiqpayCheckout`): the
+  stamp `liqpay_checkout_started_at = now` is set only if the order is still an unpaid LiqPay
+  order and either no session was opened, the previous one is older than
+  `LIQPAY_SESSION_COOLDOWN_MS` (15 minutes), or the payment is `FAILED` (a session LiqPay
+  itself closed). Two tabs racing for the same order therefore get exactly one payload, and a
+  refused or failed claim hands nothing out. A refused claim is re-read and answered with
+  `409 { code: 'LIQPAY_SESSION_ACTIVE', retry_after_seconds }` while the cooldown runs, or a
+  `400` when the order was paid or locked meanwhile (TD-0009 §5.4.3);
 - reads the active LiqPay credentials;
 - builds the LiqPay params:
 
@@ -141,16 +149,22 @@ already decided to ignore. Every rejection below is logged and silently dropped:
 
 ### 5. Applying the result — `OrderService.applyGatewayPaymentResult`
 
-| Current state                        | Gateway says | Result                                                                                                                                                         |
-| ------------------------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `payment_status = PAID`              | anything     | No-op (idempotent). Duplicate/late callbacks never downgrade a paid order.                                                                                     |
-| `order_status = CANCELLED`, not paid | failed       | Nothing written — `VOIDED` is preserved instead of being overwritten with `FAILED`.                                                                            |
-| `order_status = CANCELLED`, not paid | paid         | `payment_status = PAID`, `payment_transaction_id` stored. Customer gets **no** "paid" email; `SERVICE_EMAIL` gets a "paid after cancellation — refund" notice. |
-| any other order status, not paid     | paid         | `payment_status = PAID`, `payment_transaction_id` stored; customer paid-confirmation email is sent (fire-and-forget, failures logged).                         |
-| any other order status, not paid     | failed       | `payment_status = FAILED`, `payment_transaction_id` stored if present. No email.                                                                               |
+| Current state                        | Gateway says | Result                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------ | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payment_status = PAID`              | anything     | No-op (idempotent). Duplicate/late callbacks never downgrade a paid order.                                                                                                                                                                                                                                              |
+| `order_status = CANCELLED`, not paid | failed       | Nothing written — `VOIDED` is preserved instead of being overwritten with `FAILED`.                                                                                                                                                                                                                                     |
+| `order_status = CANCELLED`, not paid | paid         | `payment_status = PAID`, `payment_transaction_id` stored. Customer gets **no** "paid" email; `SERVICE_EMAIL` gets a "paid after cancellation — refund" notice.                                                                                                                                                          |
+| `payment_method ≠ LIQPAY`, not paid  | failed       | Nothing written — the buyer switched to an offline method after opening the card session (TD-0009); a dead card session must not mark a COD order `FAILED`.                                                                                                                                                             |
+| `payment_method ≠ LIQPAY`, not paid  | paid         | `payment_status = PAID`, `payment_method` back to `LIQPAY`, `payment_transaction_id` stored. Customer gets the paid email; `SERVICE_EMAIL` is told not to collect the offline sum — with a «ТЕРМІНОВО … зняти … на ТТН» subject when the order is already past `CONFIRMED`, because a COD invoice may be on the parcel. |
+| any other order status, not paid     | paid         | `payment_status = PAID`, `payment_transaction_id` stored; customer paid-confirmation email is sent (fire-and-forget, failures logged).                                                                                                                                                                                  |
+| any other order status, not paid     | failed       | `payment_status = FAILED`, `payment_transaction_id` stored if present. No email.                                                                                                                                                                                                                                        |
 
 The cancelled-order branch is TD-0003; see `ORDER_ADMIN_API.md` → "Gateway callback on a
-cancelled order".
+cancelled order". The method-change branch is TD-0009: LiqPay only knows order numbers we handed
+it while the order was a LiqPay order, so a callback for any other method can only mean the buyer
+changed methods after the session was opened. Every write here is pinned on the method it
+expects, so a `PATCH …/payment-method` landing between the callback's read and its write cannot
+produce a COD order that is PAID, nor a COD order that is FAILED.
 
 ### 6. Browser redirect to `result_url`
 
@@ -230,13 +244,51 @@ orderAccessToken(orderNumber) =
 	"order_number": "FO-0000123",
 	"payment_method": "LIQPAY",
 	"payment_status": "PAID",
-	"total_price": 1299.5
+	"total_price": 1299.5,
+	"order_status": "NEW",
+	"delivery_method": "NOVA_POST",
+	"can_change_payment_method": false,
+	"liqpay_retry_after_seconds": null
 }
 ```
 
 No customer data, no items, no delivery address, no `_id`. `payment_method` is included so
 the same page can, in future, serve other gateways; today it will be `LIQPAY` in practice, but
-the endpoint itself does not restrict the payment method.
+the endpoint itself does not restrict the payment method. The last three fields exist for the
+payment-method change (TD-0009): `delivery_method` decides which offline methods fit (COD needs
+a carrier, CASH needs pickup) and `can_change_payment_method` is computed by the server — true
+while the payment is `PENDING` or `FAILED` and the order is `NEW` or `CONFIRMED` — so the
+storefront never mirrors the rule. `liqpay_retry_after_seconds` is the cooldown clock —
+`null` when no card session was ever opened (offer "pay now" at once), `0` when a new session
+may be opened, otherwise the seconds left — the same number the refused checkout carries, so
+the page can show a countdown instead of a button that is bound to fail.
+
+### Changing the payment method — `PATCH /orders/lookup/:orderNumber/payment-method?token=`
+
+Same token, same 404 for a wrong one, throttled to **5 requests / minute per IP** (it writes and
+sends mail). Body `{ "payment_method": "COD" | "IBAN" | "CASH" }` — card is not a target; moving
+an offline order onto LiqPay stays an admin action.
+
+`OrderService.changePaymentMethod` (shared with the signed-in
+`PATCH /orders/me/:id/payment-method`, which uses ownership instead of the token):
+
+1. Same method as the order already has → `200`, nothing written, no mail (a double click must
+   not send two mails).
+2. `payment_status ∉ {PENDING, FAILED}` or `order_status ∉ {NEW, CONFIRMED}` →
+   `409 { code: 'PAYMENT_METHOD_LOCKED' }`. From `PROCESSING` on the parcel may already carry a
+   COD invoice; the admin can still change it via `PATCH /orders/:id`.
+3. Delivery rule → `400` (COD only with `NOVA_POST`/`COURIER`, CASH only with `PICKUP`).
+4. `findOneAndUpdate` **pinned on the state read** in step 2 — payment status, order status
+   **and the current method**: a callback that flipped the payment to `PAID` in between, or a
+   second tab that already switched the method, makes the filter miss. The miss is re-read once:
+   the requested method already there → `200` no-op (the other tab won), anything else →
+   `409 PAYMENT_METHOD_LOCKED` rather than a card-paid order labelled COD. `FAILED` becomes `PENDING` (a declined card attempt is not a
+   fact about an IBAN order); `PENDING` stays.
+5. Mail: the customer gets the confirmation template of the new method with its opening
+   sentence changed («Спосіб оплати замовлення … змінено на …»), the service a «Зміна способу
+   оплати» note naming the old and new methods.
+
+Response: the extended lookup shape above.
 
 ### Intended frontend behaviour (`/checkout/success`)
 
@@ -249,27 +301,34 @@ the endpoint itself does not restrict the payment method.
 3. `PAID` → render the success state. **Fire conversion / analytics events only here**, never on
    page load — the page is reached on failure too.
 4. `FAILED` → render the failure state with a "try again" action that calls
-   `POST /liqpay/checkout` with the same `order_number` and re-submits the form. The endpoint
-   allows this for `PENDING` and `FAILED` orders only: already-`PAID` ones get
-   `400 Order is already paid` (a double-submit after a late callback cannot charge twice) and
-   cancelled ones get `400 Order is cancelled`.
-5. `VOIDED` / `REFUNDED` → the order was cancelled; show that instead of a retry button (the
-   server rejects a retry anyway, the frontend gate is UX, not security).
+   `POST /liqpay/checkout` with the same `order_number` and re-submits the form, and a
+   "choose another payment method" action that calls the payment-method `PATCH`. The checkout
+   endpoint allows a retry for `PENDING` and `FAILED` orders only: already-`PAID` ones get
+   `400 Замовлення вже оплачено` (a double-submit after a late callback cannot charge twice) and
+   cancelled ones get `400 Замовлення скасовано`. Messages are Ukrainian because the storefront
+   shows them to the buyer as they are.
+5. `PENDING` after the polling window → the same two actions. "Pay now" may answer
+   `409 LIQPAY_SESSION_ACTIVE` with `retry_after_seconds`; tell the buyer to wait or to pick
+   another method — the cooldown is what makes offering the button safe.
+6. `VOIDED` / `REFUNDED` → the order was cancelled; show that instead of a retry button (the
+   server rejects a retry anyway, the frontend gate is UX, not security). `can_change_payment_method`
+   is `false` here too, so no method change is offered.
 
 ---
 
 ## Security notes
 
-- The token unlocks exactly four non-personal fields. Even a leaked token (browser history,
-  referrer headers, shared screenshot of the URL) reveals only that a given order number exists
-  and whether it is paid.
+- The token unlocks a handful of non-personal fields and one write: switching an unpaid order
+  to an offline method. Even a leaked token (browser history, referrer headers, shared screenshot
+  of the URL) reveals only that a given order number exists, whether it is paid, how it ships
+  and whether the method may still change; the write moves no money and exposes no data.
 - Wrong token and unknown order are indistinguishable (`404` with the same message), and the
   comparison is constant-time, so the endpoint does not act as an order-number oracle.
 - Do not log the token. Order numbers are fine to log (they already appear everywhere).
-- **No rate limiting yet.** `@nestjs/throttler` is not part of the app today. A limit for this
-  endpoint (30 requests / minute per IP) is on the plan-0003 PR-3 execution checklist in the
-  `fillando-meta` repo; until then the only cost of abuse is CPU for one HMAC per request — no
-  DB hit happens before the token is verified.
+- **Rate limits** (`@nestjs/throttler`, opt-in per handler — `API_AND_SWAGGER.md` §4a):
+  the lookup 30 / minute per IP, the payment-method `PATCH` 5 / minute, `POST /liqpay/checkout`
+  10 / minute. No DB hit happens before the token is verified, so a rejected request costs one
+  HMAC.
 - The token travels in the query string, so it would appear in request logs: `app.module.ts`
   redacts `req.query.token` and rewrites `token=` in the logged URL. Nginx access logs on the
   server still see the full URL — treat them accordingly.

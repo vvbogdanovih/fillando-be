@@ -119,6 +119,14 @@ export class Order {
 	@Prop({ type: String, default: null })
 	payment_transaction_id: string | null
 
+	/**
+	 * When the LiqPay checkout payload was last built for this order. A second card session
+	 * within the cooldown is refused while the payment is still PENDING — the first one may yet
+	 * complete, and two live sessions is how a buyer gets charged twice (TD-0009 §5.4.3).
+	 */
+	@Prop({ type: Date, default: null })
+	liqpay_checkout_started_at: Date | null
+
 	@Prop({ type: String, enum: DeliveryMethod, required: true })
 	delivery_method: DeliveryMethod
 

@@ -4,6 +4,11 @@ import { formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
 
 export interface OrderCashConfirmationData {
 	orderNumber: string
+	/**
+	 * Why the customer gets this mail: the order was just created (default), or they switched
+	 * an unpaid order to this method (TD-0009 §5.4.1). Only the opening sentence differs.
+	 */
+	variant?: 'created' | 'payment_method_changed'
 	orderStatus: OrderStatus
 	paymentStatus: PaymentStatus
 	customer: { name: string; phone: string }
@@ -77,7 +82,7 @@ export function orderCashConfirmationTemplate(data: OrderCashConfirmationData): 
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Замовлення створено</title>
+    <title>${data.variant === 'payment_method_changed' ? 'Спосіб оплати змінено' : 'Замовлення створено'}</title>
   </head>
   <body style="margin:0;padding:24px 12px;background-color:#ffffff;font-family:Arial,sans-serif;">
     <div style="max-width:720px;margin:24px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:none;">
@@ -87,7 +92,11 @@ export function orderCashConfirmationTemplate(data: OrderCashConfirmationData): 
       <div style="padding:32px;color:#333333;">
         <p style="font-size:18px;font-weight:700;color:#1a1a1a;margin:0 0 16px;">Замовлення ${data.orderNumber}</p>
         <p style="font-size:15px;line-height:1.6;color:#555555;margin:0;">
-          Замовлення ${data.orderNumber} успішно створено. Оплата готівкою при отриманні. Гарного дня!
+          ${
+				data.variant === 'payment_method_changed'
+					? `Спосіб оплати замовлення ${data.orderNumber} змінено на готівку: оплата при отриманні. Гарного дня!`
+					: `Замовлення ${data.orderNumber} успішно створено. Оплата готівкою при отриманні. Гарного дня!`
+			}
         </p>
 
         <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#999;margin:20px 0 10px;">Статус замовлення</p>

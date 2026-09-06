@@ -5,7 +5,7 @@ Base path: `/orders` (paths are shown as the app serves them — there is no glo
 prepends `/api` in production)
 Access: ADMIN (`JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`) for every route in the
 table below. The module also exposes user-owned routes (`POST /orders`, `GET /orders/me`,
-`GET /orders/me/:id`) and one public, token-protected route — see *Public endpoints*.
+`GET /orders/me/:id`) and one public, token-protected route — see _Public endpoints_.
 Customer-facing responses (`POST /orders`, `GET /orders/me*`) go through a customer
 projection that omits `items[].vendor_sku` (the supplier article snapshot is for the admin
 invoice and vendor e-mail only); admin routes return the full item. `POST /orders` also
@@ -16,8 +16,8 @@ every public read and must not be orderable by id.
 
 ## Endpoints
 
-| Method  | Path                             | Description                                                               |
-| ------- | -------------------------------- | ------------------------------------------------------------------------- |
+| Method  | Path                         | Description                                                               |
+| ------- | ---------------------------- | ------------------------------------------------------------------------- |
 | `GET`   | `/orders`                    | Paginated orders list with filters by `order_status` and `payment_status` |
 | `GET`   | `/orders/:id`                | Full order details                                                        |
 | `PATCH` | `/orders/:id`                | Edit order fields (items, customer, delivery, payment method, comment)    |
@@ -27,9 +27,11 @@ every public read and must not be orderable by id.
 
 ### Public endpoints
 
-| Method | Path                                  | Access                | Description                                                              |
-| ------ | ------------------------------------- | --------------------- | ------------------------------------------------------------------------ |
-| `GET`  | `/orders/lookup/:orderNumber?token=…` | public, HMAC token    | Payment status of an order (`order_number`, `payment_method`, `payment_status`, `total_price`) for the checkout success page — see `LIQPAY_FLOW.md` |
+| Method  | Path                                                 | Access                    | Description                                                                                                                                                                                                        |
+| ------- | ---------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`   | `/orders/lookup/:orderNumber?token=…`                | public, HMAC token        | Payment state of an order (`order_number`, `payment_method`, `payment_status`, `total_price`, `order_status`, `delivery_method`, `can_change_payment_method`) for the checkout success page — see `LIQPAY_FLOW.md` |
+| `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order `NEW`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
+| `PATCH` | `/orders/me/:id/payment-method`                      | `JwtAuthGuard`, owner     | The same change for a signed-in buyer's own order; returns the customer order shape                                                                                                                                |
 
 ---
 
@@ -66,7 +68,11 @@ Payment / delivery combination:
   `{ payment_method: COD }` on a `PICKUP` order and
   `{ delivery_method: PICKUP }` on a `COD` order
   (`OrderService.validatePaymentDeliveryCombination`).
-- Other payment methods are unrestricted at the API level.
+- `CASH` (готівка) is only valid with `PICKUP` — cash changes hands at the counter. The
+  checkout form always enforced this; the server does too since the customer-facing
+  payment-method change (TD-0009) became the first path that needed it. An admin `PATCH`
+  putting `CASH` on a parcel is now a `400` as well.
+- `IBAN` and `LIQPAY` are unrestricted at the API level.
 
 COD payment status is never automated: it stays `PENDING` until an admin sets
 `PAID` via `PATCH /orders/:id/payment-status` once Nova Post remits the money.

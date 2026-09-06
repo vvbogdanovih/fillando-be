@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Resend } from 'resend'
 import { ENV, SUPPORT } from 'src/common/constants'
+import { PaymentMethod } from 'src/common/types/enums'
+import { formatPaymentMethod } from 'src/modules/order/helpers/format.helpers'
 import {
 	OrderCashConfirmationData,
 	orderCashConfirmationTemplate
@@ -282,6 +284,114 @@ export class EmailService {
 			subject: `Оплата надійшла по скасованому замовленню ${orderNumber} — потрібне повернення`,
 			html: serviceOrderCreatedTemplate(serviceData)
 		})
+	}
+
+	/**
+	 * The buyer switched an unpaid order to an offline method (TD-0009 §5.4.1). The customer gets
+	 * the confirmation of the new method — the same template as at creation, with its opening
+	 * sentence changed — and the service a note of the change, so nobody keeps waiting for a card
+	 * payment that will not come.
+	 */
+	async sendPaymentMethodChanged(
+		to: string,
+		orderNumber: string,
+		method: PaymentMethod.COD | PaymentMethod.IBAN | PaymentMethod.CASH,
+		previousMethod: PaymentMethod,
+		details: Omit<OrderCodConfirmationData, 'orderNumber' | 'variant'>
+	): Promise<void> {
+		const template = {
+			[PaymentMethod.COD]: orderCodConfirmationTemplate,
+			[PaymentMethod.IBAN]: orderIbanConfirmationTemplate,
+			[PaymentMethod.CASH]: orderCashConfirmationTemplate
+		}[method]
+
+		const customerEmail = this.send({
+			to,
+			subject: `Замовлення ${orderNumber}: спосіб оплати змінено`,
+			html: template({ orderNumber, ...details, variant: 'payment_method_changed' })
+		})
+
+		const serviceEmail = this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Зміна способу оплати ${orderNumber}`,
+			html: serviceOrderCreatedTemplate({
+				...this.toServiceData(orderNumber, to, details),
+				heading: 'Зміна способу оплати',
+				paymentType: `${formatPaymentMethod(method)} (було: ${formatPaymentMethod(previousMethod)})`
+			})
+		})
+
+		await Promise.all([customerEmail, serviceEmail])
+	}
+
+	/**
+	 * LiqPay confirmed a payment after the buyer had switched the order to an offline method
+	 * (TD-0009 §5.4.2). The customer did pay, so they get the ordinary paid confirmation; the
+	 * service mail says so explicitly, because the admin must not also collect the offline sum.
+	 */
+	async sendLiqpayPaidAfterMethodChange(
+		to: string,
+		orderNumber: string,
+		abandonedMethod: PaymentMethod,
+		details: Omit<OrderPaidConfirmationData, 'orderNumber'>,
+		options: { inFulfilment: boolean; ttn: string | null }
+	): Promise<void> {
+		const customerEmail = this.send({
+			to,
+			subject: `Замовлення ${orderNumber} оплачено`,
+			html: orderPaidConfirmationTemplate({ orderNumber, ...details })
+		})
+
+		const abandoned = formatPaymentMethod(abandonedMethod)
+		// Loudest when the parcel may already carry a COD invoice: the buyer must not pay twice.
+		const subject = options.inFulfilment
+			? `ТЕРМІНОВО: замовлення ${orderNumber} оплачено карткою вже в обробці — зняти ${abandoned}${options.ttn ? ` на ТТН ${options.ttn}` : ''}`
+			: `Оплата LiqPay надійшла після зміни способу оплати ${orderNumber} — не збирати ${abandoned}`
+		const serviceEmail = this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject,
+			html: serviceOrderCreatedTemplate({
+				...this.toServiceData(orderNumber, to, details),
+				heading: options.inFulfilment
+					? 'Зняти накладний платіж: оплату отримано карткою'
+					: 'Оплата LiqPay після зміни способу оплати',
+				paymentType: `LiqPay (покупець перед тим обрав: ${abandoned})`
+			})
+		})
+
+		await Promise.all([customerEmail, serviceEmail])
+	}
+
+	/** The service-mail payload every order mail shares; `paymentType` is filled by the caller. */
+	private toServiceData(
+		orderNumber: string,
+		customerEmail: string,
+		details: Omit<OrderCodConfirmationData, 'orderNumber' | 'variant'>
+	): ServiceOrderCreatedEmailData {
+		return {
+			orderNumber,
+			orderStatus: details.orderStatus,
+			paymentStatus: details.paymentStatus,
+			paymentType: '',
+			customer: {
+				name: details.customer.name,
+				phone: details.customer.phone,
+				email: customerEmail
+			},
+			items: details.items.map(item => ({
+				name: item.name,
+				sku: item.sku,
+				vendor_sku: item.vendor_sku,
+				image: item.image,
+				price: item.price,
+				quantity: item.quantity
+			})),
+			subtotalPrice: details.subtotalPrice,
+			totalPrice: details.totalPrice,
+			appliedDiscount: details.appliedDiscount ?? null,
+			deliveryMethod: details.deliveryMethod,
+			deliveryAddress: details.deliveryAddress
+		}
 	}
 
 	async sendWholesaleInquiryNotification(data: WholesaleInquiryCreatedEmailData): Promise<void> {

@@ -114,6 +114,8 @@ export const ENDPOINTS = {
 		MY: '/me',
 		MY_BY_ID: '/me/:id',
 		LOOKUP: '/lookup/:orderNumber',
+		LOOKUP_PAYMENT_METHOD: '/lookup/:orderNumber/payment-method',
+		MY_PAYMENT_METHOD: '/me/:id/payment-method',
 		GET_ALL: '/',
 		GET_BY_ID: '/:id',
 		UPDATE: '/:id',

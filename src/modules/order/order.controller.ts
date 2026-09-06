@@ -35,6 +35,7 @@ import { CreateOrderResponseDto } from './dto/create-order-response.dto'
 import { OrderLookupParamsDto } from './dto/order-lookup-params.dto'
 import { OrderLookupQueryDto } from './dto/order-lookup-query.dto'
 import { OrderPaymentStatusResponseDto } from './dto/order-payment-status-response.dto'
+import { ChangePaymentMethodDto } from './dto/change-payment-method.dto'
 
 @Controller(ENDPOINTS.ORDERS.BASE)
 @ApiTags(ENDPOINTS.ORDERS.BASE)
@@ -111,6 +112,34 @@ export class OrderController {
 	@ApiOkResponse({ type: OrderResponseDto })
 	findById(@Param('id') id: string) {
 		return this.orderService.findById(id)
+	}
+
+	// Writes, but with the same capability as the lookup: the token proves the buyer holds the
+	// order's link, and switching to an offline method moves no money (TD-0009 §7).
+	@Patch(ENDPOINTS.ORDERS.LOOKUP_PAYMENT_METHOD)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 5, ttl: 60_000 } })
+	@ApiOperation(API_OPERATION.ORDERS.LOOKUP_PAYMENT_METHOD)
+	@ApiOkResponse({ type: OrderPaymentStatusResponseDto })
+	changePaymentMethodPublic(
+		@Param() params: OrderLookupParamsDto,
+		@Query() query: OrderLookupQueryDto,
+		@Body() dto: ChangePaymentMethodDto
+	) {
+		return this.orderService.changePaymentMethodPublic(params.orderNumber, query.token, dto)
+	}
+
+	@Patch(ENDPOINTS.ORDERS.MY_PAYMENT_METHOD)
+	@UseGuards(JwtAuthGuard)
+	@ApiOperation(API_OPERATION.ORDERS.MY_PAYMENT_METHOD)
+	@ApiOkResponse({ type: OrderResponseDto })
+	changeMyPaymentMethod(
+		@Req() req: Request,
+		@Param('id') id: string,
+		@Body() dto: ChangePaymentMethodDto
+	) {
+		const userId = (req.user as JWTPayload).id
+		return this.orderService.changeMyPaymentMethod(userId, id, dto)
 	}
 
 	@Patch(ENDPOINTS.ORDERS.UPDATE)

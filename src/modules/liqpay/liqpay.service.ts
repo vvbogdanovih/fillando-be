@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 import { ENV } from 'src/common/constants'
 import { OrderStatus, PaymentMethod, PaymentProvider, PaymentStatus } from 'src/common/types/enums'
 import {
@@ -7,6 +7,7 @@ import {
 	verifyLiqpaySignature
 } from 'src/common/services/crypto.util'
 import { OrderService } from 'src/modules/order/order.service'
+import { liqpayRetryAfterSeconds } from 'src/modules/order/helpers/liqpay-session.helpers'
 import {
 	PaymentProvidersService,
 	ProviderCredentials
@@ -41,10 +42,10 @@ export class LiqpayService {
 	async buildCheckout(orderNumber: string) {
 		const order = await this.orderService.findByNumber(orderNumber)
 		if (order.payment_method !== PaymentMethod.LIQPAY) {
-			throw new BadRequestException('Order is not a LiqPay order')
+			throw new BadRequestException('Це замовлення не оплачується карткою')
 		}
 		if (order.payment_status === PaymentStatus.PAID) {
-			throw new BadRequestException('Order is already paid')
+			throw new BadRequestException('Замовлення вже оплачено')
 		}
 		// A cancelled order must never reach the gateway: a stale "try again" tab would charge
 		// the buyer and land in the TD-0003 "paid after CANCELLED — refund manually" path.
@@ -53,7 +54,31 @@ export class LiqpayService {
 			order.payment_status === PaymentStatus.VOIDED ||
 			order.payment_status === PaymentStatus.REFUNDED
 		) {
-			throw new BadRequestException('Order is cancelled')
+			throw new BadRequestException('Замовлення скасовано')
+		}
+		// One live session at a time (TD-0009 §5.4.3). The claim is a conditional write, so two
+		// tabs racing for the same order get exactly one payload; it is taken before the payload
+		// is built and awaited, so a refused or failed claim never hands a payload out.
+		const claimed = await this.orderService.claimLiqpayCheckout(order._id)
+		if (!claimed) {
+			const fresh = await this.orderService.findByNumber(orderNumber)
+			const retryAfter = liqpayRetryAfterSeconds(fresh)
+			if (fresh.payment_status === PaymentStatus.PAID) {
+				throw new BadRequestException('Замовлення вже оплачено')
+			}
+			if (retryAfter && retryAfter > 0) {
+				throw new ConflictException({
+					statusCode: 409,
+					error: 'Conflict',
+					code: 'LIQPAY_SESSION_ACTIVE',
+					message:
+						'Сторінку оплати вже відкрито. Якщо платіж не завершено, спробуйте ще раз трохи пізніше або оберіть інший спосіб оплати',
+					retry_after_seconds: retryAfter
+				})
+			}
+			throw new BadRequestException(
+				'Оплату карткою для цього замовлення зараз не можна розпочати'
+			)
 		}
 
 		const creds = await this.paymentProviders.getActiveCredentials(PaymentProvider.LIQPAY)

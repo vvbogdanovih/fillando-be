@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { ENV } from 'src/common/constants'
 import {
 	liqpaySignature,
@@ -35,7 +35,9 @@ const buildService = (order: OrderFixture | null, creds = CREDS) => {
 		findByNumber: order
 			? jest.fn().mockResolvedValue(order)
 			: jest.fn().mockRejectedValue(new NotFoundException(`Order ${ORDER_NUMBER} not found`)),
-		applyGatewayPaymentResult: jest.fn().mockResolvedValue(undefined)
+		applyGatewayPaymentResult: jest.fn().mockResolvedValue(undefined),
+		// The claim succeeds by default: the cooldown tests below make it miss.
+		claimLiqpayCheckout: jest.fn().mockResolvedValue(order)
 	}
 	const paymentProviders = { getActiveCredentials: jest.fn().mockResolvedValue(creds) }
 	const service = new LiqpayService(orderService as never, paymentProviders as never)
@@ -99,7 +101,7 @@ describe('LiqpayService.buildCheckout', () => {
 		const err = (await service.buildCheckout(ORDER_NUMBER).catch((e: unknown) => e)) as Error
 
 		expect(err).toBeInstanceOf(BadRequestException)
-		expect(err.message).toBe('Order is not a LiqPay order')
+		expect(err.message).toBe('Це замовлення не оплачується карткою')
 		expect(paymentProviders.getActiveCredentials).not.toHaveBeenCalled()
 	})
 
@@ -111,7 +113,7 @@ describe('LiqpayService.buildCheckout', () => {
 		const err = (await service.buildCheckout(ORDER_NUMBER).catch((e: unknown) => e)) as Error
 
 		expect(err).toBeInstanceOf(BadRequestException)
-		expect(err.message).toBe('Order is already paid')
+		expect(err.message).toBe('Замовлення вже оплачено')
 		expect(paymentProviders.getActiveCredentials).not.toHaveBeenCalled()
 	})
 
@@ -132,7 +134,7 @@ describe('LiqpayService.buildCheckout', () => {
 		const err = (await service.buildCheckout(ORDER_NUMBER).catch((e: unknown) => e)) as Error
 
 		expect(err).toBeInstanceOf(BadRequestException)
-		expect(err.message).toBe('Order is cancelled')
+		expect(err.message).toBe('Замовлення скасовано')
 		expect(paymentProviders.getActiveCredentials).not.toHaveBeenCalled()
 	})
 
@@ -141,5 +143,70 @@ describe('LiqpayService.buildCheckout', () => {
 
 		await expect(service.buildCheckout(ORDER_NUMBER)).rejects.toBeInstanceOf(NotFoundException)
 		expect(paymentProviders.getActiveCredentials).not.toHaveBeenCalled()
+	})
+})
+
+describe('LiqpayService.buildCheckout — one live session at a time (TD-0009 §5.4.3)', () => {
+	const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000)
+
+	/** The atomic claim missed; `findByNumber` then reports what the order looks like now. */
+	const buildRefused = (fresh: OrderFixture) => {
+		const built = buildService(fresh)
+		built.orderService.claimLiqpayCheckout.mockResolvedValue(null)
+		return built
+	}
+
+	it('claims the session before building the payload', async () => {
+		const { service, orderService } = buildService(buildOrder())
+
+		await service.buildCheckout(ORDER_NUMBER)
+
+		expect(orderService.claimLiqpayCheckout).toHaveBeenCalledWith('order-object-id')
+	})
+
+	it('refuses a second payload for a PENDING order inside the cooldown, saying how long to wait', async () => {
+		const { service } = buildRefused(buildOrder({ liqpay_checkout_started_at: minutesAgo(2) }))
+
+		const error = await service.buildCheckout(ORDER_NUMBER).catch((e: unknown) => e)
+
+		expect(error).toBeInstanceOf(ConflictException)
+		const body = (error as ConflictException).getResponse() as Record<string, unknown>
+		expect(body.code).toBe('LIQPAY_SESSION_ACTIVE')
+		expect(body.retry_after_seconds).toBeGreaterThan(12 * 60)
+		expect(body.retry_after_seconds).toBeLessThanOrEqual(13 * 60)
+	})
+
+	it('reports a payment that landed between the read and the claim as already paid', async () => {
+		const { service } = buildRefused(
+			buildOrder({
+				payment_status: PaymentStatus.PAID,
+				liqpay_checkout_started_at: minutesAgo(2)
+			})
+		)
+
+		const error = await service.buildCheckout(ORDER_NUMBER).catch((e: unknown) => e)
+
+		expect(error).toBeInstanceOf(BadRequestException)
+		expect((error as BadRequestException).message).toBe('Замовлення вже оплачено')
+	})
+
+	it('answers a refused claim with no cooldown left as a plain 400, not a 409', async () => {
+		// e.g. the buyer switched the order to COD between the read and the claim
+		const { service } = buildRefused(buildOrder({ payment_method: PaymentMethod.COD }))
+
+		await expect(service.buildCheckout(ORDER_NUMBER)).rejects.toBeInstanceOf(
+			BadRequestException
+		)
+	})
+
+	it('does not claim an order it refused on the plain checks', async () => {
+		const { service, orderService } = buildService(
+			buildOrder({ payment_status: PaymentStatus.PAID })
+		)
+
+		await expect(service.buildCheckout(ORDER_NUMBER)).rejects.toBeInstanceOf(
+			BadRequestException
+		)
+		expect(orderService.claimLiqpayCheckout).not.toHaveBeenCalled()
 	})
 })

@@ -3,6 +3,8 @@ import { formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
 
 export interface ServiceOrderCreatedEmailData {
 	orderNumber: string
+	/** Heading of the mail; «Нове замовлення» unless the event is something else (TD-0009). */
+	heading?: string
 	orderStatus: OrderStatus
 	paymentStatus: PaymentStatus
 	paymentType: string
@@ -79,7 +81,7 @@ export function serviceOrderCreatedTemplate(data: ServiceOrderCreatedEmailData):
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Нове замовлення</title>
+    <title>${data.heading ?? 'Нове замовлення'}</title>
   </head>
   <body style="margin:0;padding:24px 12px;background-color:#ffffff;font-family:Arial,sans-serif;">
     <div style="max-width:900px;margin:24px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
@@ -87,7 +89,7 @@ export function serviceOrderCreatedTemplate(data: ServiceOrderCreatedEmailData):
         <h1 style="margin:0;color:#111827;font-size:28px;font-weight:700;letter-spacing:0.02em;">Fillando</h1>
       </div>
       <div style="padding:32px;color:#333333;">
-        <p style="font-size:18px;font-weight:700;color:#1a1a1a;margin:0 0 16px;">Нове замовлення ${data.orderNumber}</p>
+        <p style="font-size:18px;font-weight:700;color:#1a1a1a;margin:0 0 16px;">${data.heading ?? 'Нове замовлення'} ${data.orderNumber}</p>
 
         <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#999;margin:20px 0 10px;">Тип оплати</p>
         <p style="font-size:14px;margin:4px 0;color:#333;">${data.paymentType}</p>

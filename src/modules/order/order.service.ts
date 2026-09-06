@@ -20,7 +20,13 @@ import {
 	PaymentStatus,
 	ProductStatus
 } from 'src/common/types/enums'
-import { resolvePaymentStatusOnOrderStatusChange } from './helpers/payment-status.helpers'
+import {
+	canCustomerChangePaymentMethod,
+	PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES,
+	PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES,
+	resolvePaymentStatusOnOrderStatusChange,
+	resolvePaymentStatusOnPaymentMethodChange
+} from './helpers/payment-status.helpers'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { ReportProvider } from './report/report.provider'
@@ -30,6 +36,12 @@ import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto'
 import { SetTtnDto } from './dto/set-ttn.dto'
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
 import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
+import { ChangePaymentMethodDto } from './dto/change-payment-method.dto'
+import { formatDeliveryMethod, formatPaymentMethod } from './helpers/format.helpers'
+import {
+	liqpayRetryAfterSeconds,
+	liqpaySessionExpiredBefore
+} from './helpers/liqpay-session.helpers'
 import { GenerateReportDto } from './dto/generate-report.dto'
 
 @Injectable()
@@ -44,7 +56,11 @@ export class OrderService {
 	private static readonly ALLOWED_DELIVERY_BY_PAYMENT: Partial<
 		Record<PaymentMethod, DeliveryMethod[]>
 	> = {
-		[PaymentMethod.COD]: [DeliveryMethod.NOVA_POST, DeliveryMethod.COURIER]
+		[PaymentMethod.COD]: [DeliveryMethod.NOVA_POST, DeliveryMethod.COURIER],
+		// Cash changes hands at the counter only. The checkout form always enforced this; the
+		// customer-facing payment-method change (TD-0009) is the first path that needs the
+		// server to enforce it too.
+		[PaymentMethod.CASH]: [DeliveryMethod.PICKUP]
 	}
 
 	constructor(
@@ -134,8 +150,9 @@ export class OrderService {
 		const allowed = OrderService.ALLOWED_DELIVERY_BY_PAYMENT[paymentMethod]
 		if (!allowed || allowed.includes(deliveryMethod)) return
 
+		// Read by the buyer on the success page (TD-0009), not only by the admin — Ukrainian.
 		throw new BadRequestException(
-			`payment_method ${paymentMethod} is only allowed with delivery_method ${allowed.join(' or ')}`
+			`Спосіб оплати «${formatPaymentMethod(paymentMethod)}» доступний лише з доставкою: ${allowed.map(formatDeliveryMethod).join(' або ')}`
 		)
 	}
 
@@ -438,12 +455,142 @@ export class OrderService {
 			throw new NotFoundException(`Order ${orderNumber} not found`)
 		}
 		const order = await this.findByNumber(orderNumber)
+		return this.toPublicPaymentStatus(order)
+	}
+
+	/**
+	 * The public shape of an order's payment state: no PII, plus what the storefront needs to
+	 * offer a payment-method change — the delivery method decides which offline methods fit,
+	 * `can_change_payment_method` is computed here so the rule lives in one place, and
+	 * `liqpay_retry_after_seconds` is the cooldown clock (null = never opened a card session).
+	 */
+	private toPublicPaymentStatus(order: OrderDocument) {
 		return {
 			order_number: order.order_number,
 			payment_method: order.payment_method,
 			payment_status: order.payment_status,
-			total_price: order.total_price
+			total_price: order.total_price,
+			order_status: order.order_status,
+			delivery_method: order.delivery_method,
+			can_change_payment_method: canCustomerChangePaymentMethod(order),
+			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(order)
 		}
+	}
+
+	/** The guest path from the success page: same HMAC token as the lookup (TD-0009 §5.3). */
+	async changePaymentMethodPublic(
+		orderNumber: string,
+		token: string,
+		dto: ChangePaymentMethodDto
+	) {
+		if (!verifyOrderAccessToken(orderNumber, token)) {
+			throw new NotFoundException(`Order ${orderNumber} not found`)
+		}
+		const order = await this.findByNumber(orderNumber)
+		const updated = await this.changePaymentMethod(order, dto.payment_method)
+		return this.toPublicPaymentStatus(updated)
+	}
+
+	/** The signed-in path from /profile/orders: ownership instead of a token. */
+	async changeMyPaymentMethod(userId: string, id: string, dto: ChangePaymentMethodDto) {
+		const order = await this.findOwnOrder(userId, id)
+		const updated = await this.changePaymentMethod(order, dto.payment_method)
+		return this.mapCustomerOrderResponse(updated)
+	}
+
+	/**
+	 * Switches an unpaid order to an offline payment method (TD-0009 §5.4.1).
+	 *
+	 * The checks run in this order: the same method is a no-op (a double click must not send
+	 * two mails); a paid, refunded, voided or already-processing order is locked; the delivery
+	 * rule applies as it does everywhere else. The write pins every field it read — payment
+	 * status, order status and the current method — so whatever landed in between makes it miss:
+	 * a LiqPay callback that flipped the payment to PAID, or a second tab that already switched
+	 * the method. A miss is re-read once: if the order already carries the requested method the
+	 * other tab won and this is the no-op; otherwise the buyer gets a 409.
+	 */
+	private async changePaymentMethod(
+		order: OrderDocument,
+		target: PaymentMethod
+	): Promise<OrderDocument> {
+		if (order.payment_method === target) return order
+
+		const locked = () =>
+			new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'PAYMENT_METHOD_LOCKED',
+				message: 'Спосіб оплати цього замовлення вже не можна змінити'
+			})
+		if (!canCustomerChangePaymentMethod(order)) throw locked()
+
+		this.validatePaymentDeliveryCombination(target, order.delivery_method)
+
+		const nextStatus =
+			resolvePaymentStatusOnPaymentMethodChange(order.payment_status) ?? order.payment_status
+
+		const updated = await this.orderRepository.update(
+			{
+				_id: order._id,
+				payment_method: order.payment_method,
+				payment_status: { $in: PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES },
+				order_status: { $in: PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES }
+			},
+			{ $set: { payment_method: target, payment_status: nextStatus } }
+		)
+		if (!updated) {
+			const fresh = await this.orderRepository.findById(String(order._id))
+			if (fresh && fresh.payment_method === target) return fresh
+			throw locked()
+		}
+
+		this.logger.log(
+			`Order ${order.order_number} payment method changed ${order.payment_method} → ${target} by the customer`
+		)
+
+		this.emailService
+			.sendPaymentMethodChanged(
+				updated.customer.email,
+				updated.order_number,
+				target as PaymentMethod.COD | PaymentMethod.IBAN | PaymentMethod.CASH,
+				order.payment_method,
+				this.buildOrderEmailDetails(updated)
+			)
+			.catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to send payment-method-changed email for order ${order.order_number}`
+				)
+			)
+
+		return updated
+	}
+
+	/**
+	 * Claims the right to open a LiqPay checkout for the order (TD-0009 §5.4.3), atomically:
+	 * the stamp is written by a conditional update, so two tabs racing for the same order get
+	 * exactly one payload. Returns the stamped order, or `null` when the claim is refused —
+	 * a PENDING payment whose previous session is younger than the cooldown, or an order that
+	 * is no longer an unpaid LiqPay order. `LiqpayService` turns `null` into the right error.
+	 */
+	async claimLiqpayCheckout(
+		orderId: Types.ObjectId,
+		now: number = Date.now()
+	): Promise<OrderDocument | null> {
+		return this.orderRepository.update(
+			{
+				_id: orderId,
+				payment_method: PaymentMethod.LIQPAY,
+				payment_status: { $in: [PaymentStatus.PENDING, PaymentStatus.FAILED] },
+				order_status: { $ne: OrderStatus.CANCELLED },
+				$or: [
+					{ liqpay_checkout_started_at: null },
+					{ liqpay_checkout_started_at: { $lt: liqpaySessionExpiredBefore(now) } },
+					{ payment_status: PaymentStatus.FAILED }
+				]
+			},
+			{ $set: { liqpay_checkout_started_at: new Date(now) } }
+		)
 	}
 
 	async findById(id: string) {
@@ -453,12 +600,19 @@ export class OrderService {
 	}
 
 	async findMyOrderById(userId: string, id: string) {
+		const order = await this.findOwnOrder(userId, id)
+		return this.mapCustomerOrderResponse(order)
+	}
+
+	/** An order of this user, or 404 — also for an id that is not an ObjectId (never a BSON 500). */
+	private async findOwnOrder(userId: string, id: string): Promise<OrderDocument> {
+		if (!Types.ObjectId.isValid(id)) throw new NotFoundException('Order not found')
 		const order = await this.orderRepository.findByIdAndUserId(
 			new Types.ObjectId(id),
 			new Types.ObjectId(userId)
 		)
 		if (!order) throw new NotFoundException('Order not found')
-		return this.mapCustomerOrderResponse(order)
+		return order
 	}
 
 	async update(id: string, dto: AdminUpdateOrderDto) {
@@ -504,6 +658,10 @@ export class OrderService {
 
 		if (dto.payment_method) {
 			updateSet.payment_method = dto.payment_method
+			// A stale card-session stamp must not lock the buyer out for 15 minutes after the
+			// admin moves the order back to LiqPay (TD-0009 §5.4.3).
+			if (dto.payment_method !== order.payment_method)
+				updateSet.liqpay_checkout_started_at = null
 		}
 
 		if (dto.comment !== undefined) {
@@ -585,6 +743,12 @@ export class OrderService {
 	 * Applies a payment result reported by an online gateway (e.g. LiqPay callback).
 	 * Idempotent: an already-PAID order is never reprocessed or downgraded.
 	 * On success sends the paid-confirmation email (customer + service).
+	 *
+	 * Every write pins the payment method it expects, because the buyer may switch the order to
+	 * an offline method while the card session is open (TD-0009 §5.4.2): a failed card result
+	 * must not mark a COD order FAILED, and a successful one must put the method back to LIQPAY
+	 * — the money arrived by card — with a warning to the service so the offline sum is not
+	 * collected as well.
 	 */
 	async applyGatewayPaymentResult(orderNumber: string, isPaid: boolean, transactionId?: string) {
 		const order = await this.orderRepository.findByOrderNumber(orderNumber)
@@ -599,25 +763,54 @@ export class OrderService {
 			return this.applyGatewayPaymentResultToCancelledOrder(order, isPaid, transactionId)
 		}
 
-		const newStatus = isPaid ? PaymentStatus.PAID : PaymentStatus.FAILED
-		const update: Record<string, unknown> = { payment_status: newStatus }
-		if (transactionId) update.payment_transaction_id = transactionId
-
-		const updated = await this.orderRepository.update({ _id: order._id }, { $set: update })
-		if (!updated) throw new NotFoundException(`Order ${orderNumber} not found`)
-
-		this.logger.log(`Order ${orderNumber} payment marked ${newStatus} via gateway`)
-
-		if (isPaid) {
-			this.sendPaidConfirmationEmail(updated).catch(err =>
-				this.logger.error(
-					{ err },
-					`Failed to send paid confirmation email for order ${orderNumber}`
-				)
-			)
+		const stillLiqpay = {
+			_id: order._id,
+			payment_method: PaymentMethod.LIQPAY,
+			payment_status: { $ne: PaymentStatus.PAID }
 		}
 
-		return updated
+		if (!isPaid) {
+			const update: Record<string, unknown> = { payment_status: PaymentStatus.FAILED }
+			if (transactionId) update.payment_transaction_id = transactionId
+			const updated = await this.orderRepository.update(stillLiqpay, { $set: update })
+			if (!updated) {
+				// Paid meanwhile, or moved to an offline method: a dead card session says
+				// nothing about either.
+				this.logger.log(
+					`Order ${orderNumber} is no longer an unpaid LiqPay order — failed gateway result ignored`
+				)
+				return (await this.orderRepository.findById(String(order._id))) ?? order
+			}
+			this.logger.log(`Order ${orderNumber} payment marked FAILED via gateway`)
+			return updated
+		}
+
+		if (order.payment_method === PaymentMethod.LIQPAY) {
+			const update: Record<string, unknown> = { payment_status: PaymentStatus.PAID }
+			if (transactionId) update.payment_transaction_id = transactionId
+			const updated = await this.orderRepository.update(stillLiqpay, { $set: update })
+			if (updated) {
+				this.logger.log(`Order ${orderNumber} payment marked PAID via gateway`)
+				this.sendPaidConfirmationEmail(updated).catch(err =>
+					this.logger.error(
+						{ err },
+						`Failed to send paid confirmation email for order ${orderNumber}`
+					)
+				)
+				return updated
+			}
+			// The pinned write missed: either a duplicate callback got there first, or the
+			// buyer switched methods between our read and our write.
+			const fresh = await this.orderRepository.findById(String(order._id))
+			if (!fresh) throw new NotFoundException(`Order ${orderNumber} not found`)
+			if (fresh.payment_status === PaymentStatus.PAID) {
+				this.logger.log(`Order ${orderNumber} already PAID, skipping gateway update`)
+				return fresh
+			}
+			return this.applyGatewayPaymentAfterMethodChange(fresh, transactionId)
+		}
+
+		return this.applyGatewayPaymentAfterMethodChange(order, transactionId)
 	}
 
 	/**
@@ -656,6 +849,55 @@ export class OrderService {
 				`Failed to notify service about a paid cancelled order ${order.order_number}`
 			)
 		)
+
+		return updated
+	}
+
+	/**
+	 * A successful card payment for an order the buyer has since moved to an offline method.
+	 *
+	 * The money really arrived: the order becomes PAID and the method goes back to LIQPAY so
+	 * nobody also collects the offline sum. The service mail says why — and says it loudest
+	 * when the order is already in fulfilment, because a COD invoice may be on the parcel.
+	 */
+	private async applyGatewayPaymentAfterMethodChange(
+		order: OrderDocument,
+		transactionId?: string
+	): Promise<OrderDocument> {
+		const update: Record<string, unknown> = {
+			payment_status: PaymentStatus.PAID,
+			payment_method: PaymentMethod.LIQPAY
+		}
+		if (transactionId) update.payment_transaction_id = transactionId
+
+		const updated = await this.orderRepository.update(
+			{ _id: order._id, payment_status: { $ne: PaymentStatus.PAID } },
+			{ $set: update }
+		)
+		if (!updated) {
+			this.logger.log(`Order ${order.order_number} already PAID, skipping gateway update`)
+			return (await this.orderRepository.findById(String(order._id))) ?? order
+		}
+
+		const inFulfilment = !PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES.includes(order.order_status)
+		this.logger.warn(
+			`Order ${order.order_number} was paid via LiqPay after the buyer switched to ${order.payment_method}${inFulfilment ? ` and the order is already ${order.order_status}` : ''} — payment method restored to LIQPAY, do not collect ${order.payment_method}`
+		)
+
+		this.emailService
+			.sendLiqpayPaidAfterMethodChange(
+				updated.customer.email,
+				updated.order_number,
+				order.payment_method,
+				this.buildOrderEmailDetails(updated),
+				{ inFulfilment, ttn: order.nova_post_ttn ?? null }
+			)
+			.catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to send paid-after-method-change emails for order ${order.order_number}`
+				)
+			)
 
 		return updated
 	}

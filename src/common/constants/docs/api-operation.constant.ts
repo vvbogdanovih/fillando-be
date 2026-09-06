@@ -366,7 +366,17 @@ export const API_OPERATION = {
 		LOOKUP: {
 			summary: 'Public payment-status lookup',
 			description:
-				'Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed.'
+				'Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed. Besides the payment fields the response carries `order_status`, `delivery_method` and `can_change_payment_method` — true while the payment is PENDING or FAILED and the order is NEW or CONFIRMED — so the storefront can offer the payment-method change without mirroring the rule.'
+		},
+		LOOKUP_PAYMENT_METHOD: {
+			summary: 'Change payment method (public, token)',
+			description:
+				'Lets the buyer switch an unpaid order (payment PENDING or FAILED, order NEW or CONFIRMED) from LiqPay to COD, IBAN or CASH. Same HMAC token as the lookup; a wrong token yields 404. The delivery compatibility rule applies (COD only with NOVA_POST/COURIER, CASH only with PICKUP → 400). A FAILED card payment becomes PENDING. Same method again is a 200 no-op. Locked states answer 409 `code: PAYMENT_METHOD_LOCKED`. Sends the customer the confirmation for the new method and a service email. Rate-limited to 5 requests per minute per IP.'
+		},
+		MY_PAYMENT_METHOD: {
+			summary: 'Change payment method (my order)',
+			description:
+				'The authenticated counterpart of the public payment-method change for an order that belongs to the current user: same rules, same 409 `PAYMENT_METHOD_LOCKED`, returns the customer order shape.'
 		},
 		GET_ALL: {
 			summary: 'Get all orders',
@@ -480,7 +490,7 @@ export const API_OPERATION = {
 		CHECKOUT: {
 			summary: 'Init LiqPay checkout',
 			description:
-				'Builds the signed LiqPay checkout payload (data + signature) for an existing PENDING order. Public endpoint.'
+				'Builds the signed LiqPay checkout payload (data + signature) for an existing LiqPay order whose payment is PENDING or FAILED. Public endpoint. While the payment is PENDING, a second call within 15 minutes of the previous one answers 409 `code: LIQPAY_SESSION_ACTIVE` with `retry_after_seconds` — the first session may still complete, and two live sessions is how a buyer is charged twice. A FAILED payment may be retried at once.'
 		},
 		CALLBACK: {
 			summary: 'LiqPay server callback',

@@ -6,6 +6,7 @@ import {
 	cdata,
 	descriptionText,
 	priceBandLabel,
+	salesVelocityLabel,
 	stockDepthLabel,
 	xmlEscape
 } from './google-shopping-feed.builder'
@@ -79,6 +80,11 @@ describe('xml helpers', () => {
 			'mid',
 			'premium'
 		])
+		expect([salesVelocityLabel(10), salesVelocityLabel(3), salesVelocityLabel(2)]).toEqual([
+			'bestseller',
+			'popular',
+			'standard'
+		])
 	})
 
 	it('turns description HTML into collapsed plain text and caps it at 5000', () => {
@@ -122,7 +128,13 @@ describe('buildItem', () => {
 		expect(xml).toContain('<g:custom_label_1>Sunlu</g:custom_label_1>')
 		expect(xml).toContain('<g:custom_label_2>low</g:custom_label_2>')
 		expect(xml).toContain('<g:custom_label_3>mid</g:custom_label_3>')
+		expect(xml).toContain('<g:custom_label_4>standard</g:custom_label_4>')
 		expect(built.ok && built.warnings).toEqual([])
+	})
+
+	it('marks a variant with enough recent sales as a bestseller', () => {
+		const xml = xmlOf(buildItem(row(), { ...CTX, unitsSold: 25 }))
+		expect(xml).toContain('<g:custom_label_4>bestseller</g:custom_label_4>')
 	})
 
 	it('never carries a margin or supplier value — the labels are stock depth and price band', () => {

@@ -32,11 +32,16 @@ const row = (overrides: Partial<FeedRawRow> = {}): FeedRawRow => ({
 	...overrides
 })
 
-const build = (rows: FeedRawRow[], landings: unknown[] = []) => {
+const build = (rows: FeedRawRow[], landings: unknown[] = [], sold = new Map<string, number>()) => {
 	const productVariantRepository = { findActiveForFeed: jest.fn().mockResolvedValue(rows) }
 	const landingRepository = { findActive: jest.fn().mockResolvedValue(landings) }
-	const service = new FeedService(productVariantRepository as never, landingRepository as never)
-	return { service, productVariantRepository, landingRepository }
+	const orderRepository = { countSoldByVariantSince: jest.fn().mockResolvedValue(sold) }
+	const service = new FeedService(
+		productVariantRepository as never,
+		landingRepository as never,
+		orderRepository as never
+	)
+	return { service, productVariantRepository, landingRepository, orderRepository }
 }
 
 describe('FeedService', () => {
@@ -102,6 +107,15 @@ describe('FeedService', () => {
 		expect(service.getXml()?.xml).toContain(
 			'<g:product_type>Філамент &gt; PLA філамент</g:product_type>'
 		)
+	})
+
+	it('labels sales velocity from the paid orders of the trailing window', async () => {
+		const { service, orderRepository } = build([row()], [], new Map([['v1', 12]]))
+		await service.generate()
+
+		expect(service.getXml()?.xml).toContain('<g:custom_label_4>bestseller</g:custom_label_4>')
+		const [[since]] = orderRepository.countSoldByVariantSince.mock.calls as [Date][]
+		expect(Date.now() - since.getTime()).toBeGreaterThan(89 * 24 * 60 * 60 * 1000)
 	})
 
 	it('refuses to run two generations at once', async () => {

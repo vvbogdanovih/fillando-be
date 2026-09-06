@@ -54,6 +54,7 @@ generation is running.
 | `g:material`                         | the `polymer` attribute; `pickAttr(MATERIAL_PATTERNS)` until the taxonomy migration has run                              |
 | `g:shipping_weight`                  | `"{weight_g / 1000} kg"`; omitted (+ warning) when null                                                                  |
 | `g:custom_label_0..3`                | category name · manufacturer · stock depth (`deep` >10 / `low` 1–10 / `out` 0) · price band (`budget` <500 / `mid` ≤1500 / `premium`) |
+| `g:custom_label_4`                   | sales velocity from PAID orders of the last 90 days (`OrderRepository.countSoldByVariantSince`): `bestseller` ≥10 units · `popular` ≥3 · `standard` |
 
 **There is no margin label and no supplier value anywhere in the feed.** The first design had a
 margin bucket in `custom_label_2`; it was dropped (owner, 2026-09-06) because the shop resells at

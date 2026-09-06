@@ -39,6 +39,18 @@ export const stockDepthLabel = (stock: number): 'deep' | 'low' | 'out' =>
 export const priceBandLabel = (price: number): 'budget' | 'mid' | 'premium' =>
 	price < 500 ? 'budget' : price <= 1500 ? 'mid' : 'premium'
 
+/** Units sold in the trailing window (PAID orders) that make a variant a bestseller / popular. */
+export const SALES_WINDOW_DAYS = 90
+export const BESTSELLER_UNITS = 10
+export const POPULAR_UNITS = 3
+
+export const salesVelocityLabel = (unitsSold: number): 'bestseller' | 'popular' | 'standard' =>
+	unitsSold >= BESTSELLER_UNITS
+		? 'bestseller'
+		: unitsSold >= POPULAR_UNITS
+			? 'popular'
+			: 'standard'
+
 const truncate = (value: string, max: number) =>
 	value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`
 
@@ -76,6 +88,8 @@ export interface BuildItemContext {
 	/** `https://fillando.com` — the storefront origin the `link`s point at. */
 	frontendUrl: string
 	productType: string
+	/** Units of this variant sold in the trailing window; omitted → 0 → `standard`. */
+	unitsSold?: number
 }
 
 const tag = (name: string, value: string | number) =>
@@ -153,7 +167,8 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 		tag('g:custom_label_0', row.category.name),
 		tag('g:custom_label_1', brand),
 		tag('g:custom_label_2', stockDepthLabel(row.stock ?? 0)),
-		tag('g:custom_label_3', priceBandLabel(row.price))
+		tag('g:custom_label_3', priceBandLabel(row.price)),
+		tag('g:custom_label_4', salesVelocityLabel(ctx.unitsSold ?? 0))
 	)
 
 	return {

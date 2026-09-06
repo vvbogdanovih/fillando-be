@@ -2,8 +2,9 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common'
 import { ENV } from 'src/common/constants'
 import { ENDPOINTS } from 'src/common/constants/endpoints.constant'
 import { LandingRepository } from 'src/database/mongoose/repositories/landing.repository'
+import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
-import { buildFeedXml, buildItem } from './google-shopping-feed.builder'
+import { buildFeedXml, buildItem, SALES_WINDOW_DAYS } from './google-shopping-feed.builder'
 import type {
 	FeedExclusion,
 	FeedGenerationSummary,
@@ -42,7 +43,8 @@ export class FeedService {
 
 	constructor(
 		private readonly productVariantRepository: ProductVariantRepository,
-		private readonly landingRepository: LandingRepository
+		private readonly landingRepository: LandingRepository,
+		private readonly orderRepository: OrderRepository
 	) {}
 
 	get isRunning(): boolean {
@@ -74,9 +76,11 @@ export class FeedService {
 		const started = Date.now()
 
 		try {
-			const [rows, landings] = await Promise.all([
+			const since = new Date(Date.now() - SALES_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+			const [rows, landings, unitsSold] = await Promise.all([
 				this.productVariantRepository.findActiveForFeed(),
-				this.landingRepository.findActive()
+				this.landingRepository.findActive(),
+				this.orderRepository.countSoldByVariantSince(since)
 			])
 			const landingViews: LandingForProductType[] = landings.map(l => ({
 				category_id: String(l.category_id),
@@ -106,7 +110,11 @@ export class FeedService {
 								landingViews
 							)
 						: { product_type: '', landing: null }
-				const built = buildItem(row, { frontendUrl, productType: typed.product_type })
+				const built = buildItem(row, {
+					frontendUrl,
+					productType: typed.product_type,
+					unitsSold: unitsSold.get(row.id) ?? 0
+				})
 				if (!built.ok) {
 					excluded.push({ sku: row.sku, name: row.name, reason: built.reason })
 					continue

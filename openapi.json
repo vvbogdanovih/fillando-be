@@ -675,7 +675,7 @@
     },
     "/products/by-slug/{slug}": {
       "get": {
-        "description": "Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product and category. Draft/archived variants respond 404.",
+        "description": "Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product (with `manufacturer` read from the «Виробник» attribute) and category. Draft variants respond 404; archived ones respond 200 with `status: archived` so the storefront can render a discontinued page.",
         "operationId": "ProductController_getVariantBySlug",
         "parameters": [
           {
@@ -3120,6 +3120,25 @@
           "unit"
         ]
       },
+      "GoogleProductCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 499682,
+            "description": "Canonical id from the Google product taxonomy (taxonomy-with-ids.en-US.txt)"
+          },
+          "path": {
+            "type": "string",
+            "example": "Electronics > Print, Copy, Scan & Fax > 3D Printer Accessories",
+            "description": "Human-readable taxonomy path, for the admin only — the feed sends the id"
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ]
+      },
       "CreateCategoryDto": {
         "type": "object",
         "properties": {
@@ -3148,6 +3167,15 @@
             "items": {
               "$ref": "#/components/schemas/RequiredAttributeDto"
             }
+          },
+          "google_product_category": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GoogleProductCategoryDto"
+              }
+            ]
           }
         },
         "required": [
@@ -3183,6 +3211,15 @@
             "items": {
               "$ref": "#/components/schemas/RequiredAttributeDto"
             }
+          },
+          "google_product_category": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GoogleProductCategoryDto"
+              }
+            ]
           }
         }
       },
@@ -3362,6 +3399,12 @@
             "example": "69b7c630ff27ba94157052dd",
             "description": "Colour dictionary entry; null clears it",
             "nullable": true
+          },
+          "weight_g": {
+            "type": "object",
+            "example": 1220,
+            "description": "Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it",
+            "nullable": true
           }
         },
         "required": [
@@ -3457,6 +3500,12 @@
             "example": "69b7c630ff27ba94157052dd",
             "description": "Colour dictionary entry; null clears it",
             "nullable": true
+          },
+          "weight_g": {
+            "type": "object",
+            "example": 1220,
+            "description": "Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it",
+            "nullable": true
           }
         },
         "required": [
@@ -3509,6 +3558,12 @@
             "type": "object",
             "example": "69b7c630ff27ba94157052dd",
             "description": "Colour dictionary entry; null clears it",
+            "nullable": true
+          },
+          "weight_g": {
+            "type": "object",
+            "example": 1220,
+            "description": "Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it",
             "nullable": true
           }
         }

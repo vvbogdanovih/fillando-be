@@ -258,7 +258,7 @@ export const API_OPERATION = {
 		BY_SLUG: {
 			summary: 'Get variant by slug',
 			description:
-				'Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product and category. Draft/archived variants respond 404.'
+				'Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product (with `manufacturer` read from the «Виробник» attribute) and category. Draft variants respond 404; archived ones respond 200 with `status: archived` so the storefront can render a discontinued page.'
 		}
 	},
 	UPLOAD: {

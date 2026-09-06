@@ -14,8 +14,9 @@ import { ProductVariantRepository } from './product-variant.repository'
  * Runs the real aggregation pipelines / queries of {@link ProductVariantRepository} against
  * the disposable MongoDB from `docker-compose.test.yml` (`yarn test:db:up`, then
  * `yarn test:integration`). Unit specs prove the mappers are correct in isolation; this suite
- * proves the *database* never hands supplier identifiers or non-ACTIVE variants to the
- * public read paths — and that the admin paths were not over-restricted (plan-0003, task 12).
+ * proves the *database* never hands supplier identifiers or DRAFT variants to the public read
+ * paths — an ARCHIVED variant is found by the product page alone (TD-0006 §5.4) — and that the
+ * admin paths were not over-restricted (plan-0003, task 12).
  */
 
 /** Every field a supplier could be identified or a margin derived from. Must never leak. */
@@ -92,7 +93,8 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 			variant_type: { key: 'color', label: 'Колір' },
 			attributes: [
 				{ k: 'material', l: 'Матеріал', v: 'PLA' },
-				{ k: 'diameter', l: 'Діаметр', v: 1.75 }
+				{ k: 'diameter', l: 'Діаметр', v: 1.75 },
+				{ k: 'vyrobnyk', l: 'Виробник', v: 'Sunlu' }
 			]
 		})
 
@@ -115,7 +117,8 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 				prom_discount_seen_at: new Date('2026-08-19T12:00:00Z'),
 				price_updated_at: new Date('2026-08-20T08:00:00Z'),
 				stock_updated_at: new Date('2026-08-21T09:30:00Z'),
-				status: ProductStatus.ACTIVE
+				status: ProductStatus.ACTIVE,
+				weight_g: 1220
 			},
 			{
 				_id: draftVariantId,
@@ -239,6 +242,7 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 			expect(Object.keys(result!.variant).sort()).toEqual([...PUBLIC_VARIANT_FIELDS].sort())
 			expect(result!.variant.id).toBe(activeVariantId.toString())
 			expect(result!.variant.status).toBe(ProductStatus.ACTIVE)
+			expect(result!.variant.weight_g).toBe(1220)
 			expect(result!.product.id).toBe(productId.toString())
 			expect(result!.product.name).toBe(PRODUCT_NAME)
 			expect(result!.category_slug).toBe('filaments')
@@ -261,8 +265,23 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 			for (const value of SUPPLIER_VALUES) expect(json).not.toContain(value)
 		})
 
-		it.each(['draft-slug', 'archived-slug'])('returns null for the %s variant', async slug => {
-			await expect(repo.findVariantWithProduct(slug)).resolves.toBeNull()
+		it('returns null for the DRAFT variant', async () => {
+			await expect(repo.findVariantWithProduct('draft-slug')).resolves.toBeNull()
+		})
+
+		it('finds the ARCHIVED variant, still restricted to the public allowlist', async () => {
+			const result = await repo.findVariantWithProduct('archived-slug')
+
+			expect(result).not.toBeNull()
+			expect(result!.variant.status).toBe(ProductStatus.ARCHIVED)
+			expect(result!.variant.weight_g).toBeNull()
+			expect(Object.keys(result!.variant).sort()).toEqual([...PUBLIC_VARIANT_FIELDS].sort())
+			// Siblings stay ACTIVE-only: the archived variant is not offered as a switch target.
+			expect(result!.siblings.map(s => s.slug)).toEqual(['active-slug'])
+
+			const json = JSON.stringify(result)
+			for (const field of SUPPLIER_FIELDS) expect(json).not.toContain(`"${field}"`)
+			for (const value of SUPPLIER_VALUES) expect(json).not.toContain(value)
 		})
 
 		it('returns null for an unknown slug', async () => {

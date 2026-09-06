@@ -2,10 +2,12 @@ import { ApiProperty } from '@nestjs/swagger'
 import {
 	IsArray,
 	IsEnum,
+	IsInt,
 	IsMongoId,
 	IsNumber,
 	IsOptional,
 	IsString,
+	Min,
 	ValidateIf
 } from 'class-validator'
 import { ProductStatus } from 'src/common/types/enums'
@@ -62,6 +64,19 @@ export class UpdateVariantDto {
 	@ValidateIf((_, value) => value !== null)
 	@IsMongoId()
 	color_id?: string | null
+
+	@ApiProperty({
+		example: 1220,
+		description:
+			'Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it',
+		nullable: true,
+		required: false
+	})
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@IsInt()
+	@Min(0)
+	weight_g?: number | null
 }
 
 export class AddVariantDto {
@@ -115,4 +130,17 @@ export class AddVariantDto {
 	@ValidateIf((_, value) => value !== null)
 	@IsMongoId()
 	color_id?: string | null
+
+	@ApiProperty({
+		example: 1220,
+		description:
+			'Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it',
+		nullable: true,
+		required: false
+	})
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@IsInt()
+	@Min(0)
+	weight_g?: number | null
 }

@@ -24,7 +24,8 @@ export const PUBLIC_VARIANT_FIELDS = [
 	'images',
 	'v_value',
 	'status',
-	'color'
+	'color',
+	'weight_g'
 ] as const
 
 export type PublicVariantField = (typeof PUBLIC_VARIANT_FIELDS)[number]
@@ -66,6 +67,7 @@ export type PublicVariant = {
 	v_value: string | null
 	status: ProductStatus
 	color: PublicColor | null
+	weight_g: number | null
 }
 
 /**
@@ -89,7 +91,10 @@ export function toPublicVariant(
 		status: variant.status,
 		// The dictionary entry, not `color_id`: an internal id is of no use to the storefront,
 		// and `v_value` alone turns English after the colour migration (TD-0002 §5.2.2).
-		color: toPublicColor(color)
+		color: toPublicColor(color),
+		// Shipping weight is public by design: the delivery estimate and the JSON-LD `weight`
+		// are computed from it on the storefront (TD-0006 §5.4).
+		weight_g: variant.weight_g ?? null
 	}
 }
 

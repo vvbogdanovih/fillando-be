@@ -1,8 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator'
+import {
+	IsArray,
+	IsInt,
+	IsOptional,
+	IsString,
+	Min,
+	ValidateIf,
+	ValidateNested
+} from 'class-validator'
 import { API_PROPERTY } from 'src/common/constants/docs'
-import { RequiredAttributeDto } from './create-category.dto'
+import { GoogleProductCategoryDto, RequiredAttributeDto } from './create-category.dto'
 
 export class UpdateCategoryDto {
 	@ApiProperty({ ...API_PROPERTY.CATEGORY_NAME, required: false })
@@ -32,4 +40,11 @@ export class UpdateCategoryDto {
 	@ValidateNested({ each: true })
 	@Type(() => RequiredAttributeDto)
 	required_attributes?: RequiredAttributeDto[]
+
+	@ApiProperty({ type: GoogleProductCategoryDto, nullable: true, required: false })
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@ValidateNested()
+	@Type(() => GoogleProductCategoryDto)
+	google_product_category?: GoogleProductCategoryDto | null
 }

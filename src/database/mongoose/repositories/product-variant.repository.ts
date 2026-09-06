@@ -224,12 +224,14 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	}
 
 	/**
-	 * Public product page. DRAFT/ARCHIVED variants are not found here on purpose, and the
-	 * `variant` part goes through {@link toPublicVariant} so supplier fields never leak.
+	 * Public product page. ACTIVE and ARCHIVED variants are found — an archived one renders as
+	 * «Знято з продажу» so a live ad or backlink does not land on a 404 (TD-0006 §5.4). DRAFT
+	 * stays invisible on purpose. Siblings and the spooled counterpart remain ACTIVE-only, and
+	 * the `variant` part goes through {@link toPublicVariant} so supplier fields never leak.
 	 */
 	async findVariantWithProduct(slug: string) {
 		const variant = await this.model
-			.findOne({ slug, status: ProductStatus.ACTIVE })
+			.findOne({ slug, status: { $in: [ProductStatus.ACTIVE, ProductStatus.ARCHIVED] } })
 			.lean()
 			.exec()
 		if (!variant) return null

@@ -194,15 +194,18 @@ someone decides otherwise. For the product domain the allowlists live in
 
 | Export                                               | Used by                                                                 | Fields                                                                                                                      |
 | ---------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `toPublicVariant(variant)` + `PUBLIC_VARIANT_FIELDS` | `GET /products/by-slug/:slug` (the variant and its siblings)            | `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`, `v_value`, `status`                            |
+| `toPublicVariant(variant)` + `PUBLIC_VARIANT_FIELDS` | `GET /products/by-slug/:slug` (the variant and its siblings)            | `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`       |
 | `PRICE_SHEET_PUBLIC_PROJECTION`                      | `ProductVariantRepository.findPriceSheet` → `GET /products/price-sheet` | `id`, `product_name`, `slug`, `v_value`, `sku`, `price`, `stock`, `stock_updated_at`, `image`, `attributes`, `variant_type` |
 
 Never on either list: `vendor_product_sku`, `prom_id`, `prom_base_price`, `prom_discount_ratio`,
 `prom_discount_seen_at` — the shop resells at supplier price + margin, so any of them lets a visitor
-derive the margin. Public product endpoints also serve only `status = active` variants
+derive the margin. Public product endpoints also list only `status = active` variants
 (`ProductStatus.ACTIVE`) — the price sheet, `GET /products/variants/slugs` (sitemap source) and
-`GET /products/variants/count` (its cache key), `catalog`/`search`, and `GET /products/by-slug/:slug`
-(a `draft`/`archived` slug → 404).
+`GET /products/variants/count` (its cache key), `catalog`/`search`. `GET /products/by-slug/:slug`
+additionally resolves an `archived` slug (200, `status: archived`, for the discontinued product
+page — TD-0006 §5.4); a `draft` slug → 404. The response also carries `product.manufacturer`,
+read from the «Виробник» attribute with the same `pickAttr(MANUFACTURER_PATTERNS)` the price sheet
+uses — `Vendor` is the supplier and is never exposed as the brand.
 
 Rules:
 

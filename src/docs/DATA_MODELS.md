@@ -186,6 +186,7 @@ Schema: `src/database/mongoose/schemas/category.schema.ts`
 | `image`                   | string \| null        | optional — public URL of the category image; `null` when absent |
 | `order`                   | number                | UI display order — lower values appear first; default: `0`      |
 | `required_attributes`     | `RequiredAttribute[]` | **embedded**, default: `[]`                                     |
+| `google_product_category` | `GoogleProductCategory` \| null | **embedded** (`_id: false`), default: `null` — `{ id, path }` of the Google product taxonomy node used as `g:google_product_category` in the Merchant feed (TD-0006 §5.2). Per category, per the isolation contract (TD-0005). For «Філамент»: `499682` — `Electronics > Print, Copy, Scan & Fax > 3D Printer Accessories` |
 | `createdAt` / `updatedAt` | Date                  | auto-managed (timestamps)                                       |
 
 Categories are a single flat level. The former two-level structure (category → embedded
@@ -288,6 +289,7 @@ Schema: `src/database/mongoose/schemas/product-variant.schema.ts`
 | `status`                  | `ProductStatus` enum    | default: `ACTIVE` — `draft` \| `active` \| `archived`                                                                                                                     |
 | `color_id`                | ObjectId → `colors` \| null | default: `null` — dictionary colour; `null` for categories with no colour axis                                                                                        |
 | `color_family`            | `ColorFamily` \| null   | default: `null` — denormalized copy of `Color.family`; what the catalogue swatch filter matches on                                                                         |
+| `weight_g`                | number \| null          | default: `null` — shipping weight in grams (filament + spool when included). Feeds the storefront delivery estimate, JSON-LD `weight` and `g:shipping_weight` (TD-0006). Backfilled by `scripts/fillando_v_2/backfill-variant-weight.js`, editable in the admin |
 | `createdAt` / `updatedAt` | Date                    | auto-managed (timestamps)                                                                                                                                                 |
 
 Indexes: `{ product_id: 1 }`, `{ category_id: 1, status: 1 }`,
@@ -306,9 +308,11 @@ A public endpoint never returns a raw variant document. Responses go through the
 `src/modules/product/product-public.mappers.ts`:
 
 - `toPublicVariant` — `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`,
-  `v_value`, `status`, `color`. Used by `GET /products/by-slug/:slug` (the variant and its
-  siblings). `color` is the resolved dictionary entry (`name_uk`, `name_en`, `family`,
-  `hex_stops`) or `null`; the raw `color_id` and `color_family` stay internal.
+  `v_value`, `status`, `color`, `weight_g`. Used by `GET /products/by-slug/:slug` (the variant and
+  its siblings). `color` is the resolved dictionary entry (`name_uk`, `name_en`, `family`,
+  `hex_stops`) or `null`; the raw `color_id` and `color_family` stay internal. The same endpoint
+  adds `product.manufacturer` — the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`,
+  `null` when absent. It is never `Vendor.name`: the vendor is the supplier, not the brand.
 - `PRICE_SHEET_PUBLIC_PROJECTION` — the `$project` stage of `GET /products/price-sheet`
   (see `src/docs/PRICE_SHEET.md`).
 
@@ -318,10 +322,14 @@ including them are **admin-only**: `GET /products/:id/variants` and
 `GET /products/:id/variants/:variantId` (the admin UI needs the supplier identifiers to edit a
 variant). `GET /products` (unpaginated dump) is admin-only as well. Guard details: `src/docs/RBAC.md`.
 
-Only `status = active` variants are visible publicly: `GET /products/by-slug/:slug` returns 404 for
-a `draft`/`archived` slug, and such variants are excluded from `catalog`, `search`, `price-sheet`,
-`variants/slugs` (the sitemap source) and `variants/count` (its cache key). Draft and archived
-variants are reachable only through the admin-only endpoints above.
+Only `status = active` variants are listed publicly: `draft` and `archived` variants are excluded
+from `catalog`, `search`, `price-sheet`, `variants/slugs` (the sitemap source), `variants/count`
+(its cache key) and the Google Shopping feed. `GET /products/by-slug/:slug` is the one exception,
+and only for `archived`: it returns 200 with `status: archived` so the storefront can render a
+«Знято з продажу» page instead of breaking a live ad or backlink (TD-0006 §5.4); its siblings and
+spooled counterpart stay `active`-only. A `draft` slug is still 404. This is a deliberate, narrow
+revision of plan-0003 — the supplier-field allowlist above is untouched. Draft variants are
+reachable only through the admin-only endpoints.
 
 ---
 

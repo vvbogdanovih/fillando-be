@@ -237,11 +237,25 @@ export class ProductService {
 		})
 	}
 
-	/** Public product page. Non-ACTIVE variants are a 404 here (repository filters them). */
+	/**
+	 * Public product page. DRAFT variants are a 404 here (the repository filters them); ARCHIVED
+	 * ones come back with their status so the storefront renders «Знято з продажу» (TD-0006 §5.4).
+	 * `manufacturer` is the «Виробник» attribute — the same helper the price sheet uses — and
+	 * never the vendor: `Vendor` is the supplier, not the brand.
+	 */
 	async getVariantBySlug(slug: string) {
 		const result = await this.productVariantRepository.findVariantWithProduct(slug)
 		if (!result) throw new NotFoundException('Variant not found')
-		return result
+		const attributes: AttrLike[] = Array.isArray(result.product.attributes)
+			? (result.product.attributes as AttrLike[])
+			: []
+		return {
+			...result,
+			product: {
+				...result.product,
+				manufacturer: pickAttr(attributes, MANUFACTURER_PATTERNS)
+			}
+		}
 	}
 
 	async findById(id: string) {

@@ -1,5 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsArray, IsEnum, IsMongoId, IsNumber, IsOptional, IsString } from 'class-validator'
+import {
+	IsArray,
+	IsEnum,
+	IsInt,
+	IsMongoId,
+	IsNumber,
+	IsOptional,
+	IsString,
+	Min,
+	ValidateIf
+} from 'class-validator'
 import { API_PROPERTY } from 'src/common/constants/docs'
 import { ProductStatus } from 'src/common/types/enums'
 
@@ -57,4 +67,17 @@ export class CreateVariantDto {
 	@IsOptional()
 	@IsEnum(ProductStatus)
 	status?: ProductStatus
+
+	@ApiProperty({
+		example: 1220,
+		description:
+			'Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it',
+		nullable: true,
+		required: false
+	})
+	@IsOptional()
+	@ValidateIf((_, value) => value !== null)
+	@IsInt()
+	@Min(0)
+	weight_g?: number | null
 }

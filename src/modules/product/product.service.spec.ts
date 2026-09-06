@@ -10,6 +10,7 @@ const buildService = () => {
 	const productVariantRepository = {
 		findOne: jest.fn().mockResolvedValue(null),
 		findByProductId: jest.fn().mockResolvedValue([]),
+		findVariantWithProduct: jest.fn().mockResolvedValue(null),
 		update: jest.fn().mockResolvedValue(null),
 		delete: jest.fn().mockResolvedValue(null)
 	}
@@ -57,5 +58,48 @@ describe('ProductService — malformed ObjectId handling', () => {
 		await expect(service.getVariants(GOOD_ID)).rejects.toBeInstanceOf(NotFoundException)
 
 		expect(productRepository.findById).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe('ProductService.getVariantBySlug — manufacturer', () => {
+	const page = (attributes: Array<{ k: string; l: string; v: unknown }>) => ({
+		variant: { id: 'v1', status: 'active' },
+		product: { id: 'p1', name: 'Sunlu PLA Silk', attributes },
+		siblings: [],
+		category_slug: 'filament',
+		category_name: 'Філамент',
+		spooled_counterpart: null
+	})
+
+	it('reads the brand from the «Виробник» attribute, never from the vendor', async () => {
+		const { service, productVariantRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(
+			page([{ k: 'vyrobnyk', l: 'Виробник', v: 'Sunlu' }])
+		)
+
+		const result = await service.getVariantBySlug('sunlu-pla-silk-gold')
+
+		expect(result.product.manufacturer).toBe('Sunlu')
+		expect(result.product.name).toBe('Sunlu PLA Silk')
+	})
+
+	it('emits manufacturer: null when the attribute is absent — no shop-name fallback', async () => {
+		const { service, productVariantRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(
+			page([{ k: 'material', l: 'Матеріал', v: 'PLA' }])
+		)
+
+		const result = await service.getVariantBySlug('some-slug')
+
+		expect(result.product.manufacturer).toBeNull()
+	})
+
+	it('answers 404 when the repository finds nothing (DRAFT or unknown slug)', async () => {
+		const { service, productVariantRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(null)
+
+		await expect(service.getVariantBySlug('draft-slug')).rejects.toBeInstanceOf(
+			NotFoundException
+		)
 	})
 })

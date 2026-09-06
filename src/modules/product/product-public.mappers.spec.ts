@@ -59,6 +59,7 @@ const fixture: LeanVariantDoc = {
 	status: ProductStatus.ACTIVE,
 	color_id: new Types.ObjectId('000000000000000000000004'),
 	color_family: ColorFamily.RED,
+	weight_g: 1220,
 	createdAt: new Date('2026-01-01T00:00:00Z'),
 	updatedAt: new Date('2026-08-21T09:30:00Z'),
 	__v: 3
@@ -93,7 +94,8 @@ describe('toPublicVariant', () => {
 			],
 			v_value: 'Red',
 			status: ProductStatus.ACTIVE,
-			color: null
+			color: null,
+			weight_g: 1220
 		})
 	})
 
@@ -123,13 +125,15 @@ describe('toPublicVariant', () => {
 			...fixture,
 			price_updated_at: undefined,
 			images: undefined,
-			v_value: undefined
+			v_value: undefined,
+			weight_g: undefined
 		} as unknown as LeanVariantDoc
 
 		const result = toPublicVariant(sparse)
 		expect(result.price_updated_at).toBeNull()
 		expect(result.images).toEqual([])
 		expect(result.v_value).toBeNull()
+		expect(result.weight_g).toBeNull()
 		expect(Object.keys(result).sort()).toEqual([...PUBLIC_VARIANT_FIELDS].sort())
 	})
 

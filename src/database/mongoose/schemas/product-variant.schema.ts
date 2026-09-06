@@ -59,6 +59,15 @@ export class ProductVariant {
 	@Prop({ type: Date, default: null })
 	stock_updated_at: Date | null
 
+	/**
+	 * Shipping weight in grams — the filament plus the spool when one is included (a refill is
+	 * lighter by the spool). Grams, not kilograms: an integer sidesteps float noise and the unit
+	 * is part of the name. Feeds the storefront delivery estimate, Product JSON-LD `weight`
+	 * and `g:shipping_weight` in the Google Shopping feed (TD-0006 §5.2). Null until set.
+	 */
+	@Prop({ type: Number, default: null })
+	weight_g: number | null
+
 	@Prop({ type: String, enum: ProductStatus, default: ProductStatus.ACTIVE })
 	status: ProductStatus
 

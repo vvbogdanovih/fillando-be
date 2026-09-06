@@ -146,11 +146,13 @@ service), not a `BSONError` 500. Their Swagger `summary` carries an `(admin)` su
 `description` starts with `Admin-only`.
 
 Everything the storefront reads goes through public endpoints that return a **projection**, not a
-document, and only `status = active` variants (`ProductStatus.ACTIVE`):
+document, and list only `status = active` variants (`ProductStatus.ACTIVE`):
 
 - `GET /products/by-slug/:slug` — `toPublicVariant` allowlist (`id`, `name`, `slug`, `sku`, `price`,
-  `price_updated_at`, `stock`, `images`, `v_value`, `status`) for the variant and its siblings; a
-  `draft`/`archived` slug → 404.
+  `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`) for the variant
+  and its siblings, plus `product.manufacturer` from the «Виробник» attribute. A `draft` slug → 404;
+  an `archived` slug → 200 with `status: archived` (the discontinued product page, TD-0006 §5.4) —
+  siblings stay `active`-only.
 - `GET /products/price-sheet` — `PRICE_SHEET_PUBLIC_PROJECTION`; search no longer matches
   `vendor_product_sku`. See `src/docs/PRICE_SHEET.md`.
 - `GET /products/variants/slugs` — sitemap source, active slugs only.
@@ -237,5 +239,5 @@ The public-projection guarantees (active-only visibility, allowlisted fields, no
 separately: `src/modules/product/product-public.mappers.spec.ts` pins the exact key set of each
 allowlist, and the `ProductVariantRepository` `*.int-spec.ts` runs `findPriceSheet`,
 `findAllSlugs` and `findVariantWithProduct` against seeded `draft` / `active` / `archived` variants
-on the disposable MongoDB. Changing a public response shape means updating those specs, not the RBAC
-spec.
+on the disposable MongoDB (`archived` is found by `findVariantWithProduct` only, still through the
+public allowlist). Changing a public response shape means updating those specs, not the RBAC spec.

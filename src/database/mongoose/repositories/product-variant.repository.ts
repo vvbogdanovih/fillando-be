@@ -10,8 +10,12 @@ import {
 } from 'src/modules/product/product-public.mappers'
 import type { Color } from '../schemas/color.schema'
 import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
+import { mergeFacetValues, type CatalogFacetValue } from 'src/common/utils/facet.utils'
 
-/** One swatch in the catalogue colour filter: what to paint, and how many variants it covers. */
+/**
+ * One swatch in the catalogue colour filter: what to paint, and how many variants of the current
+ * narrowing carry it — counted without the colour filter itself, like every other facet.
+ */
 export interface CatalogColorOption {
 	family: string
 	count: number
@@ -264,20 +268,18 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		if (!variant) return null
 
 		const [product, siblings, category] = await Promise.all([
-			this.model.db
-				.collection('products')
-				.findOne(
-					{ _id: variant.product_id },
-					{
-						projection: {
-							name: 1,
-							description: 1,
-							attributes: 1,
-							variant_type: 1,
-							spooled_product_id: 1
-						}
+			this.model.db.collection('products').findOne(
+				{ _id: variant.product_id },
+				{
+					projection: {
+						name: 1,
+						description: 1,
+						attributes: 1,
+						variant_type: 1,
+						spooled_product_id: 1
 					}
-				),
+				}
+			),
 			this.model
 				.find(
 					{ product_id: variant.product_id, status: ProductStatus.ACTIVE },
@@ -660,7 +662,9 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 									_id: 0,
 									id: { $toString: '$_id' },
 									name: 1,
-									google_product_category: { $ifNull: ['$google_product_category', null] },
+									google_product_category: {
+										$ifNull: ['$google_product_category', null]
+									},
 									required_attributes: { $ifNull: ['$required_attributes', []] }
 								}
 							}
@@ -711,6 +715,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		sort: string
 		attrFilters: Record<string, string[]>
 		colorFamilies?: string[]
+		/** The category's `required_attributes` keys — the dimensions to count facets for. */
+		facetKeys?: string[]
 	}) {
 		const {
 			category_id,
@@ -720,7 +726,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			price_max,
 			sort,
 			attrFilters,
-			colorFamilies = []
+			colorFamilies = [],
+			facetKeys = []
 		} = params
 		const skip = (page - 1) * limit
 
@@ -733,10 +740,11 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		if (colorFamilies.length > 0) {
 			variantMatch.color_family = { $in: colorFamilies }
 		}
+		const priceMatch: { $gte?: number; $lte?: number } = {}
+		if (price_min !== undefined) priceMatch.$gte = price_min
+		if (price_max !== undefined) priceMatch.$lte = price_max
 		if (price_min !== undefined || price_max !== undefined) {
-			variantMatch.price = {}
-			if (price_min !== undefined) variantMatch.price.$gte = price_min
-			if (price_max !== undefined) variantMatch.price.$lte = price_max
+			variantMatch.price = priceMatch
 		}
 
 		const pipeline: any[] = [
@@ -825,102 +833,191 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 		const categoryObjectId = new Types.ObjectId(category_id)
 
+		// Over the whole category on purpose: these are the slider's bounds, and bounds that
+		// jump after every click make the control unusable (TD-0008 §4 F7).
 		const priceRangePipeline: any[] = [
 			{ $match: { category_id: categoryObjectId, status: ProductStatus.ACTIVE } },
 			{ $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' } } }
 		]
 
-		const filterOptionsPipeline: any[] = [
+		/**
+		 * Everything the shopper has narrowed by, minus one dimension (TD-0008 §5.4.1). The
+		 * number next to «PETG» while «PLA» is ticked is "how many variants carry PETG under
+		 * every other filter" — so the dimension's own filter is left out and the list never
+		 * collapses to the one value just chosen; price, colour and the other attributes still
+		 * apply. (Within a dimension the filter is an OR, so the numbers are per value, not what
+		 * the total would become after the click.) Built from the same inputs as the listing, so
+		 * the two can never disagree about what is active.
+		 */
+		const narrowingMatch = (exclude: string | typeof COLOR_DIMENSION): Record<string, any> => {
+			const match: Record<string, any> = {}
+			if (price_min !== undefined || price_max !== undefined) match.price = priceMatch
+			if (exclude !== COLOR_DIMENSION && colorFamilies.length > 0) {
+				match.color_family = { $in: colorFamilies }
+			}
+			const conditions: any[] = []
+			for (const [key, values] of Object.entries(attrFilters)) {
+				if (key !== exclude && values.length > 0) {
+					conditions.push({ attributes: { $elemMatch: { k: key, v: { $in: values } } } })
+				}
+			}
+			if (conditions.length > 0) match.$and = conditions
+			return match
+		}
+
+		/**
+		 * One `$facet` for every sidebar number. Branch names are positional (`count_0`,
+		 * `count_1`, …) rather than the attribute key, so a key can never be an invalid field
+		 * name here; the position maps back to `facetKeys` below.
+		 *
+		 * Counting is per variant, not per attribute entry: a product may carry the same
+		 * `finish` twice, and the `$unwind` would otherwise count that variant twice.
+		 */
+		const facetBranches: Record<string, any[]> = {
+			// Every value of every dimension, over the whole category — the list itself. A
+			// value with no match in the current narrowing stays, with a zero count.
+			values: [
+				{ $unwind: '$attributes' },
+				{ $match: { 'attributes.k': { $in: facetKeys } } },
+				{ $group: { _id: { k: '$attributes.k', v: { $toString: '$attributes.v' } } } }
+			],
+			// Colour families present in the category, with the shade that paints the swatch:
+			// the lowest-`order` colour of the family, so the admin controls it.
+			color_all: [
+				{ $match: { color_id: { $ne: null } } },
+				{
+					$lookup: {
+						from: 'colors',
+						localField: 'color_id',
+						foreignField: '_id',
+						as: 'color'
+					}
+				},
+				{ $unwind: '$color' },
+				{ $sort: { 'color.order': 1, 'color.name_en': 1 } },
+				{
+					$group: {
+						_id: '$color.family',
+						hex_stops: { $first: '$color.hex_stops' },
+						order: { $min: '$color.order' }
+					}
+				},
+				{ $sort: { order: 1, _id: 1 } }
+			],
+			// Same `color_id` gate as `color_all`, so a variant whose denormalised family has
+			// drifted from the dictionary cannot surface as a family of its own.
+			color_count: [
+				{ $match: { ...narrowingMatch(COLOR_DIMENSION), color_id: { $ne: null } } },
+				{ $group: { _id: '$color_family', count: { $sum: 1 } } }
+			]
+		}
+		facetKeys.forEach((key, index) => {
+			facetBranches[`count_${index}`] = [
+				{ $match: narrowingMatch(key) },
+				{ $unwind: '$attributes' },
+				{ $match: { 'attributes.k': key } },
+				{ $group: { _id: { v: { $toString: '$attributes.v' }, variant: '$_id' } } },
+				{ $group: { _id: '$_id.v', count: { $sum: 1 } } }
+			]
+		})
+
+		const facetPipeline: any[] = [
 			{ $match: { category_id: categoryObjectId, status: ProductStatus.ACTIVE } },
+			// Only the attributes are joined: the branches need nothing else from the product,
+			// and its description HTML would otherwise be most of what `$facet` holds in memory.
 			{
 				$lookup: {
 					from: 'products',
 					localField: 'product_id',
 					foreignField: '_id',
+					pipeline: [{ $project: { _id: 0, attributes: 1 } }],
 					as: 'product'
 				}
 			},
 			{ $unwind: '$product' },
-			{ $unwind: '$product.attributes' },
-			{
-				$group: {
-					_id: '$product.attributes.k',
-					values: { $addToSet: { $toString: '$product.attributes.v' } }
-				}
-			}
-		]
-
-		/**
-		 * Swatch options for the colour sidebar. Like `filter_options` above, this is computed
-		 * over the whole category rather than the current selection, so ticking one colour does
-		 * not make the others disappear.
-		 *
-		 * Grouped by family, because the family is what the query filters on; the representative
-		 * `hex_stops` come from the lowest-`order` colour of that family, so the admin controls
-		 * which shade paints the circle.
-		 */
-		const colorOptionsPipeline: any[] = [
-			{
-				$match: {
-					category_id: categoryObjectId,
-					status: ProductStatus.ACTIVE,
-					color_id: { $ne: null }
-				}
-			},
-			{
-				$lookup: {
-					from: 'colors',
-					localField: 'color_id',
-					foreignField: '_id',
-					as: 'color'
-				}
-			},
-			{ $unwind: '$color' },
-			{ $sort: { 'color.order': 1, 'color.name_en': 1 } },
-			{
-				$group: {
-					_id: '$color.family',
-					count: { $sum: 1 },
-					hex_stops: { $first: '$color.hex_stops' },
-					order: { $min: '$color.order' }
-				}
-			},
-			{ $sort: { order: 1, _id: 1 } },
 			{
 				$project: {
-					_id: 0,
-					family: '$_id',
-					count: 1,
-					hex_stops: 1
+					price: 1,
+					color_id: 1,
+					color_family: 1,
+					attributes: '$product.attributes'
 				}
-			}
+			},
+			{ $facet: facetBranches }
 		]
 
-		const [catalogResult, priceRangeResult, filterOptionsResult, colorOptionsResult] =
-			await Promise.all([
-				this.model.aggregate(pipeline).exec(),
-				this.model.aggregate(priceRangePipeline).exec(),
-				this.model.aggregate(filterOptionsPipeline).exec(),
-				this.model.aggregate(colorOptionsPipeline).exec()
-			])
+		const [catalogResult, priceRangeResult, facetResult] = await Promise.all([
+			this.model.aggregate(pipeline).exec(),
+			this.model.aggregate(priceRangePipeline).exec(),
+			this.model.aggregate<FacetRows>(facetPipeline).exec()
+		])
 
 		const items = catalogResult[0]?.items ?? []
 		const total = catalogResult[0]?.meta[0]?.total ?? 0
 		const priceRange = priceRangeResult[0] ?? { min: 0, max: 0 }
+		const facetRows: Partial<FacetRows> = facetResult[0] ?? {}
 
+		const valuesByKey = new Map<string, string[]>()
+		for (const row of facetRows.values ?? []) {
+			const list = valuesByKey.get(row._id.k) ?? []
+			list.push(row._id.v)
+			valuesByKey.set(row._id.k, list)
+		}
+		const toCounts = (rows: CountRow[] = []) =>
+			new Map<string, number>(rows.map(row => [row._id, row.count]))
+
+		const facets: Record<string, CatalogFacetValue[]> = {}
+		facetKeys.forEach((key, index) => {
+			const counts = toCounts(facetRows[`count_${index}`])
+			facets[key] = mergeFacetValues(valuesByKey.get(key) ?? [], counts)
+		})
+
+		const colorCounts = toCounts(facetRows.color_count)
+		const colorOptions: CatalogColorOption[] = (facetRows.color_all ?? []).map(row => ({
+			family: row._id,
+			count: colorCounts.get(row._id) ?? 0,
+			hex_stops: row.hex_stops
+		}))
+
+		/**
+		 * @deprecated Derived from `facets` for one release (TD-0008 §5.3): the two services
+		 * deploy independently, so a storefront built before this change may briefly read a
+		 * backend built after it. Removed by Plan-0007 task 15 once the release is accepted.
+		 */
 		const filterOptions: Record<string, string[]> = {}
-		for (const entry of filterOptionsResult) {
-			filterOptions[entry._id] = (entry.values as string[]).filter(Boolean).sort()
+		for (const [key, values] of Object.entries(facets)) {
+			filterOptions[key] = values.map(entry => entry.value)
 		}
 
 		return {
 			items,
 			pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
 			price_range: { min: priceRange.min ?? 0, max: priceRange.max ?? 0 },
+			facets,
 			filter_options: filterOptions,
-			color_options: colorOptionsResult as CatalogColorOption[]
+			color_options: colorOptions
 		}
 	}
+}
+
+/**
+ * Sentinel for the colour dimension in `narrowingMatch`: colour is filtered on the variant
+ * (`color_family`), not through `attributes`, so it cannot be named by an attribute key.
+ */
+const COLOR_DIMENSION = Symbol('color')
+
+/** `{ _id: value, count }` as a `$group … { $sum: 1 }` branch emits it. */
+interface CountRow {
+	_id: string
+	count: number
+}
+
+/** The single document the facet `$facet` returns: one array per branch. */
+interface FacetRows {
+	values: { _id: { k: string; v: string } }[]
+	color_all: { _id: string; hex_stops: string[]; order: number }[]
+	color_count: CountRow[]
+	[countBranch: `count_${number}`]: CountRow[]
 }
 
 /**

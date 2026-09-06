@@ -228,7 +228,8 @@ export const API_OPERATION = {
 		},
 		CATALOG: {
 			summary: 'Get catalog products',
-			description: 'Paginated, filterable product listing for a given category.'
+			description:
+				"Paginated, filterable product listing for a given category. Besides `items` and `pagination` the response carries `facets` — for every key of the category's `required_attributes`, all values present in the category as `{ value, count }`, where `count` is the number of active variants matching every active filter except that dimension's own (so ticking one value never empties its siblings; values no longer reachable stay with `count: 0`). Values are ordered numerically where numeric, otherwise by the Ukrainian collator. `color_options[].count` follows the same rule; `price_range` is category-wide. `filter_options` is deprecated — the same values without counts — and will be removed after the next release."
 		},
 		SEARCH: {
 			summary: 'Search products',

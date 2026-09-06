@@ -40,7 +40,8 @@ const buildService = (
 		productRepository as never,
 		productVariantRepository as never,
 		numbersRepository as never,
-		colorRepository as never
+		colorRepository as never,
+		{ findById: jest.fn().mockResolvedValue(null) } as never
 	)
 	return { service, productVariantRepository, colorRepository }
 }
@@ -147,7 +148,8 @@ describe('updateVariant — colour', () => {
 			productRepository as never,
 			{ update: jest.fn(), findOne: jest.fn() } as never,
 			{} as never,
-			colorRepository as never
+			colorRepository as never,
+			{ findById: jest.fn().mockResolvedValue(null) } as never
 		)
 
 		await expect(

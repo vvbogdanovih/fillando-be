@@ -11,8 +11,9 @@ import { ProductVariantRepository } from './product-variant.repository'
  * The isolation contract of TD-0005 §5.1, made executable (its §7 / §8 p.1): attribute keys are
  * derived from labels with no category in them, so two categories can share `k: polymer` with
  * different meanings. Filtering must still never cross the category line — in the listing, in
- * the facet counts, in the price range and in the swatch options, which are four separate
- * sub-pipelines of `findCatalogItems` that each match `category_id` on their own.
+ * the facet counts, in the price range and in the swatch options — three aggregates of
+ * `findCatalogItems` (the facets and swatches share one `$facet`) that each match `category_id`
+ * on their own.
  */
 type Conn = Awaited<ReturnType<typeof connectTestDb>>
 
@@ -142,6 +143,7 @@ describe('ProductVariantRepository.findCatalogItems — category isolation (Mong
 			limit: 50,
 			sort: 'default',
 			attrFilters: {},
+			facetKeys: ['polymer'],
 			...extra
 		})
 
@@ -160,8 +162,12 @@ describe('ProductVariantRepository.findCatalogItems — category isolation (Mong
 
 		expect(filament.pagination.total).toBe(2)
 		expect(filament.price_range).toEqual({ min: 500, max: 600 })
+		// Two PLA variants here, one in the other category: the count stays at 2.
+		expect(filament.facets.polymer).toEqual([{ value: 'PLA', count: 2 }])
 		expect(filament.filter_options.polymer).toEqual(['PLA'])
-		expect(filament.color_options.map(o => o.family)).toEqual([ColorFamily.BLACK])
+		expect(filament.color_options).toEqual([
+			{ family: ColorFamily.BLACK, count: 2, hex_stops: ['#111418'] }
+		])
 	})
 
 	it('a colour family only present in the other category matches nothing here', async () => {

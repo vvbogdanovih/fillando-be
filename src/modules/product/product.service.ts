@@ -19,6 +19,7 @@ import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
 import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
 import { ColorRepository } from 'src/database/mongoose/repositories/color.repository'
+import { CategoryRepository } from 'src/database/mongoose/repositories/category.repository'
 import { ColorFamily } from 'src/common/types/enums'
 import type { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import {
@@ -73,7 +74,8 @@ export class ProductService {
 		private readonly productRepository: ProductRepository,
 		private readonly productVariantRepository: ProductVariantRepository,
 		private readonly numbersRepository: NumbersRepository,
-		private readonly colorRepository: ColorRepository
+		private readonly colorRepository: ColorRepository,
+		private readonly categoryRepository: CategoryRepository
 	) {}
 
 	/**
@@ -215,6 +217,15 @@ export class ProductService {
 			rawQuery
 
 		if (!category_id) throw new BadRequestException('category_id is required')
+		if (!Types.ObjectId.isValid(category_id)) {
+			throw new BadRequestException('category_id is not a valid id')
+		}
+
+		// The facets are the category's own dimensions (TD-0008 §5.3): the keys come from here,
+		// never from the query string, so a stray parameter cannot name a `$facet` branch. An
+		// unknown category yields an empty catalogue with empty facets, as it always has.
+		const category = await this.categoryRepository.findById(category_id)
+		const facetKeys = category?.required_attributes.map(attr => attr.key) ?? []
 
 		const attrFilters: Record<string, string[]> = {}
 		for (const [key, value] of Object.entries(rest)) {
@@ -233,7 +244,8 @@ export class ProductService {
 			attrFilters,
 			// Colour lives on the variant, not in `product.attributes`, so it cannot go through
 			// `attrFilters` — an `$elemMatch` on `attributes` would match nothing at all.
-			colorFamilies: color_family ? splitFilterValues(color_family) : []
+			colorFamilies: color_family ? splitFilterValues(color_family) : [],
+			facetKeys
 		})
 	}
 

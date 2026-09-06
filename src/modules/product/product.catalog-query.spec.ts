@@ -8,28 +8,45 @@ import { ProductService } from './product.service'
  * `color_family` is the parameter that trips this, because colour lives on the variant rather
  * than in `product.attributes` (TD-0002 §5.2.2).
  */
-const buildService = () => {
+const CATEGORY_ID = '69b7c630ff27ba94157052dd'
+
+/** The category `getCatalog` reads to learn which keys are facet dimensions (TD-0008 §5.3). */
+const CATEGORY = {
+	required_attributes: [
+		{ key: 'polymer', label: 'Тип пластику', filter_type: 'multi-select', unit: null },
+		{ key: 'finish', label: 'Ефект поверхні', filter_type: 'multi-select', unit: null }
+	]
+}
+
+const buildService = (category: unknown = CATEGORY) => {
 	const findCatalogItems = jest.fn().mockResolvedValue({ items: [] })
+	const findById = jest.fn().mockResolvedValue(category)
 	const service = new ProductService(
 		{} as never,
 		{ findCatalogItems } as never,
 		{} as never,
-		{} as never
+		{} as never,
+		{ findById } as never
 	)
-	return { service, findCatalogItems }
+	return { service, findCatalogItems, findById }
 }
+
+type CatalogParams = {
+	attrFilters: Record<string, string[]>
+	colorFamilies: string[]
+	facetKeys: string[]
+	page: number
+	limit: number
+	sort: string
+}
+
+const firstCall = (findCatalogItems: jest.Mock) =>
+	(findCatalogItems.mock.calls as unknown[][])[0][0] as CatalogParams
 
 const callWith = async (query: Record<string, string>) => {
 	const { service, findCatalogItems } = buildService()
-	await service.getCatalog({ category_id: 'c1', ...query })
-	const calls = findCatalogItems.mock.calls as unknown[][]
-	return calls[0][0] as {
-		attrFilters: Record<string, string[]>
-		colorFamilies: string[]
-		page: number
-		limit: number
-		sort: string
-	}
+	await service.getCatalog({ category_id: CATEGORY_ID, ...query })
+	return firstCall(findCatalogItems)
 }
 
 describe('ProductService.getCatalog — reserved parameters', () => {
@@ -55,7 +72,7 @@ describe('ProductService.getCatalog — reserved parameters', () => {
 	it.each(['category_id', 'page', 'limit', 'price_min', 'price_max', 'sort', 'color_family'])(
 		'never mistakes %s for an attribute filter',
 		async key => {
-			const params = await callWith({ [key]: '1' })
+			const params = await callWith({ [key]: key === 'category_id' ? CATEGORY_ID : '1' })
 
 			expect(params.attrFilters).not.toHaveProperty(key)
 		}
@@ -80,10 +97,38 @@ describe('ProductService.getCatalog — reserved parameters', () => {
 		await expect(service.getCatalog({})).rejects.toBeInstanceOf(BadRequestException)
 	})
 
+	it('rejects a category id that is not an ObjectId instead of failing inside Mongo', async () => {
+		const { service, findCatalogItems } = buildService()
+
+		await expect(service.getCatalog({ category_id: 'c1' })).rejects.toBeInstanceOf(
+			BadRequestException
+		)
+		expect(findCatalogItems).not.toHaveBeenCalled()
+	})
+
 	it('clamps pagination to sane bounds', async () => {
 		const params = await callWith({ page: '0', limit: '5000' })
 
 		expect(params.page).toBe(1)
 		expect(params.limit).toBe(100)
+	})
+})
+
+describe('ProductService.getCatalog — facet dimensions', () => {
+	it('takes the facet keys from the category, in its order, never from the query', async () => {
+		const { service, findCatalogItems, findById } = buildService()
+
+		await service.getCatalog({ category_id: CATEGORY_ID, kolir: 'Чорний' })
+
+		expect(findById).toHaveBeenCalledWith(CATEGORY_ID)
+		expect(firstCall(findCatalogItems).facetKeys).toEqual(['polymer', 'finish'])
+	})
+
+	it('asks for no facets when the category does not exist, without throwing', async () => {
+		const { service, findCatalogItems } = buildService(null)
+
+		await service.getCatalog({ category_id: CATEGORY_ID })
+
+		expect(firstCall(findCatalogItems).facetKeys).toEqual([])
 	})
 })

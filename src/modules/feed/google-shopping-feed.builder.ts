@@ -59,7 +59,12 @@ const decodeEntities = (text: string) =>
 /** HTML → plain text for `description`: tags stripped, whitespace collapsed, capped. */
 export const descriptionText = (html: string | null | undefined): string => {
 	if (!html) return ''
-	const text = decodeEntities(sanitizePlainText(html)).replace(/\s+/g, ' ').trim()
+	// Block boundaries become spaces first: stripping tags alone glues «…(еко-пакування)Kingroon…».
+	const spaced = html.replace(
+		/<\/(p|div|li|h[1-6]|tr|th|td|blockquote|section)>|<br\s*\/?>/gi,
+		'$& '
+	)
+	const text = decodeEntities(sanitizePlainText(spaced)).replace(/\s+/g, ' ').trim()
 	return truncate(text, DESCRIPTION_MAX)
 }
 

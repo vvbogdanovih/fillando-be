@@ -85,6 +85,9 @@ describe('xml helpers', () => {
 		expect(descriptionText('<p>Шовковий <b>PLA</b>\n\n  &amp; блиск</p>')).toBe(
 			'Шовковий PLA & блиск'
 		)
+		expect(
+			descriptionText('<h2>Особливості</h2><ul><li>Міцний</li><li>Без запаху</li></ul>')
+		).toBe('Особливості Міцний Без запаху')
 		expect(descriptionText(null)).toBe('')
 		expect(descriptionText('x'.repeat(6000)).length).toBe(5000)
 	})

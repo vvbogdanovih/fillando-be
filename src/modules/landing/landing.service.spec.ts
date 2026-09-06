@@ -1,7 +1,15 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
+import axios from 'axios'
 import { Types } from 'mongoose'
 import { LandingStatus } from 'src/common/types/enums'
 import { LandingService } from './landing.service'
+
+jest.mock('axios', () => ({
+	__esModule: true,
+	default: { post: jest.fn().mockResolvedValue({ status: 200 }), isAxiosError: () => false }
+}))
+// eslint-disable-next-line @typescript-eslint/unbound-method -- the mocked module's method, read once
+const axiosPost = axios.post as jest.Mock
 
 const CATEGORY_ID = '000000000000000000000c01'
 const LANDING_ID = '000000000000000000000001'
@@ -399,5 +407,59 @@ describe('LandingService.findActive — counts for the «Популярні ви
 
 		expect(landingRepository.findActive).toHaveBeenCalledTimes(1)
 		expect(landingRepository.findAllForAdmin).not.toHaveBeenCalled()
+	})
+})
+
+describe('LandingService — storefront revalidation', () => {
+	beforeEach(() => {
+		axiosPost.mockClear()
+		axiosPost.mockResolvedValue({ status: 200 })
+	})
+
+	const flush = () => new Promise(resolve => setImmediate(resolve))
+
+	it('purges the storefront landings cache after create, update and delete', async () => {
+		const { service } = buildService()
+
+		await service.create({
+			category_id: CATEGORY_ID,
+			slug: 'pla',
+			h1: 'PLA',
+			title: 'PLA',
+			meta_description: 'PLA',
+			filters: { polymer: ['PLA'] }
+		})
+		await service.update(LANDING_ID, { h1: 'PLA філамент' })
+		await service.delete(LANDING_ID)
+		await flush()
+
+		expect(axiosPost).toHaveBeenCalledTimes(3)
+		const [url, body, config] = axiosPost.mock.calls[0] as [
+			string,
+			unknown,
+			{ headers: Record<string, string>; timeout: number }
+		]
+		expect(url).toBe('http://localhost:9000/api/revalidate')
+		expect(body).toEqual({ resource: 'landings' })
+		expect(config.headers['Content-Type']).toBe('application/json')
+		expect(config.timeout).toBeGreaterThan(0)
+	})
+
+	it('never fails the save when the storefront is unreachable', async () => {
+		axiosPost.mockRejectedValue(new Error('ECONNREFUSED'))
+		const { service } = buildService()
+
+		await expect(service.delete(LANDING_ID)).resolves.toEqual({ success: true })
+		await flush()
+		expect(axiosPost).toHaveBeenCalledTimes(1)
+	})
+
+	it('does not purge when nothing was written', async () => {
+		const { service, landingRepository } = buildService()
+		landingRepository.delete.mockResolvedValue(false)
+
+		await expect(service.delete(LANDING_ID)).rejects.toBeInstanceOf(NotFoundException)
+		await flush()
+		expect(axiosPost).not.toHaveBeenCalled()
 	})
 })

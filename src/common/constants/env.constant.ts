@@ -54,7 +54,11 @@ const envSchema = z.object({
 		.transform(v => v === 'true' || v === '1'),
 	// Shared secret the frontend's server-side fetches send as `X-Internal-Token`; requests
 	// carrying it bypass the rate limiter. Optional — when unset nothing is exempted.
-	INTERNAL_API_TOKEN: z.string().min(32).optional()
+	INTERNAL_API_TOKEN: z.string().min(32).optional(),
+	// Shared secret for the storefront's `POST /api/revalidate` (`x-revalidate-secret`), sent
+	// after landing writes so the cached copy is purged. Optional: outside production the
+	// frontend accepts the call without it, and when unset here no header is sent.
+	REVALIDATE_SECRET: z.string().min(32).optional()
 })
 
 type EnvSchema = z.infer<typeof envSchema>
@@ -89,7 +93,8 @@ const getParsedEnv = (): EnvSchema => {
 		NODE_ENV: process.env.NODE_ENV,
 		LOG_LEVEL: process.env.LOG_LEVEL,
 		RUN_CRON: process.env.RUN_CRON,
-		INTERNAL_API_TOKEN: process.env.INTERNAL_API_TOKEN
+		INTERNAL_API_TOKEN: process.env.INTERNAL_API_TOKEN,
+		REVALIDATE_SECRET: process.env.REVALIDATE_SECRET
 	})
 	if (!result.success) {
 		console.log('error', result.error)
@@ -129,5 +134,6 @@ export const ENV = {
 	NODE_ENV: validatedEnv.NODE_ENV,
 	LOG_LEVEL: validatedEnv.LOG_LEVEL,
 	RUN_CRON: validatedEnv.RUN_CRON,
-	INTERNAL_API_TOKEN: validatedEnv.INTERNAL_API_TOKEN
+	INTERNAL_API_TOKEN: validatedEnv.INTERNAL_API_TOKEN,
+	REVALIDATE_SECRET: validatedEnv.REVALIDATE_SECRET
 } as const

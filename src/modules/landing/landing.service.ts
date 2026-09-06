@@ -1,5 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import axios from 'axios'
 import { Types } from 'mongoose'
+import { ENV } from 'src/common/constants'
 import { CategoryRepository } from 'src/database/mongoose/repositories/category.repository'
 import { LandingRepository } from 'src/database/mongoose/repositories/landing.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
@@ -8,8 +10,13 @@ import { LandingStatus } from 'src/common/types/enums'
 import { CreateLandingDto } from './dto/create-landing.dto'
 import { UpdateLandingDto } from './dto/update-landing.dto'
 
+/** The storefront caches landing reads for an hour; this is how long we wait for its purge. */
+const REVALIDATE_TIMEOUT_MS = 3000
+
 @Injectable()
 export class LandingService {
+	private readonly logger = new Logger(LandingService.name)
+
 	constructor(
 		private readonly landingRepository: LandingRepository,
 		private readonly categoryRepository: CategoryRepository,
@@ -110,11 +117,13 @@ export class LandingService {
 			await this.assertLandingHasProducts(dto.category_id, dto.filters ?? {})
 		}
 
-		return this.landingRepository.create({
+		const created = await this.landingRepository.create({
 			...sanitizeLandingCopy(dto),
 			slug,
 			category_id: new Types.ObjectId(dto.category_id)
 		})
+		void this.revalidateStorefront('create')
+		return created
 	}
 
 	async update(id: string, dto: UpdateLandingDto) {
@@ -147,6 +156,7 @@ export class LandingService {
 			}
 		)
 		if (!updated) throw new NotFoundException('Landing not found')
+		void this.revalidateStorefront('update')
 		return updated
 	}
 
@@ -154,7 +164,42 @@ export class LandingService {
 		this.assertObjectId(id)
 		const deleted = await this.landingRepository.delete({ _id: id })
 		if (!deleted) throw new NotFoundException('Landing not found')
+		void this.revalidateStorefront('delete')
 		return { success: true }
+	}
+
+	/**
+	 * Tells the storefront to drop its cached landing reads and sitemap (`POST /api/revalidate`,
+	 * resource `landings`) so a text saved here is visible on the next request, not in an hour.
+	 *
+	 * Server-to-server on purpose: the browser cannot hold the secret, and the Next server cannot
+	 * recognise an admin (the backend's cookies are host-only) — see fillando-fe
+	 * `docs/cache-revalidation.md`. Fire-and-forget: a purge that fails is logged and never fails
+	 * the admin's save; the cache then simply expires on its own schedule.
+	 */
+	private async revalidateStorefront(trigger: 'create' | 'update' | 'delete'): Promise<void> {
+		const url = `${ENV.FRONTEND_URL.replace(/\/$/, '')}/api/revalidate`
+		try {
+			await axios.post(
+				url,
+				{ resource: 'landings' },
+				{
+					timeout: REVALIDATE_TIMEOUT_MS,
+					headers: {
+						'Content-Type': 'application/json',
+						...(ENV.REVALIDATE_SECRET
+							? { 'x-revalidate-secret': ENV.REVALIDATE_SECRET }
+							: {})
+					}
+				}
+			)
+			this.logger.log(`Storefront landings cache purged after ${trigger}`)
+		} catch (err) {
+			const status = axios.isAxiosError(err) ? err.response?.status : undefined
+			this.logger.warn(
+				`Storefront revalidation after ${trigger} failed${status ? ` (${status})` : ''}: ${(err as Error).message} — the cached copy expires on its own`
+			)
+		}
 	}
 
 	/**

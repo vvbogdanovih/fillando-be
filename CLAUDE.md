@@ -66,6 +66,7 @@ PORT
 NODE_ENV / LOG_LEVEL
 RUN_CRON (optional, default false — enables in-process scheduled jobs; set true on one instance only)
 INTERNAL_API_TOKEN (optional, min 32 chars — requests with `X-Internal-Token` bypass rate limits; shared with the frontend)
+REVALIDATE_SECRET (optional, min 32 chars — sent as `x-revalidate-secret` to the frontend's `POST /api/revalidate` after landing writes; the same value must be set on the frontend, and it is never `NEXT_PUBLIC_*`)
 ```
 
 **Authentication** uses JWT (from `access_token` cookie) + Google OAuth. `JwtAuthGuard` is the standard guard for protected routes. Admin-only endpoints add `RolesGuard` after it — `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`; `RolesGuard` is default-deny (no `@Roles` metadata or no `req.user.role` → 403) and `@Roles` accepts only `Role[]`, not strings (see `src/docs/RBAC.md`). Access and refresh tokens are set as `httpOnly` cookies. Refresh tokens are stored hashed (SHA256) in `refresh_tokens` collection with IP/UA tracking. Token lifetimes are configured via `JWT_EXPIRATION` / `REFRESH_JWT_EXPIRATION` (in minutes) in `.env`.

@@ -101,6 +101,13 @@ export const ENDPOINTS = {
 		BASE: '/prom',
 		SYNC_AVAILABILITY: '/sync-availability'
 	},
+	FEEDS: {
+		BASE: '/feeds',
+		/** Public — registered in Merchant Center as the feed URL. */
+		GOOGLE_SHOPPING_XML: '/google-shopping.xml',
+		GOOGLE_SHOPPING_REGENERATE: '/google-shopping/regenerate',
+		GOOGLE_SHOPPING_STATUS: '/google-shopping/status'
+	},
 	ORDERS: {
 		BASE: '/orders',
 		CREATE: '/',

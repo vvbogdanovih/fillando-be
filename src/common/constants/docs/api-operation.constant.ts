@@ -329,6 +329,23 @@ export const API_OPERATION = {
 				'SSE stream. For each product variant that has a `prom_id`, fetches the product from the Prom public API and updates `stock` from `presence` / `quantity_in_stock`, and `price` as the discounted Prom price plus a fixed tiered markup. Prom withholds the discount for out-of-stock listings, so those variants are repriced from the last discount recorded for them rather than from the bare pre-discount price. A price rise above 15% on a payload with no discount at all is rejected and counted in `priceSkipped`. Emits progress events and a final summary. Admin only.'
 		}
 	},
+	FEEDS: {
+		GOOGLE_SHOPPING_XML: {
+			summary: 'Google Shopping product feed (public XML)',
+			description:
+				'RSS 2.0 feed with `g:` attributes for every ACTIVE variant: id (SKU), item_group_id (product), title, description, link, images, availability (`in_stock` / `out_of_stock`), price in UAH, brand from the «Виробник» attribute, google_product_category from the category, product_type refined by the matching landing, colour, material, shipping weight and four custom labels. Excludes variants without images, price or brand. Regenerated on startup and hourly; served from memory. Until the first generation of a process it answers 503 with `Retry-After`, never an empty channel. Register this URL in Merchant Center.'
+		},
+		GOOGLE_SHOPPING_REGENERATE: {
+			summary: 'Regenerate the Google Shopping feed (admin)',
+			description:
+				'Admin-only, synchronous. Rebuilds the feed from the current catalogue and returns the generation summary: item counts, the excluded variants with their reason, and the soft warnings (missing google_product_category, description, weight, required attribute). 409 while another generation is running.'
+		},
+		GOOGLE_SHOPPING_STATUS: {
+			summary: 'Google Shopping feed status (admin)',
+			description:
+				'Admin-only. The last generation summary without regenerating, plus whether the XML is ready, whether a generation is running, whether the hourly job is scheduled in this process, the public feed path and the last error if any.'
+		}
+	},
 	ORDERS: {
 		CREATE: {
 			summary: 'Create order',

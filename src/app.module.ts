@@ -21,6 +21,7 @@ import { PaymentProvidersModule } from './modules/payment-providers/payment-prov
 import { LiqpayModule } from './modules/liqpay/liqpay.module'
 import { NovaPostModule } from './modules/nova-post/nova-post.module'
 import { PromModule } from './modules/prom/prom.module'
+import { FeedModule } from './modules/feed/feed.module'
 import { OrderModule } from './modules/order/order.module'
 import { DiscountCouponModule } from './modules/discount-coupon/discount-coupon.module'
 import { UsersModule } from './modules/users/users.module'
@@ -76,6 +77,7 @@ import { ENV } from './common/constants'
 		LiqpayModule,
 		NovaPostModule,
 		PromModule,
+		FeedModule,
 		OrderModule,
 		DiscountCouponModule,
 		UsersModule,

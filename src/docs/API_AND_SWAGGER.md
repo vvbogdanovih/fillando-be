@@ -215,7 +215,10 @@ Rules:
   publicly on its own. Treat the change as a security review, not a routine edit; re-run
   `yarn spec:export` afterwards as for any contract change.
 - The allowlist sits at the repository/projection boundary, not only in a service mapper —
-  otherwise a second consumer of the same repository method leaks the fields again.
+  otherwise a second consumer of the same repository method leaks the fields again. The Google
+  Shopping feed (`ProductVariantRepository.findActiveForFeed`, `src/docs/MERCHANT_FEED.md`) is the
+  third public projection and follows the same rule: an explicit `$project`, ACTIVE only, pinned by
+  the int-spec.
 - A field the admin UI needs but the public must not see is **not** projected: the endpoint that
   returns it becomes admin-only instead (this is why `GET /products/:id/variants` and
   `GET /products/:id/variants/:variantId` are guarded).
@@ -265,7 +268,7 @@ login(...) {}
 
 ## 5. Current modules
 
-Non-exhaustive — see `app.module.ts` for the full list (17 feature modules) and
+Non-exhaustive — see `app.module.ts` for the full list (18 feature modules) and
 `src/docs/RBAC.md` for the current, accurate guard status per module.
 
 | Module           | Base path     | Guard (writes + admin-only reads)                                                                                                                                                                                                       |
@@ -278,6 +281,7 @@ Non-exhaustive — see `app.module.ts` for the full list (17 feature modules) an
 | `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)`                                                                                                                                                                  |
 | `OrderModule`    | `/orders`     | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)` on admin routes; `POST /` uses `OptionalJwtAuthGuard` (guest checkout). Public read: `GET /orders/lookup/:orderNumber?token=…` — no guard, gated by an HMAC token (see `LIQPAY_FLOW.md`) |
 | `LiqpayModule`   | `/liqpay`     | Public — `POST /checkout` and `POST /callback` (LiqPay signature verified in the service), see `LIQPAY_FLOW.md`                                                                                                                         |
+| `FeedModule`     | `/feeds`      | Public `GET /google-shopping.xml` (the Merchant feed — ACTIVE variants, explicit projection, no supplier values); `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on `POST /google-shopping/regenerate` and `GET /google-shopping/status`, see `MERCHANT_FEED.md` |
 
 `ProductModule` imports `NumbersModule` and `CategoryModule` — it does not import `VendorModule`.
 

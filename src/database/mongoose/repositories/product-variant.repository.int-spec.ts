@@ -289,6 +289,36 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 		})
 	})
 
+	describe('findActiveForFeed (Google Shopping feed working set)', () => {
+		it('returns only the ACTIVE variant, with product, category and weight joined in', async () => {
+			const rows = await repo.findActiveForFeed()
+
+			expect(rows.map(r => r.sku)).toEqual(['FL-ACTIVE-1'])
+			const [row] = rows
+			expect(row.id).toBe(activeVariantId.toString())
+			expect(row.product_id).toBe(productId.toString())
+			expect(row.product?.name).toBe(PRODUCT_NAME)
+			expect(row.product?.description_html).toBe('<p>Test product</p>')
+			expect(row.product?.attributes).toEqual(
+				expect.arrayContaining([{ k: 'vyrobnyk', l: 'Виробник', v: 'Sunlu' }])
+			)
+			expect(row.category).toMatchObject({
+				id: categoryId.toString(),
+				name: 'Filaments',
+				google_product_category: null
+			})
+			expect(row.color).toBeNull()
+			expect(row.weight_g).toBe(1220)
+			expect(row.images).toEqual(['https://cdn.example.invalid/red-1.jpg'])
+		})
+
+		it('carries no supplier field or value anywhere in the rows', async () => {
+			const json = JSON.stringify(await repo.findActiveForFeed())
+			for (const field of SUPPLIER_FIELDS) expect(json).not.toContain(`"${field}"`)
+			for (const value of SUPPLIER_VALUES) expect(json).not.toContain(value)
+		})
+	})
+
 	describe('admin paths are not over-restricted', () => {
 		it('findByProductId returns every status with supplier identifiers intact', async () => {
 			const docs = await repo.findByProductId(productId.toString())

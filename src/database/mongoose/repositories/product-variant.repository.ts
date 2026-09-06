@@ -33,6 +33,33 @@ export interface SpooledCounterpart {
 /** The dictionary fields the public colour payload is built from. */
 type PublicColorSource = Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'>
 
+/** One ACTIVE variant as `findActiveForFeed` returns it — the Google Shopping feed's working set. */
+export interface FeedVariantRow {
+	id: string
+	product_id: string
+	sku: string
+	name: string
+	slug: string
+	price: number
+	stock: number
+	images: string[]
+	v_value: string | null
+	weight_g: number | null
+	product: {
+		name: string
+		description_html: string | null
+		attributes: { k?: string; l?: string; v?: string | number | boolean }[]
+		variant_type: { key?: string; label?: string } | null
+	} | null
+	category: {
+		id: string
+		name: string
+		google_product_category: { id: number; path: string } | null
+		required_attributes: { key: string; label: string }[]
+	} | null
+	color: { name_uk: string; name_en: string } | null
+}
+
 @Injectable()
 export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	constructor(@InjectModel(ProductVariant.name) model: Model<ProductVariant>) {
@@ -582,6 +609,94 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				},
 				{ $sort: { product_name: 1, variant_name: 1, sku: 1 } },
 				{ $limit: limit }
+			])
+			.allowDiskUse(true)
+			.exec()
+	}
+
+	/**
+	 * Working set of the Google Shopping feed (TD-0006 §5.3): every ACTIVE variant with the
+	 * product, category and dictionary colour joined in. Not a hot path — an hourly job and the
+	 * admin button — so the three `$lookup`s are fine here and the catalogue keeps its
+	 * "no new joins" rule. `preserveNullAndEmptyArrays` keeps a variant whose product or category
+	 * is gone in the result as `null`, so the builder can report it instead of dropping it silently.
+	 *
+	 * PUBLIC SURFACE by way of the feed: the projection lists fields explicitly and carries no
+	 * supplier identifier or `prom_*` value — the int-spec pins that.
+	 */
+	findActiveForFeed(): Promise<FeedVariantRow[]> {
+		return this.model
+			.aggregate<FeedVariantRow>([
+				{ $match: { status: ProductStatus.ACTIVE } },
+				{
+					$lookup: {
+						from: 'products',
+						localField: 'product_id',
+						foreignField: '_id',
+						as: 'product',
+						pipeline: [
+							{
+								$project: {
+									_id: 0,
+									name: 1,
+									description_html: { $ifNull: ['$description.html', null] },
+									attributes: { $ifNull: ['$attributes', []] },
+									variant_type: { $ifNull: ['$variant_type', null] }
+								}
+							}
+						]
+					}
+				},
+				{ $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+				{
+					$lookup: {
+						from: 'categories',
+						localField: 'category_id',
+						foreignField: '_id',
+						as: 'category',
+						pipeline: [
+							{
+								$project: {
+									_id: 0,
+									id: { $toString: '$_id' },
+									name: 1,
+									google_product_category: { $ifNull: ['$google_product_category', null] },
+									required_attributes: { $ifNull: ['$required_attributes', []] }
+								}
+							}
+						]
+					}
+				},
+				{ $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+				{
+					$lookup: {
+						from: 'colors',
+						localField: 'color_id',
+						foreignField: '_id',
+						as: 'color',
+						pipeline: [{ $project: { _id: 0, name_uk: 1, name_en: 1 } }]
+					}
+				},
+				{ $unwind: { path: '$color', preserveNullAndEmptyArrays: true } },
+				{
+					$project: {
+						_id: 0,
+						id: { $toString: '$_id' },
+						product_id: { $toString: '$product_id' },
+						sku: 1,
+						name: 1,
+						slug: 1,
+						price: 1,
+						stock: { $ifNull: ['$stock', 0] },
+						images: { $ifNull: ['$images', []] },
+						v_value: { $ifNull: ['$v_value', null] },
+						weight_g: { $ifNull: ['$weight_g', null] },
+						product: { $ifNull: ['$product', null] },
+						category: { $ifNull: ['$category', null] },
+						color: { $ifNull: ['$color', null] }
+					}
+				},
+				{ $sort: { sku: 1 } }
 			])
 			.allowDiskUse(true)
 			.exec()

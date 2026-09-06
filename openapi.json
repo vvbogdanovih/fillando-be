@@ -2593,6 +2593,54 @@
         ]
       }
     },
+    "/feeds/google-shopping.xml": {
+      "get": {
+        "description": "RSS 2.0 feed with `g:` attributes for every ACTIVE variant: id (SKU), item_group_id (product), title, description, link, images, availability (`in_stock` / `out_of_stock`), price in UAH, brand from the «Виробник» attribute, google_product_category from the category, product_type refined by the matching landing, colour, material, shipping weight and four custom labels. Excludes variants without images, price or brand. Regenerated on startup and hourly; served from memory. Until the first generation of a process it answers 503 with `Retry-After`, never an empty channel. Register this URL in Merchant Center.",
+        "operationId": "FeedController_getGoogleShoppingFeed",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Google Shopping product feed (public XML)",
+        "tags": [
+          "/feeds"
+        ]
+      }
+    },
+    "/feeds/google-shopping/regenerate": {
+      "post": {
+        "description": "Admin-only, synchronous. Rebuilds the feed from the current catalogue and returns the generation summary: item counts, the excluded variants with their reason, and the soft warnings (missing google_product_category, description, weight, required attribute). 409 while another generation is running.",
+        "operationId": "FeedController_regenerate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Regenerate the Google Shopping feed (admin)",
+        "tags": [
+          "/feeds"
+        ]
+      }
+    },
+    "/feeds/google-shopping/status": {
+      "get": {
+        "description": "Admin-only. The last generation summary without regenerating, plus whether the XML is ready, whether a generation is running, whether the hourly job is scheduled in this process, the public feed path and the last error if any.",
+        "operationId": "FeedController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Google Shopping feed status (admin)",
+        "tags": [
+          "/feeds"
+        ]
+      }
+    },
     "/discount-coupons": {
       "get": {
         "description": "Get paginated discount coupons with optional filters by active flag and code search query. Admin only.",

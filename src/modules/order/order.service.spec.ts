@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { Types } from 'mongoose'
 import { orderAccessToken } from 'src/common/services/crypto.util'
 import {
@@ -415,6 +415,31 @@ describe('OrderService.create — payment_access_token', () => {
 		items: [{ variant_id: VARIANT_ID, quantity: 2 }],
 		customer: { name: 'Тест', phone: '+380000000000', email: 'buyer@example.com' }
 	}
+
+	it('answers a stock shortfall with a structured 409 the storefront can pin to a line', async () => {
+		const { service, orderRepository } = buildService([buildVariant({ stock: 1 })])
+
+		const err = (await service
+			.create({
+				...baseDto,
+				payment_method: PaymentMethod.IBAN,
+				delivery_method: DeliveryMethod.PICKUP
+			} as never)
+			.catch((e: unknown) => e)) as ConflictException
+
+		expect(err).toBeInstanceOf(ConflictException)
+		expect(err.getResponse()).toEqual({
+			statusCode: 409,
+			error: 'Conflict',
+			code: 'INSUFFICIENT_STOCK',
+			message: 'Доступно лише 1 шт. (SKU-1) — зменште кількість, щоб оформити замовлення',
+			variant_id: VARIANT_ID,
+			sku: 'SKU-1',
+			available: 1,
+			requested: 2
+		})
+		expect(orderRepository.create).not.toHaveBeenCalled()
+	})
 
 	it('attaches the lookup token to a LIQPAY order without persisting it', async () => {
 		const { service, orderRepository, numbersRepository, emailService } = buildService()

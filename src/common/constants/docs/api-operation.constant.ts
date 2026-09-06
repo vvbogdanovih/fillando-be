@@ -350,7 +350,7 @@ export const API_OPERATION = {
 		CREATE: {
 			summary: 'Create order',
 			description:
-				'Place a new order. Validates stock for each variant, snapshots prices, and can apply a discount coupon by code. User can be authenticated or guest.'
+				'Place a new order. Validates stock for each variant, snapshots prices, and can apply a discount coupon by code. User can be authenticated or guest. A stock shortfall answers 409 with a structured body — `code: INSUFFICIENT_STOCK`, `variant_id`, `sku`, `available`, `requested` and a Ukrainian `message` — so the storefront can pin the error to the cart line it is about.'
 		},
 		MY: {
 			summary: 'Get my orders',

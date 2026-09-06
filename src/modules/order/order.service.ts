@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+	BadRequestException,
+	ConflictException,
+	Injectable,
+	Logger,
+	NotFoundException
+} from '@nestjs/common'
 import { Types } from 'mongoose'
 import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
 import type { OrderDocument } from 'src/database/mongoose/schemas/order.schema'
@@ -170,9 +176,19 @@ export class OrderService {
 				throw new BadRequestException(`Variant ${variant.sku} is not available`)
 			}
 			if (variant.stock < item.quantity) {
-				throw new BadRequestException(
-					`Only ${variant.stock} units available for SKU ${variant.sku}`
-				)
+				// Structured, not just a sentence: the storefront pins this to the cart line it is
+				// about and tells the shopper what to do (Plan-0005, screen «Чекаут: помилки»).
+				// 409 like the cart's own quantity check — the request is well-formed, the stock is not.
+				throw new ConflictException({
+					statusCode: 409,
+					error: 'Conflict',
+					code: 'INSUFFICIENT_STOCK',
+					message: `Доступно лише ${variant.stock} шт. (${variant.sku}) — зменште кількість, щоб оформити замовлення`,
+					variant_id: String(variant._id),
+					sku: variant.sku,
+					available: variant.stock,
+					requested: item.quantity
+				})
 			}
 
 			const linePrice = this.toLineTotal(variant.price, item.quantity)

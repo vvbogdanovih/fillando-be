@@ -146,7 +146,7 @@ yarn migrate:verify
 
 **Everything that migrates catalogue data lives in `scripts/fillando_v_2/`, and one command runs
 all of it.** The order below is what `run-all.js` encodes; getting it wrong by hand is easy, so
-do not invoke the nine scripts individually.
+do not invoke the ten scripts individually.
 
 ```bash
 yarn migrate --dry-run      # read every plan, writes nothing
@@ -330,7 +330,27 @@ first: its two SKUs (FL-000180, FL-000231) reach the landing only if their `mate
 exactly `PETG-CF`, the key step 3c maps to `polymer: PETG` + `reinforcement: CF`. A different
 spelling leaves the page empty and lands in the unmatched list of `taxonomy-report.json`.
 
-### 3i. `normalize-variant-colors.js` — the risky one
+### 3i. `backfill-variant-weight.js`
+
+```bash
+node scripts/fillando_v_2/backfill-variant-weight.js --dry-run
+node scripts/fillando_v_2/backfill-variant-weight.js
+```
+
+Sets `weight_g` on every variant whose weight is still `null`: the product's «Вага» attribute
+(kilograms in this catalogue) converted to grams, plus a **220 g spool** unless the variant is a
+refill. The spool figure is an assumption in the middle of the 200–250 g range for a 1 kg reel;
+the report names any heavier reel so a person checks it. A variant with no readable weight stays
+`null` and is listed — the delivery estimate, the JSON-LD and the feed then omit the weight rather
+than guess. Weights typed in the admin are never overwritten.
+
+Expect on current data: 301 variants weighed from the attribute, 0 unmatched, the one 3 kg reel
+flagged for a manual check.
+
+**Verify:** `reports/weight-report.json`; open a few variants in `/admin/products` and read
+«Вага, г». The delivery block on a product page shows a figure only once this has run.
+
+### 3j. `normalize-variant-colors.js` — the risky one
 
 **Do not run this until steps 1 and 2 are both live in production.** It rewrites `v_value` to
 the canonical English name; until the storefront renders `color` instead, the shop displays

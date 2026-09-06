@@ -94,6 +94,11 @@ const STEPS = [
 		expect: '14 filled; refill flagged as matching nothing until its product is published'
 	},
 	{
+		script: 'backfill-variant-weight.js',
+		what: 'sets weight_g on every variant from «Вага» plus the spool (refills without it)',
+		expect: '301 variants weighed from the attribute; 0 unmatched; the 3 kg reel flagged for a manual check'
+	},
+	{
 		script: 'normalize-variant-colors.js',
 		what: 'points variants at the colour dictionary and rewrites v_value to the canonical name',
 		expect: '291 of 293 matched (99%); only the two "Candy" variants left, 8 variants off the colour axis',
@@ -236,7 +241,8 @@ async function main() {
 				'  2. Set "Матеріал = PETG" on the product the taxonomy report lists as unmatched, re-run step 2.\n' +
 				'  3. Check the new refill product in the admin: it inherited its parent description.\n' +
 				'  4. Review each landing in /admin/landings and publish the ones that list products.\n' +
-				'  5. Work through reports/color-report.json, add synonyms to seed-colors.js, re-run 5 and 8.'
+				'  5. Work through reports/color-report.json, add synonyms to seed-colors.js, re-run 5 and 8.\n' +
+				'  6. Open a few variants in the admin and check «Вага, г» — the spool weight is an assumption.'
 		)
 	}
 }

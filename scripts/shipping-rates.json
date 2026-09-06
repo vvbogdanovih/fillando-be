@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-09-06",
+  "source": "nova-post-api",
+  "method": "InternetDocument.getDocumentPrice",
+  "service_type": "WarehouseWarehouse",
+  "cargo_type": "Parcel",
+  "declared_value_uah": 600,
+  "sender_city": "Львів",
+  "ukraine_city": "Київ",
+  "tiers": [
+    {
+      "max_weight_g": 2000,
+      "city_uah": 73,
+      "ukraine_uah": 93
+    },
+    {
+      "max_weight_g": 10000,
+      "city_uah": 118,
+      "ukraine_uah": 138
+    }
+  ],
+  "raw": {
+    "2kg": {
+      "city": {
+        "Cost": 73,
+        "AssessedCost": 600
+      },
+      "ukraine": {
+        "Cost": 93,
+        "AssessedCost": 600
+      }
+    },
+    "10kg": {
+      "city": {
+        "Cost": 118,
+        "AssessedCost": 600
+      },
+      "ukraine": {
+        "Cost": 138,
+        "AssessedCost": 600
+      }
+    }
+  }
+}

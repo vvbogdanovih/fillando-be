@@ -23,6 +23,7 @@
 		"migrate": "node scripts/fillando_v_2/run-all.js",
 		"migrate:verify": "node scripts/fillando_v_2/verify-catalog-state.js",
 		"migrate:rehearse": "bash scripts/fillando_v_2/rehearse-on-dump.sh",
+		"shipping:rates": "node scripts/shipping-rates.js",
 		"spec:export": "ts-node -r tsconfig-paths/register --compiler-options '{\"module\":\"CommonJS\"}' scripts/export-spec.ts",
 		"scrape": "node scripts/scraper.js"
 	},

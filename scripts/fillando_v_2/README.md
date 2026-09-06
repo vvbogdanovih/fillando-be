@@ -13,7 +13,7 @@ yarn migrate --colors-only
 ```
 
 `yarn migrate` is `node scripts/fillando_v_2/run-all.js`. It is the only thing you have to run:
-it invokes the nine scripts below in order, stops at the first failure, and prints which database
+it invokes the ten scripts below in order, stops at the first failure, and prints which database
 it is about to touch before it starts. An apply on a terminal asks for confirmation; `--yes`
 skips that for scripts and CI.
 
@@ -46,10 +46,14 @@ yarn migrate:rehearse ~/Desktop/db_backup_for_test   # whole chain against a dum
 | 6 | `seed-colors.js` | the dictionary the next steps match against |
 | 7 | `seed-landings.js` | its pinned filters key off the dimensions steps 3 and 5 create |
 | 8 | `fill-landing-copy.js` | writes the reviewed copy into those landings, leaving them drafts |
-| 9 | `normalize-variant-colors.js` | **held back**: it rewrites `v_value` to the English colour name, so until the storefront renders `color` the whole shop shows English colours |
+| 9 | `backfill-variant-weight.js` | sets `weight_g` on every variant from «Вага» plus a 220 g spool (refills without it); anywhere, since it touches only variants whose weight is still null |
+| 10 | `normalize-variant-colors.js` | **held back**: it rewrites `v_value` to the English colour name, so until the storefront renders `color` the whole shop shows English colours |
 
 Supporting files, not steps: `landing-copy.js` is the reviewed landing text, `verify-catalog-state.js`
 is the report, `rehearse-on-dump.sh` is the rehearsal harness, `reports/` is gitignored output.
+`../shipping-rates.js` (`yarn shipping:rates`) is not a migration either: it asks Nova Poshta for
+the shop's tariff and writes `scripts/shipping-rates.json`, which the storefront's delivery
+estimate and Merchant Center's shipping settings are both filled from (TD-0006 §5.4).
 
 ## Two passes
 

@@ -57,8 +57,9 @@ const envSchema = z.object({
 	INTERNAL_API_TOKEN: z.string().min(32).optional(),
 	// Shared secret for the storefront's `POST /api/revalidate` (`x-revalidate-secret`), sent
 	// after landing writes so the cached copy is purged. Optional: outside production the
-	// frontend accepts the call without it, and when unset here no header is sent.
-	REVALIDATE_SECRET: z.string().min(32).optional()
+	// frontend accepts the call without it, and when unset here no header is sent. An empty
+	// `REVALIDATE_SECRET=` line counts as unset rather than refusing to boot.
+	REVALIDATE_SECRET: z.preprocess(v => (v === '' ? undefined : v), z.string().min(32).optional())
 })
 
 type EnvSchema = z.infer<typeof envSchema>

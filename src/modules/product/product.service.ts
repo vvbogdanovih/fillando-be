@@ -145,12 +145,21 @@ export class ProductService {
 	async search(dto: SearchProductsDto) {
 		const { q, page = 1, limit = 20 } = dto
 
-		const [textResults, skuResults] = await Promise.all([
+		const [textResults, skuResults, categoryIds] = await Promise.all([
 			this.productRepository.findByTextSearch(q),
-			this.productVariantRepository.findBySkuPrefix(q)
+			this.productVariantRepository.findBySkuPrefix(q),
+			this.categoryRepository.findIdsByNameMatch(q)
 		])
 
-		const productIds = textResults.map(r => r._id)
+		// A query that names a category («філамент», «Філамент») lists the whole category. The
+		// text index is on product names, and after migration 3k those read «Kingroon PLA Silk»
+		// — the word the shopper types most is now in the category, not the product.
+		const categoryProductIds = await this.productRepository.findIdsByCategoryIds(categoryIds)
+		const seen = new Set(textResults.map(r => String(r._id)))
+		const productIds = [
+			...textResults.map(r => r._id),
+			...categoryProductIds.filter(id => !seen.has(String(id)))
+		]
 		const skuVariantIds = skuResults.map(r => r._id)
 
 		return this.productVariantRepository.findSearchResults({

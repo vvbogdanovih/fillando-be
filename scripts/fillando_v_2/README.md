@@ -26,30 +26,32 @@ yarn migrate:rehearse ~/Desktop/db_backup_for_test   # whole chain against a dum
 
 ## Flags
 
-| Flag | Effect |
-| --- | --- |
-| `--dry-run` | every step prints its plan and writes nothing |
-| `--colors-only` | runs only the held-back colour step |
-| `--include-colors` | runs the whole chain including it |
-| `--single-pass` | one pass instead of two (see below) |
-| `--yes` | do not ask for confirmation before writing |
+| Flag               | Effect                                                         |
+| ------------------ | -------------------------------------------------------------- |
+| `--dry-run`        | every step prints its plan and writes nothing                  |
+| `--colors-only`    | runs only the held-back steps (colours and the product rename) |
+| `--include-colors` | runs the whole chain including them                            |
+| `--single-pass`    | one pass instead of two (see below)                            |
+| `--yes`            | do not ask for confirmation before writing                     |
 
 ## The order, and why it is this order
 
-| # | Script | Why here |
-| --- | --- | --- |
-| 1 | `fix-known-data-defects.js` | repairs the known-broken documents first, so the taxonomy has a `material` to read |
-| 2 | `normalize-attr-keys.js` | renames attribute keys stored before `ATTR_KEY_OVERRIDES` existed |
-| 3 | `derive-material-taxonomy.js` | writes `polymer` / `finish` / `reinforcement` / `series` from `material` |
-| 4 | `split-refill-products.js` | after the taxonomy, so the new product inherits it; before the backfill, so its parent stops being a mixed product |
-| 5 | `backfill-spool-included.js` | now that every refill is separate, `Так` is true of every remaining product |
-| 6 | `seed-colors.js` | the dictionary the next steps match against |
-| 7 | `seed-landings.js` | its pinned filters key off the dimensions steps 3 and 5 create |
-| 8 | `fill-landing-copy.js` | writes the reviewed copy into those landings, leaving them drafts |
-| 9 | `backfill-variant-weight.js` | sets `weight_g` on every variant from «Вага» plus a 220 g spool (refills without it); anywhere, since it touches only variants whose weight is still null |
-| 10 | `normalize-variant-colors.js` | **held back**: it rewrites `v_value` to the English colour name, so until the storefront renders `color` the whole shop shows English colours |
+| #   | Script                        | Why here                                                                                                                                                                                                                                                                                                                                                           |
+| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `fix-known-data-defects.js`   | repairs the known-broken documents first, so the taxonomy has a `material` to read                                                                                                                                                                                                                                                                                 |
+| 2   | `normalize-attr-keys.js`      | renames attribute keys stored before `ATTR_KEY_OVERRIDES` existed                                                                                                                                                                                                                                                                                                  |
+| 3   | `derive-material-taxonomy.js` | writes `polymer` / `finish` / `reinforcement` / `series` from `material`                                                                                                                                                                                                                                                                                           |
+| 4   | `split-refill-products.js`    | after the taxonomy, so the new product inherits it; before the backfill, so its parent stops being a mixed product                                                                                                                                                                                                                                                 |
+| 5   | `backfill-spool-included.js`  | now that every refill is separate, `Так` is true of every remaining product                                                                                                                                                                                                                                                                                        |
+| 6   | `seed-colors.js`              | the dictionary the next steps match against                                                                                                                                                                                                                                                                                                                        |
+| 7   | `seed-landings.js`            | its pinned filters key off the dimensions steps 3 and 5 create                                                                                                                                                                                                                                                                                                     |
+| 8   | `fill-landing-copy.js`        | writes the reviewed copy into those landings, leaving them drafts                                                                                                                                                                                                                                                                                                  |
+| 9   | `backfill-variant-weight.js`  | sets `weight_g` on every variant from «Вага» plus a 220 g spool (refills without it); anywhere, since it touches only variants whose weight is still null                                                                                                                                                                                                          |
+| 10  | `normalize-variant-colors.js` | **held back**: it rewrites `v_value` to the English colour name, so until the storefront renders `color` the whole shop shows English colours                                                                                                                                                                                                                      |
+| 11  | `rename-products-short.js`    | **held back**, after 10: renames products to the short names in `short-names.js` («Kingroon PLA Silk Rainbow»), keeping the «— Чорний (Black)» suffix step 10 wrote; every variant slug is regenerated **without a 301** (the owner's decision) and appended to `slug-map.json`. A product with the long prefix and no dictionary entry is refused, not guessed at |
 
-Supporting files, not steps: `landing-copy.js` is the reviewed landing text, `verify-catalog-state.js`
+Supporting files, not steps: `landing-copy.js` is the reviewed landing text, `short-names.js` the
+reviewed short product names (draft it with `node rename-products-short.js --propose`), `verify-catalog-state.js`
 is the report, `rehearse-on-dump.sh` is the rehearsal harness, `reports/` is gitignored output.
 `../shipping-rates.js` (`yarn shipping:rates`) is not a migration either: it asks Nova Poshta for
 the shop's tariff and writes `scripts/shipping-rates.json`, which the storefront's delivery

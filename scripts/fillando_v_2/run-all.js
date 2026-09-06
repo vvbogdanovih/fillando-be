@@ -106,6 +106,15 @@ const STEPS = [
 			'rewrites v_value to the English colour name. Until the storefront renders `color`\n' +
 			'   instead of v_value, the whole Ukrainian shop shows English colour names.\n' +
 			'   Run it only after the frontend is live and a product page shows "Чорний (Black)".'
+	},
+	{
+		script: 'rename-products-short.js',
+		what: 'renames products to the short names of short-names.js; every variant slug is regenerated',
+		expect: '43 products renamed (44 with the refill), 1 collision left long until the Candy pair is split (B5); ~295 slug moves appended to slug-map.json',
+		holdBack:
+			'regenerates every variant slug (no 301) and drops «1,75 мм 1 кг» from names.\n' +
+			'   Run it only after the frontend is live, in the same window as the colour step —\n' +
+			'   it keeps the "— Чорний (Black)" suffix that step writes.'
 	}
 ]
 
@@ -190,7 +199,9 @@ async function main() {
 		}
 	}
 	if (!DRY_RUN) {
-		console.log('\nRun the dry run first if you have not: --dry-run prints every plan and writes nothing.')
+		console.log(
+			'\nRun the dry run first if you have not: --dry-run prints every plan and writes nothing.'
+		)
 	} else {
 		console.log(
 			'\nA dry run reads the state as it is now, so a later step shows what it would do BEFORE\n' +
@@ -215,7 +226,9 @@ async function main() {
 			if (!run(step)) {
 				console.error(`\n✗ ${step.script} failed on pass ${pass}. Stopped here.`)
 				console.error(`  Completed before it: ${done.length ? done.join(', ') : 'none'}`)
-				console.error('  Fix the cause and re-run this chain — every step so far is idempotent.')
+				console.error(
+					'  Fix the cause and re-run this chain — every step so far is idempotent.'
+				)
 				process.exit(1)
 			}
 			done.push(step.script)
@@ -231,7 +244,9 @@ async function main() {
 	if (!COLORS_ONLY && !INCLUDE_COLORS && held.length > 0) {
 		console.log('\nHeld back, not run:')
 		for (const step of held) console.log(`  • ${step.script} — ${step.holdBack}`)
-		console.log('\nWhen the frontend is live, run: node scripts/fillando_v_2/run-all.js --colors-only')
+		console.log(
+			'\nWhen the frontend is live, run: node scripts/fillando_v_2/run-all.js --colors-only'
+		)
 	}
 
 	if (!DRY_RUN) {

@@ -84,13 +84,17 @@ async function report(db) {
 		.toArray()
 	const active = variants.filter(v => v.status === 'active')
 
-	console.log(`Category "${category.name}": ${products.length} products, ${variants.length} variants (${active.length} active).`)
+	console.log(
+		`Category "${category.name}": ${products.length} products, ${variants.length} variants (${active.length} active).`
+	)
 
 	// ---- filters the sidebar will offer ----
 	const required = (category.required_attributes ?? []).map(a => a.key)
 	const offered = DIMENSIONS.filter(d => required.includes(d))
 	const missing = DIMENSIONS.filter(d => !required.includes(d))
-	console.log(`\nCatalogue filters: ${offered.length ? offered.join(', ') : 'none of the new ones'}`)
+	console.log(
+		`\nCatalogue filters: ${offered.length ? offered.join(', ') : 'none of the new ones'}`
+	)
 	if (required.includes('material')) console.log('  ⚠ still offering the old "material" filter')
 	if (missing.length) console.log(`  not offered yet: ${missing.join(', ')}`)
 
@@ -110,7 +114,9 @@ async function report(db) {
 			.map(([v, n]) => `${v}:${n}`)
 			.join(', ')
 		const flag = carried > 0 && values.size === 1 ? '  ⚠ single value, filters nothing' : ''
-		console.log(`  ${key.padEnd(15)} ${String(carried).padStart(3)}/${products.length} ${pct(carried, products.length).padStart(4)}  ${spread}${flag}`)
+		console.log(
+			`  ${key.padEnd(15)} ${String(carried).padStart(3)}/${products.length} ${pct(carried, products.length).padStart(4)}  ${spread}${flag}`
+		)
 	}
 
 	const noMaterial = products.filter(p => {
@@ -118,7 +124,9 @@ async function report(db) {
 		return !m || String(m.v).trim() === ''
 	})
 	if (noMaterial.length) {
-		console.log(`\n⚠ ${noMaterial.length} product(s) with no usable "material" — skipped by the taxonomy:`)
+		console.log(
+			`\n⚠ ${noMaterial.length} product(s) with no usable "material" — skipped by the taxonomy:`
+		)
 		for (const p of noMaterial) console.log(`    ${p.name}`)
 	}
 
@@ -129,7 +137,9 @@ async function report(db) {
 		const siblings = variants.filter(v => String(v.product_id) === String(r.product_id))
 		if (siblings.some(v => !isRefillVariant(v))) mixed.set(String(r.product_id), r)
 	}
-	console.log(`\nRefills: ${refills.length} variant(s) still carrying the marker, ${mixed.size} of them beside spooled variants.`)
+	console.log(
+		`\nRefills: ${refills.length} variant(s) still carrying the marker, ${mixed.size} of them beside spooled variants.`
+	)
 	if (mixed.size > 0) {
 		console.log('  ⚠ split-refill-products.js has not run, or new mixed products appeared:')
 		for (const [id, r] of mixed) {
@@ -146,7 +156,9 @@ async function report(db) {
 		return key === 'color' || key === 'kolir' || label.includes('колір')
 	})
 	const withColor = onColorAxis.filter(v => v.color_id)
-	console.log(`\nColour: ${withColor.length}/${onColorAxis.length} active variants on a colour axis point at the dictionary (${pct(withColor.length, onColorAxis.length)}).`)
+	console.log(
+		`\nColour: ${withColor.length}/${onColorAxis.length} active variants on a colour axis point at the dictionary (${pct(withColor.length, onColorAxis.length)}).`
+	)
 	const dictionary = await db.collection('colors').countDocuments({})
 	console.log(`  dictionary holds ${dictionary} colour(s)`)
 	const drift = onColorAxis.filter(v => v.color_id && !v.color_family).length
@@ -168,7 +180,9 @@ async function report(db) {
 		console.log('\nLandings: none seeded yet.')
 	} else {
 		const publishable = rows.filter(r => r.matches > 0 && r.hasCopy)
-		console.log(`\nLandings: ${rows.length} total, ${rows.filter(r => r.hasCopy).length} with copy, ${rows.filter(r => r.status === 'active').length} published, ${publishable.length} ready to publish.`)
+		console.log(
+			`\nLandings: ${rows.length} total, ${rows.filter(r => r.hasCopy).length} with copy, ${rows.filter(r => r.status === 'active').length} published, ${publishable.length} ready to publish.`
+		)
 		for (const r of rows) {
 			const flag = r.matches === 0 ? ' ⚠ matches nothing, must stay draft' : ''
 			console.log(
@@ -178,13 +192,17 @@ async function report(db) {
 		}
 		const publishedEmpty = rows.filter(r => r.status === 'active' && r.matches === 0)
 		if (publishedEmpty.length) {
-			console.log(`\n  ⚠ PUBLISHED AND EMPTY: ${publishedEmpty.map(r => r.slug).join(', ')} — unpublish these.`)
+			console.log(
+				`\n  ⚠ PUBLISHED AND EMPTY: ${publishedEmpty.map(r => r.slug).join(', ')} — unpublish these.`
+			)
 		}
 	}
 
 	// ---- integrity ----
 	console.log('\nIntegrity:')
-	const orphans = variants.filter(v => !products.some(p => String(p._id) === String(v.product_id)))
+	const orphans = variants.filter(
+		v => !products.some(p => String(p._id) === String(v.product_id))
+	)
 	const slugs = new Map()
 	const dupSlugs = []
 	for (const v of variants) {
@@ -192,18 +210,41 @@ async function report(db) {
 		slugs.set(v.slug, v.sku)
 	}
 	const stringCategoryId = products.filter(p => typeof p.category_id === 'string')
-	const noVariants = products.filter(p => !variants.some(v => String(v.product_id) === String(p._id)))
-	console.log(`  ${orphans.length === 0 ? 'OK  ' : 'FAIL'} variants pointing at a missing product: ${orphans.length}`)
-	console.log(`  ${dupSlugs.length === 0 ? 'OK  ' : 'FAIL'} duplicate variant slugs: ${dupSlugs.length}`)
-	console.log(`  ${stringCategoryId.length === 0 ? 'OK  ' : 'WARN'} products whose category_id is a string, not an ObjectId: ${stringCategoryId.length}`)
+	const noVariants = products.filter(
+		p => !variants.some(v => String(v.product_id) === String(p._id))
+	)
+	// Step 3k. A WARN, not a FAIL: the rehearsal runs this report before the chain as well.
+	const longNames = products.filter(
+		p => typeof p.name === 'string' && p.name.startsWith('Філамент (пластик для 3D принтера) ')
+	)
+	const parked = variants.filter(v => typeof v.slug === 'string' && v.slug.includes('-moving-'))
+	console.log(
+		`  ${orphans.length === 0 ? 'OK  ' : 'FAIL'} variants pointing at a missing product: ${orphans.length}`
+	)
+	console.log(
+		`  ${dupSlugs.length === 0 ? 'OK  ' : 'FAIL'} duplicate variant slugs: ${dupSlugs.length}`
+	)
+	console.log(
+		`  ${parked.length === 0 ? 'OK  ' : 'FAIL'} variant slugs parked on -moving- (a rename that did not finish): ${parked.length}`
+	)
+	console.log(
+		`  ${longNames.length === 0 ? 'OK  ' : 'WARN'} products still carrying the long SEO prefix (step 3k not run): ${longNames.length}`
+	)
+	console.log(
+		`  ${stringCategoryId.length === 0 ? 'OK  ' : 'WARN'} products whose category_id is a string, not an ObjectId: ${stringCategoryId.length}`
+	)
 	for (const p of stringCategoryId) {
 		console.log(`      ${p.name}`)
-		console.log('      any query matching products by category_id drops it; re-saving it in the admin fixes the type')
+		console.log(
+			'      any query matching products by category_id drops it; re-saving it in the admin fixes the type'
+		)
 	}
-	console.log(`  ${noVariants.length === 0 ? 'OK  ' : 'WARN'} products with no variants: ${noVariants.length}`)
+	console.log(
+		`  ${noVariants.length === 0 ? 'OK  ' : 'WARN'} products with no variants: ${noVariants.length}`
+	)
 	for (const p of noVariants) console.log(`      ${p.name}`)
 
-	return orphans.length === 0 && dupSlugs.length === 0
+	return orphans.length === 0 && dupSlugs.length === 0 && parked.length === 0
 }
 
 async function main() {

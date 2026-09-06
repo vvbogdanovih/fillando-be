@@ -13,12 +13,12 @@ Everything below is already merged into `dev` in both repositories and **not dep
 Four decisions are still open. None of them blocks the deploy, but each one leaves something
 half-finished until it is made.
 
-| # | Decision | Consequence of leaving it |
-| --- | --- | --- |
-| 1 | ~~One product has an empty `material`~~ — **handled by step 3a** since 2026-09-05. | Nothing to decide. `fix-known-data-defects.js` sets `Матеріал = PETG` on Kingroon PETG (CoPET) 3 кг and repairs its `category_id`, which was stored as a string. |
-| 2 | **49 colour spellings** the dictionary cannot identify, listed in `scripts/fillando_v_2/reports/color-report.json` after a dry run. | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete. |
-| 3 | ~~The refill is a variant, not a product~~ — **handled by step 3d** since 2026-09-05. | Nothing to decide. `split-refill-products.js` moves FL-000253 onto its own product; the only manual step left is rewriting that product's description, which it inherits from the parent. |
-| 4 | **Two 'Candy' variants sit on one product** — `FL-000157` (₴890, stock 50) and `FL-000162` (₴860, stock 60) on *Kingroon PLA Silk Rainbow*, same `v_value`, different prices and `prom_id`s. A Prom-import duplicate that predates the taxonomy work. | The only thing left that a script cannot settle. They are the two variants the colour migration leaves unmatched, because one product cannot give two variants the same colour without colliding on the slug, and renaming the product is refused with a 409. Open both in the admin, give the second the colour it actually is, or archive it; then re-run steps 3f and 3i. |
+| #   | Decision                                                                                                                                                                                                                                              | Consequence of leaving it                                                                                                                                                                                                                                                                                                                                                    |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | ~~One product has an empty `material`~~ — **handled by step 3a** since 2026-09-05.                                                                                                                                                                    | Nothing to decide. `fix-known-data-defects.js` sets `Матеріал = PETG` on Kingroon PETG (CoPET) 3 кг and repairs its `category_id`, which was stored as a string.                                                                                                                                                                                                             |
+| 2   | **49 colour spellings** the dictionary cannot identify, listed in `scripts/fillando_v_2/reports/color-report.json` after a dry run.                                                                                                                   | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete.                                                                                                                                                                                                                                     |
+| 3   | ~~The refill is a variant, not a product~~ — **handled by step 3d** since 2026-09-05.                                                                                                                                                                 | Nothing to decide. `split-refill-products.js` moves FL-000253 onto its own product; the only manual step left is rewriting that product's description, which it inherits from the parent.                                                                                                                                                                                    |
+| 4   | **Two 'Candy' variants sit on one product** — `FL-000157` (₴890, stock 50) and `FL-000162` (₴860, stock 60) on _Kingroon PLA Silk Rainbow_, same `v_value`, different prices and `prom_id`s. A Prom-import duplicate that predates the taxonomy work. | The only thing left that a script cannot settle. They are the two variants the colour migration leaves unmatched, because one product cannot give two variants the same colour without colliding on the slug, and renaming the product is refused with a 409. Open both in the admin, give the second the colour it actually is, or archive it; then re-run steps 3f and 3i. |
 
 The same product as #1 also carries `category_id` as a **string** rather than an ObjectId. It is
 harmless today (its variant has the right type), but any future query that filters products by
@@ -35,7 +35,9 @@ const { generateSlug } = require('./dist/common/utils/attribute.utils')
 // and report every group holding more than one SKU
 ```
 
-On `fillando-dev` this reports exactly one group: `FL-000157 + FL-000162`.
+On `fillando-dev` this reports exactly one group: `FL-000157 + FL-000162`. Step 3k (the product
+rename) runs the same check itself and refuses that product until the pair is split, so #4 must be
+settled **before 3k**, not only before an admin rename.
 
 ---
 
@@ -164,7 +166,7 @@ products merely ordered differently from what it would write; the second settles
 reports nothing to do. Verified on a disposable database: a third pass plans no changes at all.
 
 In a dry run each step reads the state as it is now, so a later step shows what it would do
-*before* the earlier ones have run. Read each plan for its own step, not as a forecast of the
+_before_ the earlier ones have run. Read each plan for its own step, not as a forecast of the
 whole chain.
 
 **Every script also takes `--dry-run` on its own and prints its full plan before it writes
@@ -179,7 +181,7 @@ node scripts/fillando_v_2/fix-known-data-defects.js
 
 Repairs the individually known broken documents rather than applying a rule. The catalogue is
 frozen while this work lands, so the broken set is closed and inspected: on current data it is
-two fixes, both on *Kingroon PETG (CoPET) 3 кг* — an empty `material`, which kept it out of the
+two fixes, both on _Kingroon PETG (CoPET) 3 кг_ — an empty `material`, which kept it out of the
 taxonomy, and a `category_id` stored as a string, which drops it from any query matching
 products by category.
 
@@ -291,16 +293,16 @@ node scripts/fillando_v_2/seed-landings.js
 Creates the 14 landings **as drafts** and prints how many variants each would list. On current
 data, after step 3d, **all fourteen list something**:
 
-| landing | variants | | landing | variants |
-| --- | ---: | --- | --- | ---: |
-| `/filament/pla` | 180 | | `/filament/pla-silk` | 24 |
-| `/filament/petg` | 72 | | `/filament/pla-matte` | 18 |
-| `/filament/abs` | 26 | | `/filament/carbon` | 13 |
-| `/filament/asa` | 3 | | `/filament/pla-cf` | 8 |
-| `/filament/tpu` | 14 | | `/filament/petg-cf` | 2 |
-| `/filament/nylon` | 4 | | `/filament/wood` | 5 |
-| | | | `/filament/glow` | 8 |
-| | | | `/filament/refill` | 1 |
+| landing           | variants |     | landing               | variants |
+| ----------------- | -------: | --- | --------------------- | -------: |
+| `/filament/pla`   |      180 |     | `/filament/pla-silk`  |       24 |
+| `/filament/petg`  |       72 |     | `/filament/pla-matte` |       18 |
+| `/filament/abs`   |       26 |     | `/filament/carbon`    |       13 |
+| `/filament/asa`   |        3 |     | `/filament/pla-cf`    |        8 |
+| `/filament/tpu`   |       14 |     | `/filament/petg-cf`   |        2 |
+| `/filament/nylon` |        4 |     | `/filament/wood`      |        5 |
+|                   |          |     | `/filament/glow`      |        8 |
+|                   |          |     | `/filament/refill`    |        1 |
 
 A landing that lists 0 must not be published.
 
@@ -376,9 +378,51 @@ every old → new address and is merged across runs, never truncated, so it surv
 **Verify:** a migrated product page shows "Чорний (Black)"; the colour filter offers swatches;
 `reports/color-report.json` has the unmatched list for the manual pass.
 
+### 3k. `rename-products-short.js` — short product names, held back with 3j
+
+**Runs after 3j, in the same window**, and only once the frontend is live: it renames every
+product from the long SEO name («Філамент (пластик для 3D принтера) Kingroon PLA Silk Rainbow
+1,75 мм 1 кг») to the short one the artboards draw («Kingroon PLA Silk Rainbow»), keeping the
+«— Чорний (Black)» suffix 3j wrote on the variants. The short names come from the committed
+dictionary `scripts/fillando_v_2/short-names.js` (draft it with `--propose`, review, commit); a
+product carrying the long prefix with no entry is refused, not guessed at. Decisions the
+dictionary already records: «3 кг» stays (it tells the two Kingroon PETG reels apart),
+«(еко-пакування)» and «(CoPET)» stay, « (без котушки)» on the refill stays (or the refill and
+its parent would share a name and their variants an address).
+
+```bash
+node scripts/fillando_v_2/rename-products-short.js --dry-run
+# read scripts/fillando_v_2/reports/rename-report.json, then:
+node scripts/fillando_v_2/rename-products-short.js
+```
+
+Expect on current data: 43 products planned (44 with the refill of 3d), **1 collision** —
+_Kingroon PLA Silk Rainbow_, whose two «Candy» variants would share `kingroon-pla-silk-rainbow-candy`
+(§0 #4); the run stops until that pair is split, `--force` renames the rest and leaves it long.
+About 295 slug moves are appended to `reports/slug-map.json`. Each product is written in three
+pinned phases (park the movers on `…-moving-<id>`, rename the product, land every variant), the
+way `ProductService.applyVariantRename` does; a document edited mid-run is skipped and reported,
+and a re-run picks up anything left parked.
+
+Variant **slugs change without a 301** — the owner's decision, recorded for 3j and confirmed again
+on 2026-09-06 knowing that 242 indexed product addresses will answer 404 until Google recrawls.
+Order items and the guest cart keep the long names by design (they are snapshots).
+
+**Verify:** `yarn migrate:verify` prints `products still carrying the long SEO prefix: 0` (or 1
+while the Candy pair is open) and no `-moving-` slugs; a product page reads «Kingroon PLA Silk
+Rainbow — Золотий (Gold)» with the title suffixed «— філамент 1,75 мм»; the feed's `<title>` is
+short; searching «філамент» still lists the category (the search falls back on the category
+name).
+
 ---
 
 ## 4. After the migrations
+
+After 3k: purge the storefront caches and resubmit the sitemap. `POST /api/revalidate
+{"resource":"landings"}` on the frontend expires the `landings` and `sitemap` tags; product and
+catalogue pages are ISR-cached for up to an hour and simply expire — an old product address serves
+its cached page for that hour, then 404. Expect the 242 old addresses to show as 404 in Search
+Console; that is the accepted cost.
 
 1. Mark the refill by hand: `Котушка в комплекті = Ні (рефіл)` on the refill product, once
    decision 3 is made.
@@ -422,17 +466,18 @@ have nothing to do with it:
 
 ## 5. Rollback
 
-| Step | How to undo |
-| --- | --- |
-| 1, 2 | Redeploy the previous image. No data changed. |
-| 3a | The previous values were an empty `material` and a string `category_id`; restoring them serves no purpose. |
-| 3b–3c | No automatic undo. The derived attributes are rebuilt from `material` on every run, so a corrected mapping table is simply re-applied; removing them entirely means a one-off script. |
-| 3d | Move the variant back with `$set: { product_id, v_value, name, slug }` from `reports/refill-split-report.json`, then delete the product it created. Nothing else referenced it. |
-| 3e | No automatic undo; re-running rebuilds the attribute from the same rule. |
-| 3f | Delete the inserted colours — the API refuses while variants reference them, which is the safety you want. |
-| 3g | Delete the landings; they are drafts and invisible until published. |
-| 3h | Clear `intro_html` / `bottom_html` / `faq` on the landings; they are still drafts, so nothing was public. |
-| 3i | `v_value_legacy` holds the original spelling on every migrated variant, and `slug-map.json` holds every address change. Keep both for **one release**, then a follow-up can drop `v_value_legacy`. |
+| Step  | How to undo                                                                                                                                                                                                                                                                   |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1, 2  | Redeploy the previous image. No data changed.                                                                                                                                                                                                                                 |
+| 3a    | The previous values were an empty `material` and a string `category_id`; restoring them serves no purpose.                                                                                                                                                                    |
+| 3b–3c | No automatic undo. The derived attributes are rebuilt from `material` on every run, so a corrected mapping table is simply re-applied; removing them entirely means a one-off script.                                                                                         |
+| 3d    | Move the variant back with `$set: { product_id, v_value, name, slug }` from `reports/refill-split-report.json`, then delete the product it created. Nothing else referenced it.                                                                                               |
+| 3e    | No automatic undo; re-running rebuilds the attribute from the same rule.                                                                                                                                                                                                      |
+| 3f    | Delete the inserted colours — the API refuses while variants reference them, which is the safety you want.                                                                                                                                                                    |
+| 3g    | Delete the landings; they are drafts and invisible until published.                                                                                                                                                                                                           |
+| 3h    | Clear `intro_html` / `bottom_html` / `faq` on the landings; they are still drafts, so nothing was public.                                                                                                                                                                     |
+| 3j    | `v_value_legacy` holds the original spelling on every migrated variant, and `slug-map.json` holds every address change. Keep both for **one release**, then a follow-up can drop `v_value_legacy`.                                                                            |
+| 3k    | `node scripts/fillando_v_2/rename-products-short.js --rollback scripts/fillando_v_2/reports/rename-report.json` replays the report backwards — every product and variant back to its old name and slug, in the same three pinned phases. Keep the report for **one release**. |
 
 A migration that fails verification exits non-zero and prints which check failed. None of them
 writes partially on purpose: the two riskiest pin the array they read in the update filter, so a

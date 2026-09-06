@@ -33,7 +33,7 @@ describe('MongooseExceptionFilter', () => {
 		expect(response.json).toHaveBeenCalledWith(
 			expect.objectContaining({
 				statusCode: HttpStatus.BAD_REQUEST,
-				message: 'Duplicate value for field: slug (pla-silk-candy)'
+				message: 'Таке значення поля «slug» уже існує: pla-silk-candy'
 			})
 		)
 	})

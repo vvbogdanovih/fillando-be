@@ -20,9 +20,12 @@ export class MongooseExceptionFilter implements ExceptionFilter {
 		const response = host.switchToHttp().getResponse<Response>()
 
 		if (exception.code === 11000) {
-			const field = Object.keys(exception.keyValue ?? {})[0] ?? 'field'
-			const value = exception.keyValue?.[field]
-			const message = `Duplicate value for field: ${field}` + (value ? ` (${value})` : '')
+			const keyValue = (exception.keyValue ?? {}) as Record<string, unknown>
+			const field = Object.keys(keyValue)[0] ?? 'field'
+			const raw = keyValue[field]
+			const value = typeof raw === 'string' || typeof raw === 'number' ? String(raw) : ''
+			// Ukrainian: the admin forms show this text verbatim (a duplicate colour name or slug).
+			const message = `Таке значення поля «${field}» уже існує` + (value ? `: ${value}` : '')
 
 			response.status(HttpStatus.BAD_REQUEST).json({
 				statusCode: HttpStatus.BAD_REQUEST,

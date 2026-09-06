@@ -206,7 +206,7 @@ Catches `MongoServerError` and converts known error codes to NestJS HTTP excepti
 
 | MongoDB code | Meaning       | HTTP response                                                             |
 | ------------ | ------------- | ------------------------------------------------------------------------- |
-| `11000`      | Duplicate key | `400 Bad Request` with message `"Duplicate value for field: <fieldName>"` |
+| `11000`      | Duplicate key | `400 Bad Request` with message `"Таке значення поля «…» уже існує: <fieldName>"` |
 
 Any other `MongoServerError` is not caught by this filter and will surface as a `500`.
 

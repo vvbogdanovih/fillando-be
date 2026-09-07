@@ -194,8 +194,8 @@ has told the two «Candy» variants apart (decision 4 above), so FL-000162 gets 
 here. The script still reports any other pair of variants sharing one colour value on one
 product, without touching it.
 
-Expect on current data: 5 fixes applied (two on Kingroon PETG 3 кг, FL-000004 «Блакитний» → «Sky Blue»
-and FL-000067 «Бірюзовий» → «Cyan» by the Kingroon article numbers on the June 2026 invoice, one on FL-000162 «Candy» →
+Expect on current data: 6 fixes applied (two on Kingroon PETG 3 кг, FL-000004 «Блакитний» → «Sky Blue»,
+FL-000067 «Бірюзовий» → «Cyan» and FL-000127 «HC186» → «Yellow-Green» by the Kingroon article numbers on the June 2026 invoice, one on FL-000162 «Candy» →
 «Rainbow Candy»); nothing left to decide.
 
 ### 3b. `normalize-attr-keys.js`
@@ -284,7 +284,7 @@ node scripts/fillando_v_2/seed-colors.js
 
 Inserts 122 dictionary colours. The 47 added on 2026-09-05 exist to cover the spellings this
 catalogue actually stores: the Dual-Silk and Tri-Silk gradients, the numbered Sunlu rainbows,
-the thermochromic pairs and the one-off finishes. The 17 added on 2026-09-07 give Sunlu and
+the thermochromic pairs and the one-off finishes. The 17 added (and «Dual Silk HC186» renamed to Yellow Green Silk) on 2026-09-07 give Sunlu and
 Kingroon colours the names their invoices print (Sunny Orange, Cherry Red, Sky Blue, Transparent,
 the Blue-Green and Blue-Purple Dual-Silk pairs…) instead of a Bambu neighbour's name; a supplier's
 misspelling («Roasted Chesnut») is a synonym only. A spec asserts every stored spelling still

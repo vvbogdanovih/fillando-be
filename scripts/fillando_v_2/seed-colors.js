@@ -318,12 +318,16 @@ const COLORS = [
 		hex_stops: ['#1f1f1f', '#2e8b57'],
 		synonyms: ['Чорно-зелений']
 	},
+	// Kingroon Dual-Silk HC187 — the shop had stored its neighbour's article code «HC186» in the
+	// colour field. The June 2026 invoice lists the Dual-Silk pairs in the same order as the HC
+	// codes run, which puts HC187 on «Yellow-Green»; the owner confirmed it from the photographs
+	// (2026-09-07). Step 3a rewrites the stored value, so no code is an alias here.
 	{
-		name_en: 'Dual Silk HC186',
-		name_uk: 'Двоколірний шовк HC186',
+		name_en: 'Yellow Green Silk',
+		name_uk: 'Жовто-зелений',
 		family: 'multicolor',
-		hex_stops: ['#c0c4c8', '#7e848a'],
-		synonyms: ['HC186', 'HC-186']
+		hex_stops: ['#ecc94b', '#38a169'],
+		synonyms: ['Жовто-зелений', 'Yellow-Green']
 	},
 
 	// Tri-Silk: three-tone shifts, fourteen variants on one product.

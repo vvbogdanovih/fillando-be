@@ -56,7 +56,7 @@ const STEPS = [
 	{
 		script: 'fix-known-data-defects.js',
 		what: 'repairs the individually known broken documents, by identity',
-		expect: '5 fixes: Kingroon PETG 3 кг (empty material, string category_id), FL-000162 «Candy» → «Rainbow Candy», FL-000004 → «Sky Blue», FL-000067 → «Cyan»; nothing left to decide'
+		expect: '6 fixes: Kingroon PETG 3 кг (empty material, string category_id), FL-000162 «Candy» → «Rainbow Candy», FL-000004 → «Sky Blue», FL-000067 → «Cyan», FL-000127 «HC186» → «Yellow-Green»; nothing left to decide'
 	},
 	{
 		script: 'normalize-attr-keys.js',

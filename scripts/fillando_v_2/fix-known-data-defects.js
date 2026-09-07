@@ -109,6 +109,15 @@ const FIXES = [
 			what: 'FL-000004 (Kingroon NPETG002) is stored as «Блакитний», the dictionary name of Cyan; the invoice says Sky Blue'
 		},
 		{
+			id: 'hc187-yellow-green',
+			_id: '6a04291406200235a62005eb',
+			sku: 'FL-000127',
+			vendor: 'HC187',
+			from: ['HC186', 'Dual Silk HC186'],
+			to: 'Yellow-Green',
+			what: "FL-000127 (Kingroon HC187) stores its neighbour's article code «HC186» as its colour; by the invoice order of the Dual-Silk pairs, confirmed from the photographs, it is Yellow-Green"
+		},
+		{
 			id: 'hcgs004-cyan',
 			_id: '69fb0c12c31a38c20471a8e3',
 			sku: 'FL-000067',

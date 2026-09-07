@@ -53,7 +53,9 @@ const STORED_VALUES: Record<string, string[]> = {
 		'Чорно-золотистий',
 		'Чорно-червоний',
 		'Чорно-зелений',
-		'HC186'
+		// FL-000127 stored «HC186», its neighbour's article code; step 3a rewrites it to the colour
+		// the invoice order gives HC187, confirmed by the owner from the photographs (2026-09-07).
+		'Yellow-Green'
 	],
 	'Kingroon PLA Tri-Silk': [
 		'Червоно-жовто-синій',
@@ -165,6 +167,8 @@ describe('colour dictionary coverage', () => {
 			['Прозорий', 'Transparent'],
 			['Синьо-зелений', 'Blue Green Silk'],
 			['Blue-Green', 'Blue Green Silk'],
+			['Yellow-Green', 'Yellow Green Silk'],
+			['Жовто-зелений', 'Yellow Green Silk'],
 			['Синьо-фіолетовий', 'Blue Purple Silk'],
 			['Бузкво-фіолетовий', 'Lilac Purple'],
 			['Трав’яний зелений', 'Grass Green'],

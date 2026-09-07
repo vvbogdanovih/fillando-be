@@ -15,14 +15,16 @@
  * Run FIRST, before the rest of the chain: `derive-material-taxonomy.js` reads `material`, and
  * one of the fixes below is what makes that field readable at all.
  *
+ * The two "Candy" variants of Kingroon PLA Silk Rainbow (FL-000157 at ₴890 / prom_id
+ * 2693625316, FL-000162 at ₴860 / prom_id 2693886972) were two live Prom listings that arrived
+ * with the same colour name. The owner told them apart on 2026-09-07 from the photographs and the
+ * Kingroon article numbers — B01889 is the saturated «Candy», HC258 the pastel «Rainbow Candy» —
+ * so the third fix below gives FL-000162 the value «Rainbow Candy». Both then resolve to their
+ * own dictionary entry (seed-colors.js), take distinct slugs, and the product rename (3k) no
+ * longer stops on this product.
+ *
  * Deliberately NOT fixed here, and why:
  *
- * - **Two variants of one product both called "Candy"** (FL-000157 at ₴890 / stock 50 /
- *   prom_id 2693625316, FL-000162 at ₴860 / stock 60 / prom_id 2693886972, on Kingroon PLA Silk
- *   Rainbow). They are two live Prom listings that arrived with the same colour name, so which
- *   one is which is a question about the photographs, not about the data. Guessing would put a
- *   wrong colour on a real product. Reported at the end for the owner to settle; until then both
- *   stay out of the colour dictionary, which costs nothing else.
  * - **Two `finish` values on one product** (Silk + Rainbow, Matte + Rainbow). Not a defect:
  *   `derive-material-taxonomy.js` writes multi-valued dimensions as several entries sharing a
  *   key, and the landings rely on it. What is broken is the admin form, which renders only the
@@ -68,6 +70,29 @@ const FIXES = [
 		}
 	},
 	{
+		id: 'candy-hc258-colour',
+		collection: 'product_variants',
+		_id: '6a04457106200235a620061e',
+		what: 'FL-000162 (Kingroon HC258) is stored as "Candy", the same colour as FL-000157 (B01889) on the same product',
+		why:
+			'One product cannot give two variants one colour: they would share a slug, the colour ' +
+			'migration skips both and the product rename is refused. The photographs show two ' +
+			'different filaments — B01889 a saturated rainbow, HC258 pastel candy shades.',
+		expect: doc =>
+			doc.sku === 'FL-000162' &&
+			doc.vendor_product_sku === 'HC258' &&
+			(doc.v_value === 'Candy' || doc.v_value === 'Rainbow Candy')
+				? null
+				: `expected FL-000162 / HC258 with v_value "Candy", found ${JSON.stringify({ sku: doc.sku, vendor_product_sku: doc.vendor_product_sku, v_value: doc.v_value })}`,
+		apply: doc => {
+			if (doc.v_value === 'Rainbow Candy') return null
+			return {
+				set: { v_value: 'Rainbow Candy' },
+				describe: 'v_value "Candy" → "Rainbow Candy"'
+			}
+		}
+	},
+	{
 		id: 'petg-3kg-category-type',
 		collection: 'products',
 		_id: '6a81a21315e62e1899044300',
@@ -76,13 +101,16 @@ const FIXES = [
 			'Any query matching products by category drops it. The storefront survives because the ' +
 			'catalogue is built from variants, but an admin list filtered by category does not show it.',
 		expect: doc =>
-			typeof doc.category_id === 'string' || doc.category_id instanceof mongoose.Types.ObjectId
+			typeof doc.category_id === 'string' ||
+			doc.category_id instanceof mongoose.Types.ObjectId
 				? null
 				: `category_id is a ${typeof doc.category_id}, which is neither a string nor an ObjectId`,
 		apply: doc => {
 			if (typeof doc.category_id !== 'string') return null
 			if (!mongoose.Types.ObjectId.isValid(doc.category_id)) {
-				throw new Error(`category_id ${JSON.stringify(doc.category_id)} is not a valid ObjectId`)
+				throw new Error(
+					`category_id ${JSON.stringify(doc.category_id)} is not a valid ObjectId`
+				)
 			}
 			return {
 				set: { category_id: new mongoose.Types.ObjectId(doc.category_id) },
@@ -92,28 +120,38 @@ const FIXES = [
 	}
 ]
 
-/** Reported, never written: needs a person who can look at the product photographs. */
-const NEEDS_A_DECISION = [
-	{
-		what: 'two variants of Kingroon PLA Silk Rainbow are both called "Candy"',
-		skus: ['FL-000157', 'FL-000162'],
-		consequence:
-			'They cannot both take the same dictionary colour (one product, one slug per colour), so ' +
-			'both stay unmatched and out of the colour filter. Renaming the product is refused with a ' +
-			'409 while they collide.',
-		resolution:
-			'Open both in the admin, give the second one the colour it actually is, or archive it if ' +
-			'it is a duplicate Prom listing. Then re-run seed-colors.js and normalize-variant-colors.js.'
-	}
-]
+/**
+ * Reported, never written: a second pair of variants sharing one colour value on one product
+ * would be the same shape of defect as the Candy pair was, and needs a person, not a rule.
+ */
+const NEEDS_A_DECISION = {
+	what: 'two variants of one product share the same colour value',
+	consequence:
+		'They cannot both take the same dictionary colour (one product, one slug per colour), so ' +
+		'both stay unmatched and out of the colour filter; the product rename refuses them.',
+	resolution:
+		'Look at the photographs, give one of them the colour it actually is (a fix here, or the ' +
+		'admin), then re-run seed-colors.js and normalize-variant-colors.js.'
+}
 
-async function checkCandy(db) {
-	const found = await db
+/** Pairs of variants on one product that still share a colour value, after the fixes above. */
+async function checkSharedColourValues(db) {
+	const rows = await db
 		.collection('product_variants')
-		.find({ v_value: 'Candy' })
-		.project({ sku: 1, price: 1, stock: 1 })
+		.aggregate([
+			{ $match: { v_value: { $type: 'string' } } },
+			{
+				$group: {
+					_id: { product_id: '$product_id', v_value: '$v_value' },
+					skus: { $push: '$sku' },
+					n: { $sum: 1 }
+				}
+			},
+			{ $match: { n: { $gt: 1 } } }
+		])
 		.toArray()
-	return found
+	// The fix for FL-000162 is applied a moment before this runs; on a dry run it has not been.
+	return rows.filter(r => !(DRY_RUN && r._id.v_value === 'Candy'))
 }
 
 async function migrate(db) {
@@ -127,7 +165,10 @@ async function migrate(db) {
 			.findOne({ _id: new mongoose.Types.ObjectId(fix._id) })
 
 		if (!doc) {
-			skipped.push({ fix, reason: 'document not found — it may have been deleted or re-created' })
+			skipped.push({
+				fix,
+				reason: 'document not found — it may have been deleted or re-created'
+			})
 			continue
 		}
 
@@ -184,22 +225,22 @@ async function migrate(db) {
 				applied += 1
 				console.log(`  applied ${p.fix.id}`)
 			} else {
-				console.warn(`  ! ${p.fix.id} changed while this ran — skipped, re-run to pick it up`)
+				console.warn(
+					`  ! ${p.fix.id} changed while this ran — skipped, re-run to pick it up`
+				)
 			}
 		}
 		console.log(`\nApplied ${applied} of ${planned.length} fix(es).`)
 	}
 
 	// ---------- what a person still has to settle ----------
-	const candy = await checkCandy(db)
-	if (candy.length > 1) {
+	const shared = await checkSharedColourValues(db)
+	if (shared.length > 0) {
 		console.log('\nNeeds a decision, not a script:')
-		for (const item of NEEDS_A_DECISION) {
-			console.log(`  • ${item.what}`)
-			for (const v of candy) console.log(`      ${v.sku} — ₴${v.price}, stock ${v.stock}`)
-			console.log(`    ${item.consequence}`)
-			console.log(`    ${item.resolution}`)
-		}
+		console.log(`  • ${NEEDS_A_DECISION.what}`)
+		for (const r of shared) console.log(`      ${r.skus.join(' + ')} — "${r._id.v_value}"`)
+		console.log(`    ${NEEDS_A_DECISION.consequence}`)
+		console.log(`    ${NEEDS_A_DECISION.resolution}`)
 	}
 
 	// ---------- verify ----------
@@ -215,7 +256,9 @@ async function migrate(db) {
 		const materialOk = material && String(material.v).trim() !== ''
 		const typeOk = typeof product.category_id !== 'string'
 		console.log('\nVerify:')
-		console.log(`  ${materialOk ? 'OK ' : 'FAIL'} Kingroon PETG 3 кг has a material: ${material ? JSON.stringify(material.v) : 'missing'}`)
+		console.log(
+			`  ${materialOk ? 'OK ' : 'FAIL'} Kingroon PETG 3 кг has a material: ${material ? JSON.stringify(material.v) : 'missing'}`
+		)
 		console.log(`  ${typeOk ? 'OK ' : 'FAIL'} its category_id is an ObjectId`)
 		if (!materialOk || !typeOk) return false
 	}

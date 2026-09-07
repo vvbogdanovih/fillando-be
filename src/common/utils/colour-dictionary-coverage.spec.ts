@@ -25,29 +25,72 @@ type Color = {
 const { COLORS, normalizeColorValue, aliasesFor, buildAliasIndex, slugFor } = seedColors
 
 const FAMILIES = [
-	'black', 'white', 'gray', 'red', 'orange', 'yellow', 'green', 'blue',
-	'purple', 'pink', 'brown', 'gold', 'silver', 'transparent', 'multicolor'
+	'black',
+	'white',
+	'gray',
+	'red',
+	'orange',
+	'yellow',
+	'green',
+	'blue',
+	'purple',
+	'pink',
+	'brown',
+	'gold',
+	'silver',
+	'transparent',
+	'multicolor'
 ]
 
 /** Grouped by the product each spelling came from — the grouping is what makes slugs collide. */
 const STORED_VALUES: Record<string, string[]> = {
 	'Kingroon PLA Dual-Silk': [
-		'Червоно-золотистий', 'Червоно-зелений', 'Червоно-синій', 'Золотисто-срібний',
-		'Золотисто-фіолетовий', 'Чорно-золотистий', 'Чорно-червоний', 'Чорно-зелений', 'HC186'
+		'Червоно-золотистий',
+		'Червоно-зелений',
+		'Червоно-синій',
+		'Золотисто-срібний',
+		'Золотисто-фіолетовий',
+		'Чорно-золотистий',
+		'Чорно-червоний',
+		'Чорно-зелений',
+		'HC186'
 	],
 	'Kingroon PLA Tri-Silk': [
-		'Червоно-жовто-синій', 'Червоно-зелено-синій', 'Жовто-синьо-зелений',
-		'Золотисто-зелено-рожевий', 'Золотисто-срібно-мідний', 'Зелено-фіолетово-мідний',
-		'Червоно-золотисто-синій', 'Чорно-синьо-фіолетовий', 'Червоно-золотисто-фіолетовий',
-		'Синьо-зелено-помаранчевий', 'Золотисто-пурпурово-чорний', 'Золотисто-пурпурово-синій',
-		'Золотисто-зелено-чорний', 'Пурпурово-синьо-зелений'
+		'Червоно-жовто-синій',
+		'Червоно-зелено-синій',
+		'Жовто-синьо-зелений',
+		'Золотисто-зелено-рожевий',
+		'Золотисто-срібно-мідний',
+		'Зелено-фіолетово-мідний',
+		'Червоно-золотисто-синій',
+		'Чорно-синьо-фіолетовий',
+		'Червоно-золотисто-фіолетовий',
+		'Синьо-зелено-помаранчевий',
+		'Золотисто-пурпурово-чорний',
+		'Золотисто-пурпурово-синій',
+		'Золотисто-зелено-чорний',
+		'Пурпурово-синьо-зелений'
 	],
-	'Kingroon PLA Silk Rainbow': ['Universe', 'Macaron', 'Forest', 'Lovely'],
+	// «Candy» and «Rainbow Candy» are the two Kingroon articles (B01889 / HC258) that step 3a tells
+	// apart; the stored value of FL-000162 becomes «Rainbow Candy» before the colour step runs.
+	'Kingroon PLA Silk Rainbow': [
+		'Universe',
+		'Macaron',
+		'Forest',
+		'Lovely',
+		'Candy',
+		'Rainbow Candy'
+	],
 	'Kingroon PETG (CoPET)': [
-		'Флуоресцентний жовтий', 'Флуоресцентний синій', 'Флуоресцентний червоний'
+		'Флуоресцентний жовтий',
+		'Флуоресцентний синій',
+		'Флуоресцентний червоний'
 	],
 	'Kingroon PLA Temperature Changing': [
-		'Синьо-зелений -Жовто-зелений', 'Фіолетовий-рожевий', 'Синій-білий', 'Сірий-білий'
+		'Синьо-зелений -Жовто-зелений',
+		'Фіолетовий-рожевий',
+		'Синій-білий',
+		'Сірий-білий'
 	],
 	'Sunlu PLA Rainbow': ['Веселковий R1', 'Веселковий R2', 'Веселковий R3', 'Веселковий R4'],
 	'Sunlu PLA Transparent Rainbow': ['TR-1', 'TR-2', 'TR-3', 'TR-4'],
@@ -60,13 +103,6 @@ const STORED_VALUES: Record<string, string[]> = {
 
 const ALL_VALUES = Object.values(STORED_VALUES).flat()
 
-/**
- * Deliberately unmatched: two variants of one product are both stored as "Candy". Giving them
- * the same dictionary colour would give them the same variant slug, and `slug` is unique, so
- * the colour migration would abort. Which is which is a question about the photographs.
- */
-const KNOWN_UNMATCHED = ['Candy']
-
 describe('colour dictionary coverage', () => {
 	const index = buildAliasIndex(COLORS)
 	/** @returns the `name_en` the stored spelling resolves to, or null when nothing claims it. */
@@ -77,13 +113,17 @@ describe('colour dictionary coverage', () => {
 
 	describe('every spelling stored in the catalogue resolves', () => {
 		it.each(ALL_VALUES)('resolves %s', value => {
-			expect({ value, resolved: resolve(value) }).toEqual({ value, resolved: expect.any(String) })
+			expect({ value, resolved: resolve(value) }).toEqual({
+				value,
+				resolved: expect.any(String)
+			})
 		})
 
-		// 49 spellings were unmatched on the dump; 48 are covered here and "Candy" is the one left.
-		// 47 of them became new dictionary entries and the 48th is a synonym on the existing Beige.
-		it('covers all 48 of them', () => {
-			expect(ALL_VALUES).toHaveLength(48)
+		// 49 spellings were unmatched on the dump; 48 became entries or synonyms on 2026-09-05 and
+		// «Candy» was left for the owner. On 2026-09-07 it became two entries — the two variants
+		// were two different Kingroon articles — so every stored spelling now resolves.
+		it('covers all 50 of them', () => {
+			expect(ALL_VALUES).toHaveLength(50)
 			expect(ALL_VALUES.filter(v => resolve(v) === null)).toEqual([])
 		})
 	})
@@ -91,15 +131,20 @@ describe('colour dictionary coverage', () => {
 	describe('no two variants of one product can collide on a slug', () => {
 		// The variant slug is generateSlug(`${product} ${name_en}`), so two values on the same
 		// product resolving to one colour would produce one slug twice and abort the migration.
-		it.each(Object.entries(STORED_VALUES))('%s gives every variant its own colour', (_product, values) => {
-			const names = values.map(v => resolve(v)).filter(Boolean)
-			expect(new Set(names).size).toBe(values.length)
-		})
+		it.each(Object.entries(STORED_VALUES))(
+			'%s gives every variant its own colour',
+			(_product, values) => {
+				const names = values.map(v => resolve(v)).filter(Boolean)
+				expect(new Set(names).size).toBe(values.length)
+			}
+		)
 	})
 
-	describe('"Candy" stays unmatched on purpose', () => {
-		it.each(KNOWN_UNMATCHED)('%s resolves to nothing', value => {
-			expect(resolve(value)).toBeNull()
+	describe('the two Candy variants take different colours', () => {
+		it('resolves «Candy» and «Rainbow Candy» to two entries, so their slugs differ', () => {
+			expect(resolve('Candy')).toBe('Candy')
+			expect(resolve('Rainbow Candy')).toBe('Rainbow Candy')
+			expect(resolve('Rainbow')).toBe('Rainbow')
 		})
 	})
 
@@ -120,7 +165,8 @@ describe('colour dictionary coverage', () => {
 			for (const color of COLORS) {
 				for (const alias of aliasesFor(color)) {
 					const owner = seen.get(alias)
-					if (owner && owner !== color.name_en) conflicts.push(`${alias}: ${owner} / ${color.name_en}`)
+					if (owner && owner !== color.name_en)
+						conflicts.push(`${alias}: ${owner} / ${color.name_en}`)
 					seen.set(alias, color.name_en)
 				}
 			}
@@ -143,12 +189,16 @@ describe('colour dictionary coverage', () => {
 		})
 
 		it('does not repeat a stop within one entry, which would flatten the swatch', () => {
-			const flat = COLORS.filter(c => c.hex_stops.length > 1 && new Set(c.hex_stops).size === 1)
+			const flat = COLORS.filter(
+				c => c.hex_stops.length > 1 && new Set(c.hex_stops).size === 1
+			)
 			expect(flat.map(c => c.name_en)).toEqual([])
 		})
 
 		it('has a Ukrainian name on every entry', () => {
-			expect(COLORS.filter(c => !c.name_uk || !c.name_uk.trim()).map(c => c.name_en)).toEqual([])
+			expect(COLORS.filter(c => !c.name_uk || !c.name_uk.trim()).map(c => c.name_en)).toEqual(
+				[]
+			)
 		})
 
 		it('uses no em dash, which the copy style forbids', () => {
@@ -164,7 +214,9 @@ describe('colour dictionary coverage', () => {
 
 		it('keeps the space before the dash in the thermochromic value', () => {
 			// If this ever normalises differently, the synonym stops matching silently.
-			expect(normalizeColorValue('Синьо-зелений -Жовто-зелений')).toBe('Синьо-зелений -Жовто-зелений')
+			expect(normalizeColorValue('Синьо-зелений -Жовто-зелений')).toBe(
+				'Синьо-зелений -Жовто-зелений'
+			)
 		})
 	})
 })

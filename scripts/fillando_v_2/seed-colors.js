@@ -245,11 +245,26 @@ const COLORS = [
 	// a production dump. The catalogue is frozen while this work lands, so the set is closed:
 	// every entry below exists to cover one exact stored value, carried verbatim in `synonyms`.
 	//
-	// Two variants on Kingroon PLA Silk Rainbow are both stored as "Candy" and are deliberately
-	// NOT covered: one product cannot give two variants the same colour without colliding on
-	// the variant slug, and which is which is a question about the photographs. See
-	// fix-known-data-defects.js.
+	// The two "Candy" variants of Kingroon PLA Silk Rainbow were told apart by the owner on
+	// 2026-09-07 from the photographs and the Kingroon article numbers: FL-000157 (B01889) is
+	// the saturated «Candy», FL-000162 (HC258) the pastel «Rainbow Candy». Step 3a rewrites the
+	// second one's stored value first, so each resolves to its own entry below and the two
+	// variants get distinct slugs.
 	// ---------------------------------------------------------------------------------
+	{
+		name_en: 'Candy',
+		name_uk: 'Карамельний перелив',
+		family: 'multicolor',
+		// Kingroon B01889: a saturated silk rainbow — blue, green, fuchsia, copper, violet.
+		hex_stops: ['#2b6cb0', '#2f855a', '#c53080', '#c2410c', '#6b46c1']
+	},
+	{
+		name_en: 'Rainbow Candy',
+		name_uk: 'Пастельна веселка',
+		family: 'multicolor',
+		// Kingroon HC258: pastel candy shades — pink, lavender, mint, pale yellow.
+		hex_stops: ['#e8879f', '#a89bd9', '#7fd1c9', '#f2e3a0']
+	},
 	// Dual-Silk: two-tone shifts on one product, so each needs its own `name_en` or their slugs collide.
 	{
 		name_en: 'Red Gold Silk',

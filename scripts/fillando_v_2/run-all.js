@@ -56,7 +56,7 @@ const STEPS = [
 	{
 		script: 'fix-known-data-defects.js',
 		what: 'repairs the individually known broken documents, by identity',
-		expect: '2 fixes on Kingroon PETG 3 кг (empty material, string category_id); the Candy pair reported'
+		expect: '3 fixes: Kingroon PETG 3 кг (empty material, string category_id) and FL-000162 «Candy» → «Rainbow Candy»; nothing left to decide'
 	},
 	{
 		script: 'normalize-attr-keys.js',
@@ -81,7 +81,7 @@ const STEPS = [
 	{
 		script: 'seed-colors.js',
 		what: 'inserts the colour dictionary',
-		expect: '103 colours; existing entries matched on name_en are left alone'
+		expect: '105 colours; existing entries matched on name_en are left alone'
 	},
 	{
 		script: 'seed-landings.js',
@@ -101,7 +101,7 @@ const STEPS = [
 	{
 		script: 'normalize-variant-colors.js',
 		what: 'points variants at the colour dictionary and rewrites v_value to the canonical name',
-		expect: '291 of 293 matched (99%); only the two "Candy" variants left, 8 variants off the colour axis',
+		expect: '293 of 293 matched; 8 variants off the colour axis',
 		holdBack:
 			'rewrites v_value to the English colour name. Until the storefront renders `color`\n' +
 			'   instead of v_value, the whole Ukrainian shop shows English colour names.\n' +
@@ -110,7 +110,7 @@ const STEPS = [
 	{
 		script: 'rename-products-short.js',
 		what: 'renames products to the short names of short-names.js; every variant slug is regenerated',
-		expect: '43 products renamed (44 with the refill), 1 collision left long until the Candy pair is split (B5); ~295 slug moves appended to slug-map.json',
+		expect: '43 products renamed (44 with the refill), no collisions once 3a has split the Candy pair; ~300 slug moves appended to slug-map.json',
 		holdBack:
 			'regenerates every variant slug (no 301) and drops «1,75 мм 1 кг» from names.\n' +
 			'   Run it only after the frontend is live, in the same window as the colour step —\n' +

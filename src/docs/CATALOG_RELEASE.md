@@ -13,12 +13,12 @@ Everything below is already merged into `dev` in both repositories and **not dep
 Four decisions are still open. None of them blocks the deploy, but each one leaves something
 half-finished until it is made.
 
-| #   | Decision                                                                                                                                                                                                                                              | Consequence of leaving it                                                                                                                                                                                                                                                                                                                                                    |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | ~~One product has an empty `material`~~ — **handled by step 3a** since 2026-09-05.                                                                                                                                                                    | Nothing to decide. `fix-known-data-defects.js` sets `Матеріал = PETG` on Kingroon PETG (CoPET) 3 кг and repairs its `category_id`, which was stored as a string.                                                                                                                                                                                                             |
-| 2   | **49 colour spellings** the dictionary cannot identify, listed in `scripts/fillando_v_2/reports/color-report.json` after a dry run.                                                                                                                   | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete.                                                                                                                                                                                                                                     |
-| 3   | ~~The refill is a variant, not a product~~ — **handled by step 3d** since 2026-09-05.                                                                                                                                                                 | Nothing to decide. `split-refill-products.js` moves FL-000253 onto its own product; the only manual step left is rewriting that product's description, which it inherits from the parent.                                                                                                                                                                                    |
-| 4   | **Two 'Candy' variants sit on one product** — `FL-000157` (₴890, stock 50) and `FL-000162` (₴860, stock 60) on _Kingroon PLA Silk Rainbow_, same `v_value`, different prices and `prom_id`s. A Prom-import duplicate that predates the taxonomy work. | The only thing left that a script cannot settle. They are the two variants the colour migration leaves unmatched, because one product cannot give two variants the same colour without colliding on the slug, and renaming the product is refused with a 409. Open both in the admin, give the second the colour it actually is, or archive it; then re-run steps 3f and 3i. |
+| #   | Decision                                                                                                                                                                                                                                                                                          | Consequence of leaving it                                                                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | ~~One product has an empty `material`~~ — **handled by step 3a** since 2026-09-05.                                                                                                                                                                                                                | Nothing to decide. `fix-known-data-defects.js` sets `Матеріал = PETG` on Kingroon PETG (CoPET) 3 кг and repairs its `category_id`, which was stored as a string.                                                                                     |
+| 2   | **49 colour spellings** the dictionary cannot identify, listed in `scripts/fillando_v_2/reports/color-report.json` after a dry run.                                                                                                                                                               | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete.                                                                                                             |
+| 3   | ~~The refill is a variant, not a product~~ — **handled by step 3d** since 2026-09-05.                                                                                                                                                                                                             | Nothing to decide. `split-refill-products.js` moves FL-000253 onto its own product; the only manual step left is rewriting that product's description, which it inherits from the parent.                                                            |
+| 4   | ~~**Two 'Candy' variants sit on one product**~~ — **handled by step 3a** since 2026-09-07. `FL-000157` (Kingroon B01889, ₴890) and `FL-000162` (Kingroon HC258, ₴860) on _Kingroon PLA Silk Rainbow_ arrived from Prom with the same colour name; the owner told them apart from the photographs. | Nothing to decide. `fix-known-data-defects.js` sets `FL-000162` to «Rainbow Candy» (pastel shades; B01889 stays the saturated «Candy»), `seed-colors.js` carries both entries, so 3j matches all 293 colour variants and 3k renames all 43 products. |
 
 The same product as #1 also carries `category_id` as a **string** rather than an ObjectId. It is
 harmless today (its variant has the right type), but any future query that filters products by
@@ -35,9 +35,10 @@ const { generateSlug } = require('./dist/common/utils/attribute.utils')
 // and report every group holding more than one SKU
 ```
 
-On `fillando-dev` this reports exactly one group: `FL-000157 + FL-000162`. Step 3k (the product
-rename) runs the same check itself and refuses that product until the pair is split, so #4 must be
-settled **before 3k**, not only before an admin rename.
+On `fillando-dev` this reported exactly one group, `FL-000157 + FL-000162`, until step 3a began
+telling them apart; after 3a it reports none. Step 3k (the product rename) runs the same check
+itself and refuses any product that still collides, so a new pair of this shape must be settled
+**before 3k**.
 
 ---
 
@@ -188,10 +189,13 @@ products by category.
 Each fix names its document by `_id` and asserts what it expects to find there, so a changed
 catalogue makes the run stop rather than write the wrong thing.
 
-It also reports, without touching, the one defect a script must not guess at: the two "Candy"
-variants of decision 4 above.
+The third fix is the one that used to be reported as "needs a person": since 2026-09-07 the owner
+has told the two «Candy» variants apart (decision 4 above), so FL-000162 gets «Rainbow Candy»
+here. The script still reports any other pair of variants sharing one colour value on one
+product, without touching it.
 
-Expect on current data: 2 fixes applied, the Candy pair reported.
+Expect on current data: 3 fixes applied (two on Kingroon PETG 3 кг, one on FL-000162 «Candy» →
+«Rainbow Candy»); nothing left to decide.
 
 ### 3b. `normalize-attr-keys.js`
 
@@ -364,10 +368,10 @@ node scripts/fillando_v_2/normalize-variant-colors.js --dry-run
 node scripts/fillando_v_2/normalize-variant-colors.js
 ```
 
-Expect on current data: 291 of 293 colour variants matched (99%) and 8 variants off the colour
+Expect on current data: 293 of 293 colour variants matched and 8 variants off the colour
 axis. The refill is no longer skipped: step 3d moved its marker onto the product name, so its
-colour resolves like any other. The two variants left unmatched are both stored as "Candy" on
-one product and need a person to tell them apart, see step 3a. **A slug collision aborts the run** rather than
+colour resolves like any other. The two «Candy» variants resolve to «Candy» and «Rainbow Candy»
+since step 3a tells them apart. **A slug collision aborts the run** rather than
 half-applying it — resolve it (rename a variant, or split the dictionary entry into two
 colours) and re-run. `--force` applies everything else and
 leaves the collisions for later; use it deliberately, not to get past the message.
@@ -396,10 +400,11 @@ node scripts/fillando_v_2/rename-products-short.js --dry-run
 node scripts/fillando_v_2/rename-products-short.js
 ```
 
-Expect on current data: 43 products planned (44 with the refill of 3d), **1 collision** —
-_Kingroon PLA Silk Rainbow_, whose two «Candy» variants would share `kingroon-pla-silk-rainbow-candy`
-(§0 #4); the run stops until that pair is split, `--force` renames the rest and leaves it long.
-About 295 slug moves are appended to `reports/slug-map.json`. Each product is written in three
+Expect on current data: 43 products planned (44 with the refill of 3d) and no collisions —
+before step 3a told the two «Candy» variants apart, _Kingroon PLA Silk Rainbow_ collided on
+`kingroon-pla-silk-rainbow-candy` and the run stopped on it (a new pair of that shape would do the
+same; `--force` renames the rest and leaves the colliding product long). About 300 slug moves are
+appended to `reports/slug-map.json`. Each product is written in three
 pinned phases (park the movers on `…-moving-<id>`, rename the product, land every variant), the
 way `ProductService.applyVariantRename` does; a document edited mid-run is skipped and reported,
 and a re-run picks up anything left parked.
@@ -408,8 +413,8 @@ Variant **slugs change without a 301** — the owner's decision, recorded for 3j
 on 2026-09-06 knowing that 242 indexed product addresses will answer 404 until Google recrawls.
 Order items and the guest cart keep the long names by design (they are snapshots).
 
-**Verify:** `yarn migrate:verify` prints `products still carrying the long SEO prefix: 0` (or 1
-while the Candy pair is open) and no `-moving-` slugs; a product page reads «Kingroon PLA Silk
+**Verify:** `yarn migrate:verify` prints `products still carrying the long SEO prefix: 0` and no
+`-moving-` slugs; a product page reads «Kingroon PLA Silk
 Rainbow — Золотий (Gold)» with the title suffixed «— філамент 1,75 мм»; the feed's `<title>` is
 short; searching «філамент» still lists the category (the search falls back on the category
 name).

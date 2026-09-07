@@ -85,8 +85,9 @@ chain against it, and prints the state before and after plus a convergence check
 only the catalogue collections, so customers' orders and accounts never leave the dump.
 
 Last run against a production dump, 2026-09-05: chain applied cleanly, converged on the second
-pass, colour coverage 291 of 293 variants, all fourteen landings listing products, integrity
-clean. The two variants left unmatched are both stored as "Candy" on one product and need a
+pass, colour coverage 291 of 293 variants (293 of 293 since step 3a tells the two «Candy»
+variants apart, 2026-09-07), all fourteen landings listing products, integrity
+clean. Before that fix the two variants left unmatched were both stored as "Candy" on one product and needed a
 person to tell them apart.
 
 ## After the chain

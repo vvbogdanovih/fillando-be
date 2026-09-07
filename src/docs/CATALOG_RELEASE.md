@@ -424,24 +424,28 @@ name).
 ## 4. After the migrations
 
 After 3k: purge the storefront caches and resubmit the sitemap. `POST /api/revalidate
-{"resource":"landings"}` on the frontend expires the `landings` and `sitemap` tags; product and
-catalogue pages are ISR-cached for up to an hour and simply expire — an old product address serves
-its cached page for that hour, then 404. Expect the 242 old addresses to show as 404 in Search
+{"resource":"landings"}` with the `x-revalidate-secret` header on the frontend expires the
+`landings` and `sitemap` tags. This call is not optional after 3k: the sitemap's entry list is
+memoised for a day and keyed on the variant **count**, which a rename never moves, so without it
+the sitemap keeps every old slug until the day is up (seen on dev, 2026-09-07: 301 old addresses
+until the call, 301 new right after). Product and catalogue pages are ISR-cached for up to an
+hour and simply expire — an old product address serves its cached page for that hour, then 404. Expect the 242 old addresses to show as 404 in Search
 Console; that is the accepted cost.
 
-1. Mark the refill by hand: `Котушка в комплекті = Ні (рефіл)` on the refill product, once
-   decision 3 is made.
+1. Rewrite the refill product's description: 3d copies it from the parent, so it still reads as
+   the spooled product. `Котушка в комплекті = Ні (рефіл)` is already set by 3d/3e.
 2. Read the copy step 3h wrote, correct it in `/admin/landings`, and publish the landings one by
    one. A landing stays a draft until a person has read its text, and one that matches no
-   products is never published — an empty SEO page in the index is worse than no page. On current
-   data that rules out `refill`: the refill is still a variant inside another product, decision 3
-   above.
+   products is never published — an empty SEO page in the index is worse than no page. After 3d
+   `refill` matches its one variant, so it may be published too; `yarn migrate:verify` prints how
+   many are ready.
 3. Work through `color-report.json`: add a synonym to `seed-colors.js` for each spelling worth
-   mapping, then re-run 3f and 3i. Both are idempotent.
+   mapping, then re-run 3f and 3j. Both are idempotent. On dev every spelling is covered
+   (293/293).
 4. Resubmit the sitemap in Search Console — it now carries the legal pages, the price sheet and
    the published landings.
 
-**Editing a migrated product is safe from here on, and this is worth knowing why.** 3i writes
+**Editing a migrated product is safe from here on, and this is worth knowing why.** 3j writes
 `v_value` as the English `colors.name_en` but the display `name` as `"<product> — Чорний (Black)"`
 — Ukrainian first, the manufacturer's own spelling in brackets.
 `ProductService` builds `name` from the dictionary whenever the variant points at it and falls

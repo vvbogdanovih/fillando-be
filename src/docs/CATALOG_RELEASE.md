@@ -194,7 +194,8 @@ has told the two «Candy» variants apart (decision 4 above), so FL-000162 gets 
 here. The script still reports any other pair of variants sharing one colour value on one
 product, without touching it.
 
-Expect on current data: 3 fixes applied (two on Kingroon PETG 3 кг, one on FL-000162 «Candy» →
+Expect on current data: 5 fixes applied (two on Kingroon PETG 3 кг, FL-000004 «Блакитний» → «Sky Blue»
+and FL-000067 «Бірюзовий» → «Cyan» by the Kingroon article numbers on the June 2026 invoice, one on FL-000162 «Candy» →
 «Rainbow Candy»); nothing left to decide.
 
 ### 3b. `normalize-attr-keys.js`
@@ -281,10 +282,14 @@ node scripts/fillando_v_2/seed-colors.js --dry-run
 node scripts/fillando_v_2/seed-colors.js
 ```
 
-Inserts 103 dictionary colours. The 47 added on 2026-09-05 exist to cover the spellings this
+Inserts 122 dictionary colours. The 47 added on 2026-09-05 exist to cover the spellings this
 catalogue actually stores: the Dual-Silk and Tri-Silk gradients, the numbered Sunlu rainbows,
-the thermochromic pairs and the one-off finishes. A spec asserts every one of them still
-resolves, so an edit here cannot silently drop a product out of the colour filter. Non-destructive: an existing colour matched on `name_en` is left
+the thermochromic pairs and the one-off finishes. The 17 added on 2026-09-07 give Sunlu and
+Kingroon colours the names their invoices print (Sunny Orange, Cherry Red, Sky Blue, Transparent,
+the Blue-Green and Blue-Purple Dual-Silk pairs…) instead of a Bambu neighbour's name; a supplier's
+misspelling («Roasted Chesnut») is a synonym only. A spec asserts every stored spelling still
+resolves, and that these resolve to the supplier's own name, so an edit here cannot silently drop
+a product out of the colour filter or hand it another brand's colour. Non-destructive: an existing colour matched on `name_en` is left
 untouched, so a hex tweaked in the admin survives a re-run.
 
 ### 3g. `seed-landings.js`

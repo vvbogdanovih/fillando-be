@@ -56,7 +56,7 @@ const STEPS = [
 	{
 		script: 'fix-known-data-defects.js',
 		what: 'repairs the individually known broken documents, by identity',
-		expect: '3 fixes: Kingroon PETG 3 кг (empty material, string category_id) and FL-000162 «Candy» → «Rainbow Candy»; nothing left to decide'
+		expect: '5 fixes: Kingroon PETG 3 кг (empty material, string category_id), FL-000162 «Candy» → «Rainbow Candy», FL-000004 → «Sky Blue», FL-000067 → «Cyan»; nothing left to decide'
 	},
 	{
 		script: 'normalize-attr-keys.js',
@@ -81,7 +81,7 @@ const STEPS = [
 	{
 		script: 'seed-colors.js',
 		what: 'inserts the colour dictionary',
-		expect: '105 colours; existing entries matched on name_en are left alone'
+		expect: '122 colours; existing entries matched on name_en are left alone'
 	},
 	{
 		script: 'seed-landings.js',

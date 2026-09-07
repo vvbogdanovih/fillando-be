@@ -140,6 +140,58 @@ describe('colour dictionary coverage', () => {
 		)
 	})
 
+	describe("the Ukrainian names match the suppliers' own English names", () => {
+		// Checked on 2026-09-07 against the Kingroon commercial invoices (May and June 2026), the
+		// Sunlu proforma (June 2026) and the Sunlu order form. Before this, a synonym folded each of
+		// these stored spellings into a colour of a *different* brand — Sunlu «Сонячно-помаранчевий»
+		// read «Sunflower», Bambu's name — so the storefront showed one manufacturer's colour name on
+		// another manufacturer's spool. The supplier's misspellings resolve too, but only as aliases.
+		it.each([
+			['Сонячно-помаранчевий', 'Sunny Orange'],
+			['Suny Orange', 'Sunny Orange'],
+			['Вишнево-червоний', 'Cherry Red'],
+			['Вишня', 'Cherry Wood'],
+			['Cherry wood', 'Cherry Wood'],
+			['Небесно-блакитний', 'Sky Blue'],
+			['Sky blue', 'Sky Blue'],
+			['Лавандово-фіолетовий', 'Lavender Purple'],
+			['Яскраво-жовтий', 'Vivid Yellow'],
+			['Каштановий', 'Roasted Chestnut'],
+			['Roasted Chesnut', 'Roasted Chestnut'],
+			['Опівнічний (темно-синій)', 'Midnight'],
+			['Оливково-зелений', 'Olive Green'],
+			['М’ятно-зелений', 'Mint Green'],
+			['Кавово-коричневий', 'Coffee Brown'],
+			['Прозорий', 'Transparent'],
+			['Синьо-зелений', 'Blue Green Silk'],
+			['Blue-Green', 'Blue Green Silk'],
+			['Синьо-фіолетовий', 'Blue Purple Silk'],
+			['Бузкво-фіолетовий', 'Lilac Purple'],
+			['Трав’яний зелений', 'Grass Green'],
+			['Navy Blue Темно-синій', 'Navy Blue'],
+			['Golden', 'Gold'],
+			['Fluo Red', 'Fluorescent Red'],
+			['Fluo Yellow', 'Fluorescent Yellow']
+		])('resolves %s to %s', (stored, expected) => {
+			expect(resolve(stored)).toBe(expected)
+		})
+
+		it('keeps the brands apart: Bambu names are no longer the fallback for Sunlu and Kingroon', () => {
+			expect(resolve('Сонячно-помаранчевий')).not.toBe('Sunflower')
+			expect(resolve('Вишнево-червоний')).not.toBe('Burgundy Red')
+			expect(resolve('Небесно-блакитний')).not.toBe('Cyan')
+			expect(resolve('Лавандово-фіолетовий')).not.toBe('Iris Purple')
+			// Bambu's colourless PETG stays Clear; Kingroon's is Transparent, as its invoices print.
+			expect(resolve('Clear')).toBe('Clear')
+			expect(resolve('Безбарвний')).toBe('Clear')
+		})
+
+		it('never shows a shopper a supplier misspelling', () => {
+			const names = COLORS.flatMap(c => [c.name_en, c.name_uk])
+			expect(names.filter(n => /Chesnut|Suny|Бузкво/.test(n))).toEqual([])
+		})
+	})
+
 	describe('the two Candy variants take different colours', () => {
 		it('resolves «Candy» and «Rainbow Candy» to two entries, so their slugs differ', () => {
 			expect(resolve('Candy')).toBe('Candy')

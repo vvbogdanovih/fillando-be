@@ -72,24 +72,21 @@ const COLORS = [
 		name_en: 'Burgundy Red',
 		name_uk: 'Бордовий',
 		family: 'red',
-		hex_stops: ['#800020'],
-		synonyms: ['Вишнево-червоний', 'Вишня']
+		hex_stops: ['#800020']
 	},
 	{ name_en: 'Orange', name_uk: 'Помаранчевий', family: 'orange', hex_stops: ['#ed8936'] },
 	{
 		name_en: 'Sunflower',
 		name_uk: 'Соняшниковий',
 		family: 'yellow',
-		hex_stops: ['#ffc300'],
-		synonyms: ['Сонячно-помаранчевий']
+		hex_stops: ['#ffc300']
 	},
 	{ name_en: 'Yellow', name_uk: 'Жовтий', family: 'yellow', hex_stops: ['#ecc94b'] },
 	{
 		name_en: 'Lemon Yellow',
 		name_uk: 'Лимонно-жовтий',
 		family: 'yellow',
-		hex_stops: ['#fff44f'],
-		synonyms: ['Яскраво-жовтий']
+		hex_stops: ['#fff44f']
 	},
 	{
 		name_en: 'Tangerine Yellow',
@@ -103,22 +100,19 @@ const COLORS = [
 		name_en: 'Olive',
 		name_uk: 'Оливковий',
 		family: 'green',
-		hex_stops: ['#808000'],
-		synonyms: ['Оливково-зелений']
+		hex_stops: ['#808000']
 	},
 	{
 		name_en: 'Matcha Green',
 		name_uk: 'Зелений матча',
 		family: 'green',
-		hex_stops: ['#8fbc8f'],
-		synonyms: ['Трав’яний зелений']
+		hex_stops: ['#8fbc8f']
 	},
 	{
 		name_en: 'Mint',
 		name_uk: 'М’ятний',
 		family: 'green',
-		hex_stops: ['#98ff98'],
-		synonyms: ['М’ятно-зелений']
+		hex_stops: ['#98ff98']
 	},
 	{ name_en: 'Apple Green', name_uk: 'Яблучно-зелений', family: 'green', hex_stops: ['#8db600'] },
 	{ name_en: 'Blue', name_uk: 'Синій', family: 'blue', hex_stops: ['#3182ce'] },
@@ -127,7 +121,7 @@ const COLORS = [
 		name_uk: 'Темно-синій',
 		family: 'blue',
 		hex_stops: ['#1e3a8a'],
-		synonyms: ['Navy Blue Темно-синій', 'Темно синій', 'Опівнічний (темно-синій)']
+		synonyms: ['Темно синій']
 	},
 	{
 		name_en: 'Royal Blue',
@@ -141,8 +135,7 @@ const COLORS = [
 		name_en: 'Cyan',
 		name_uk: 'Блакитний',
 		family: 'blue',
-		hex_stops: ['#00b7eb'],
-		synonyms: ['Небесно-блакитний']
+		hex_stops: ['#00b7eb']
 	},
 	// Bambu's "Blue Grey" is a muted slate, not cyan — and both sit on the same product.
 	// `family` is a judgement call between `gray` and `blue`; it is editable in the admin.
@@ -153,15 +146,14 @@ const COLORS = [
 		name_uk: 'Бірюзовий',
 		family: 'blue',
 		hex_stops: ['#008080'],
-		synonyms: ['Tea Бірюзовий', 'Синьо-зелений']
+		synonyms: ['Tea Бірюзовий']
 	},
 	{ name_en: 'Purple', name_uk: 'Фіолетовий', family: 'purple', hex_stops: ['#805ad5'] },
 	{
 		name_en: 'Iris Purple',
 		name_uk: 'Фіолетовий ірис',
 		family: 'purple',
-		hex_stops: ['#5a4fcf'],
-		synonyms: ['Бузкво-фіолетовий', 'Лавандово-фіолетовий', 'Синьо-фіолетовий']
+		hex_stops: ['#5a4fcf']
 	},
 	{
 		name_en: 'Magenta',
@@ -177,8 +169,7 @@ const COLORS = [
 		name_en: 'Dark Brown',
 		name_uk: 'Темно-коричневий',
 		family: 'brown',
-		hex_stops: ['#4b3621'],
-		synonyms: ['Каштановий']
+		hex_stops: ['#4b3621']
 	},
 	{
 		name_en: 'Light Brown',
@@ -190,14 +181,20 @@ const COLORS = [
 		name_en: 'Coffee',
 		name_uk: 'Кавовий',
 		family: 'brown',
-		hex_stops: ['#6f4e37'],
-		synonyms: ['Кавово-коричневий']
+		hex_stops: ['#6f4e37']
 	},
 	{ name_en: 'Chocolate', name_uk: 'Шоколадний', family: 'brown', hex_stops: ['#7b3f00'] },
 	{ name_en: 'Walnut', name_uk: 'Горіх', family: 'brown', hex_stops: ['#5c4033'] },
 	{ name_en: 'Oak', name_uk: 'Дубовий', family: 'brown', hex_stops: ['#c8a165'] },
 	{ name_en: 'Maple', name_uk: 'Клен', family: 'brown', hex_stops: ['#d9a066'] },
-	{ name_en: 'Gold', name_uk: 'Золотий', family: 'gold', hex_stops: ['#d4af37'] },
+	// Kingroon's invoices write «Golden» (Silk Golden, HC111); the shopper-facing name stays Gold.
+	{
+		name_en: 'Gold',
+		name_uk: 'Золотий',
+		family: 'gold',
+		hex_stops: ['#d4af37'],
+		synonyms: ['Golden']
+	},
 	{ name_en: 'Rose Gold', name_uk: 'Рожеве золото', family: 'gold', hex_stops: ['#b76e79'] },
 	{ name_en: 'Champagne', name_uk: 'Шампань', family: 'gold', hex_stops: ['#f7e7ce'] },
 	{ name_en: 'Bronze', name_uk: 'Бронзовий', family: 'gold', hex_stops: ['#cd7f32'] },
@@ -228,8 +225,7 @@ const COLORS = [
 		name_en: 'Clear',
 		name_uk: 'Безбарвний',
 		family: 'transparent',
-		hex_stops: ['#e8f4f8'],
-		synonyms: ['Прозорий']
+		hex_stops: ['#e8f4f8']
 	},
 	// Multi-colour: `hex_stops` order is what the conic swatch is painted from.
 	{
@@ -466,7 +462,7 @@ const COLORS = [
 		name_uk: 'Флуоресцентний жовтий',
 		family: 'yellow',
 		hex_stops: ['#e6f43c'],
-		synonyms: ['Флуоресцентний жовтий', 'Флуорисцентний жовтий']
+		synonyms: ['Флуоресцентний жовтий', 'Флуорисцентний жовтий', 'Fluo Yellow']
 	},
 	{
 		name_en: 'Fluorescent Blue',
@@ -480,7 +476,7 @@ const COLORS = [
 		name_uk: 'Флуоресцентний червоний',
 		family: 'red',
 		hex_stops: ['#f5402a'],
-		synonyms: ['Флуоресцентний червоний', 'Флуорисцентний червоний']
+		synonyms: ['Флуоресцентний червоний', 'Флуорисцентний червоний', 'Fluo Red']
 	},
 	{
 		name_en: 'Neon Green',
@@ -608,6 +604,146 @@ const COLORS = [
 		family: 'multicolor',
 		hex_stops: ['#8a8f96', '#f4f5f6'],
 		synonyms: ['Сірий-білий', 'Сірий - білий']
+	},
+	// ---------------------------------------------------------------------------------
+	// Added 2026-09-07 after checking every Ukrainian name against the suppliers' own invoices
+	// (Kingroon commercial invoices of May and June 2026, the Sunlu proforma of June 2026 and
+	// the Sunlu order form). The earlier synonyms had folded several supplier colours into a
+	// neighbour of a different brand — Sunlu «Sunny Orange» into Bambu «Sunflower», Sunlu
+	// «Cherry Red» into Bambu «Burgundy Red», Kingroon «Sky blue» into «Cyan» — so a shopper read
+	// one manufacturer's name on another manufacturer's spool. Each entry below is the name the
+	// invoice prints; a supplier's misspelling («Suny Orange», «Roasted Chesnut») is kept only as
+	// a synonym for matching, never as the name a shopper sees.
+	//
+	// Sunlu (Classic PLA / PETG / Wood PLA).
+	{
+		name_en: 'Sky Blue',
+		name_uk: 'Небесно-блакитний',
+		family: 'blue',
+		hex_stops: ['#87ceeb'],
+		// Kingroon NPLA019 / NPETG002 print «Sky blue» too.
+		synonyms: ['Небесно-блакитний']
+	},
+	{
+		name_en: 'Sunny Orange',
+		name_uk: 'Сонячно-помаранчевий',
+		family: 'orange',
+		hex_stops: ['#ff9a3c'],
+		synonyms: ['Сонячно-помаранчевий', 'Suny Orange']
+	},
+	{
+		name_en: 'Cherry Red',
+		name_uk: 'Вишнево-червоний',
+		family: 'red',
+		hex_stops: ['#c41e3a'],
+		synonyms: ['Вишнево-червоний']
+	},
+	{
+		name_en: 'Cherry Wood',
+		name_uk: 'Вишня',
+		family: 'brown',
+		hex_stops: ['#8b4a3a'],
+		synonyms: ['Вишня', 'Cherry wood']
+	},
+	{
+		name_en: 'Lavender Purple',
+		name_uk: 'Лавандово-фіолетовий',
+		family: 'purple',
+		hex_stops: ['#b57edc'],
+		synonyms: ['Лавандово-фіолетовий']
+	},
+	{
+		name_en: 'Vivid Yellow',
+		name_uk: 'Яскраво-жовтий',
+		family: 'yellow',
+		hex_stops: ['#ffe000'],
+		synonyms: ['Яскраво-жовтий']
+	},
+	{
+		name_en: 'Roasted Chestnut',
+		name_uk: 'Каштановий',
+		family: 'brown',
+		hex_stops: ['#6b3e26'],
+		synonyms: ['Каштановий', 'Roasted Chesnut']
+	},
+	{
+		name_en: 'Midnight',
+		name_uk: 'Опівнічний синій',
+		family: 'blue',
+		hex_stops: ['#191970'],
+		synonyms: ['Опівнічний (темно-синій)']
+	},
+	{
+		name_en: 'Olive Green',
+		name_uk: 'Оливково-зелений',
+		family: 'green',
+		hex_stops: ['#6b8e23'],
+		synonyms: ['Оливково-зелений']
+	},
+	{
+		name_en: 'Mint Green',
+		name_uk: 'М’ятно-зелений',
+		family: 'green',
+		hex_stops: ['#98e6b0'],
+		synonyms: ['М’ятно-зелений']
+	},
+	{
+		name_en: 'Coffee Brown',
+		name_uk: 'Кавово-коричневий',
+		family: 'brown',
+		hex_stops: ['#7b5b3a'],
+		synonyms: ['Кавово-коричневий']
+	},
+	// Kingroon. «Transparent» is what every Kingroon invoice prints (HC020, HC090, HC105,
+	// NPETG007, TPU); Bambu's colourless PETG is «Clear», and the two stay separate entries.
+	{
+		name_en: 'Transparent',
+		name_uk: 'Прозорий',
+		family: 'transparent',
+		hex_stops: ['#eef6f9'],
+		synonyms: ['Прозорий']
+	},
+	// Kingroon PLA Dual-Silk pairs the invoice prints as «Blue-Green» (HC117) and «Blue-Purple»
+	// (HC189); before this they were folded into Teal and Iris Purple.
+	{
+		name_en: 'Blue Green Silk',
+		name_uk: 'Синьо-зелений',
+		family: 'multicolor',
+		hex_stops: ['#3182ce', '#38a169'],
+		synonyms: ['Синьо-зелений', 'Blue-Green']
+	},
+	{
+		name_en: 'Blue Purple Silk',
+		name_uk: 'Синьо-фіолетовий',
+		family: 'multicolor',
+		hex_stops: ['#3182ce', '#805ad5'],
+		synonyms: ['Синьо-фіолетовий', 'Blue-Purple']
+	},
+	// Kingroon PLA Matte MPLA319 / MPLA320: no invoice in hand names them, so the English is the
+	// literal translation of the shop's own Ukrainian and stays open for the owner to confirm.
+	// The stored spelling «Бузкво-фіолетовий» is a typo of the shop's, kept only as a synonym.
+	{
+		name_en: 'Lilac Purple',
+		name_uk: 'Бузково-фіолетовий',
+		family: 'purple',
+		hex_stops: ['#c8a2c8'],
+		synonyms: ['Бузкво-фіолетовий']
+	},
+	{
+		name_en: 'Grass Green',
+		name_uk: 'Трав’яний зелений',
+		family: 'green',
+		hex_stops: ['#7cb342'],
+		synonyms: ['Трав’яний зелений']
+	},
+	// Bambu Lab ABS «Navy Blue» is its own colour, distinct from PLA Matte «Dark Blue»; the
+	// shop had written «Темно-синій» for both, so the ABS one takes the Ukrainian for navy.
+	{
+		name_en: 'Navy Blue',
+		name_uk: 'Морський синій',
+		family: 'blue',
+		hex_stops: ['#1f2f5f'],
+		synonyms: ['Navy Blue Темно-синій']
 	}
 ]
 

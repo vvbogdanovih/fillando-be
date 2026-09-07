@@ -20,7 +20,8 @@
  * completely untouched and listed in color-report.json with its variant count, for a human to
  * map by adding a synonym to seed-colors.js (then re-running both).
  *
- * Idempotent: a variant already pointing at the right colour is skipped, and `v_value_legacy`
+ * Idempotent: a variant already pointing at the right colour is skipped, the match is made on
+ * the original spelling (`v_value_legacy` once it exists), and `v_value_legacy`
  * is written only once, so a re-run cannot lose the original spelling.
  *
  * Writes go through the raw driver: `updatedAt` is intentionally not touched.
@@ -246,12 +247,18 @@ async function migrate(db) {
 			continue
 		}
 
-		const color = matchColor(index, variant.v_value)
+		// The original spelling is what the dictionary is written against. After a first run the
+		// variant carries the canonical English name in `v_value` and the original in
+		// `v_value_legacy`; matching on the original lets a corrected dictionary re-point a variant
+		// on a re-run (2026-09-07: Sunlu «Сонячно-помаранчевий» had landed on Bambu's Sunflower),
+		// where matching on the canonical name would only ever confirm the earlier answer.
+		const spelling =
+			variant.v_value_legacy !== undefined && variant.v_value_legacy !== null
+				? variant.v_value_legacy
+				: variant.v_value
+		const color = matchColor(index, spelling)
 		if (!color) {
-			const key =
-				variant.v_value === null || variant.v_value === undefined
-					? '<null>'
-					: String(variant.v_value)
+			const key = spelling === null || spelling === undefined ? '<null>' : String(spelling)
 			if (!unmatched.has(key)) unmatched.set(key, { value: key, count: 0, examples: [] })
 			const entry = unmatched.get(key)
 			entry.count++
@@ -467,7 +474,14 @@ async function main() {
 	}
 }
 
-module.exports = { generateSlug, isColorAxis, isRefillVariant, buildIndex, matchColor, mergeSlugMap }
+module.exports = {
+	generateSlug,
+	isColorAxis,
+	isRefillVariant,
+	buildIndex,
+	matchColor,
+	mergeSlugMap
+}
 
 if (require.main === module) {
 	main().catch(err => {

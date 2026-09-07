@@ -92,6 +92,54 @@ const FIXES = [
 			}
 		}
 	},
+	// Two Kingroon variants whose Ukrainian value is a *different* colour's name in the
+	// dictionary, so no synonym can tell them apart — only the Kingroon article number can. The
+	// June 2026 invoice prints NPETG002 as «Sky Blue» (the shop wrote «Блакитний», which is Cyan)
+	// and HCGS004 as «Cyan» (the shop wrote «Бірюзовий», which is Teal). The fix rewrites the
+	// field that holds the original spelling: `v_value` before the colour step has run, and
+	// `v_value_legacy` after it, since the colour step matches on the original and re-points.
+	...[
+		{
+			id: 'npetg002-sky-blue',
+			_id: '69c459b3cfa63d15569a1be0',
+			sku: 'FL-000004',
+			vendor: 'NPETG002-ZX',
+			from: ['Блакитний', 'Cyan'],
+			to: 'Sky Blue',
+			what: 'FL-000004 (Kingroon NPETG002) is stored as «Блакитний», the dictionary name of Cyan; the invoice says Sky Blue'
+		},
+		{
+			id: 'hcgs004-cyan',
+			_id: '69fb0c12c31a38c20471a8e3',
+			sku: 'FL-000067',
+			vendor: 'HCGS004',
+			from: ['Бірюзовий', 'Teal'],
+			to: 'Cyan',
+			what: 'FL-000067 (Kingroon HCGS004) is stored as «Бірюзовий», the dictionary name of Teal; the invoice says Cyan'
+		}
+	].map(f => ({
+		id: f.id,
+		collection: 'product_variants',
+		_id: f._id,
+		what: f.what,
+		why: "A shopper would read another colour's name on the spool; the supplier's own invoice names the colour.",
+		expect: doc => {
+			const stored = doc.v_value_legacy ?? doc.v_value
+			return doc.sku === f.sku &&
+				doc.vendor_product_sku === f.vendor &&
+				[...f.from, f.to].includes(stored)
+				? null
+				: `expected ${f.sku} / ${f.vendor} with value ${JSON.stringify(f.from)}, found ${JSON.stringify({ sku: doc.sku, vendor_product_sku: doc.vendor_product_sku, v_value: doc.v_value, v_value_legacy: doc.v_value_legacy })}`
+		},
+		apply: doc => {
+			const field = doc.v_value_legacy !== undefined ? 'v_value_legacy' : 'v_value'
+			if (doc[field] === f.to) return null
+			return {
+				set: { [field]: f.to },
+				describe: `${field} ${JSON.stringify(doc[field])} → ${JSON.stringify(f.to)}`
+			}
+		}
+	})),
 	{
 		id: 'petg-3kg-category-type',
 		collection: 'products',

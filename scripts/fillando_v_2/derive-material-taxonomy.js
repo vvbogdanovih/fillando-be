@@ -8,7 +8,12 @@
  *   polymer        Тип пластику      PLA, PETG, ABS, ASA, PA6, PET, TPU
  *   finish         Ефект поверхні    Silk, Matte, Rainbow, Glow, …  (multi-valued)
  *   reinforcement  Армування         CF, GF
- *   series         Серія             Standard, High Speed, Plus, Lite
+ *   series         Серія             Basic, High Speed, Plus, Lite
+ *
+ * The plain series is `Basic`, not `Standard` (the owner's call, 2026-09-07): «Базова» reads as a
+ * tier the way «Plus» and «High Speed» do, and it matches how Bambu Lab already names the line
+ * (PLA Basic, PETG Basic). Re-running this step rewrites the value — the derived entries are
+ * rebuilt from scratch on every run — so no separate rename is needed.
  *
  * Multi-valued dimensions are several entries sharing a key — `PLA Matte Rainbow` yields two
  * `finish` rows — which the catalogue's `$elemMatch: { k, v: { $in } }` already treats as an
@@ -57,28 +62,28 @@ const KEYS = {
 
 /** The 29 rows of TD-0002 §5.2.1. `finish` is an array because a material can carry two. */
 const TAXONOMY = {
-	ABS: { polymer: 'ABS', finish: [], reinforcement: null, series: 'Standard' },
-	'ABS-GF': { polymer: 'ABS', finish: [], reinforcement: 'GF', series: 'Standard' },
-	ASA: { polymer: 'ASA', finish: [], reinforcement: null, series: 'Standard' },
-	'PA6 Nylon': { polymer: 'PA6', finish: [], reinforcement: null, series: 'Standard' },
-	'PA6-CF': { polymer: 'PA6', finish: [], reinforcement: 'CF', series: 'Standard' },
-	'PET-CF': { polymer: 'PET', finish: [], reinforcement: 'CF', series: 'Standard' },
-	PETG: { polymer: 'PETG', finish: [], reinforcement: null, series: 'Standard' },
+	ABS: { polymer: 'ABS', finish: [], reinforcement: null, series: 'Basic' },
+	'ABS-GF': { polymer: 'ABS', finish: [], reinforcement: 'GF', series: 'Basic' },
+	ASA: { polymer: 'ASA', finish: [], reinforcement: null, series: 'Basic' },
+	'PA6 Nylon': { polymer: 'PA6', finish: [], reinforcement: null, series: 'Basic' },
+	'PA6-CF': { polymer: 'PA6', finish: [], reinforcement: 'CF', series: 'Basic' },
+	'PET-CF': { polymer: 'PET', finish: [], reinforcement: 'CF', series: 'Basic' },
+	PETG: { polymer: 'PETG', finish: [], reinforcement: null, series: 'Basic' },
 	'PETG High Speed': { polymer: 'PETG', finish: [], reinforcement: null, series: 'High Speed' },
-	'PETG-CF': { polymer: 'PETG', finish: [], reinforcement: 'CF', series: 'Standard' },
-	PLA: { polymer: 'PLA', finish: [], reinforcement: null, series: 'Standard' },
+	'PETG-CF': { polymer: 'PETG', finish: [], reinforcement: 'CF', series: 'Basic' },
+	PLA: { polymer: 'PLA', finish: [], reinforcement: null, series: 'Basic' },
 	'PLA Dual-Silk': {
 		polymer: 'PLA',
 		finish: ['Dual-Silk'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
-	'PLA Glow': { polymer: 'PLA', finish: ['Glow'], reinforcement: null, series: 'Standard' },
+	'PLA Glow': { polymer: 'PLA', finish: ['Glow'], reinforcement: null, series: 'Basic' },
 	'PLA Gradient': {
 		polymer: 'PLA',
 		finish: ['Gradient'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
 	'PLA High Speed': { polymer: 'PLA', finish: [], reinforcement: null, series: 'High Speed' },
 	'PLA Lite': { polymer: 'PLA', finish: [], reinforcement: null, series: 'Lite' },
@@ -86,29 +91,29 @@ const TAXONOMY = {
 		polymer: 'PLA',
 		finish: ['Luminous'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
-	'PLA Matte': { polymer: 'PLA', finish: ['Matte'], reinforcement: null, series: 'Standard' },
+	'PLA Matte': { polymer: 'PLA', finish: ['Matte'], reinforcement: null, series: 'Basic' },
 	'PLA Matte Rainbow': {
 		polymer: 'PLA',
 		finish: ['Matte', 'Rainbow'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
-	'PLA Rainbow': { polymer: 'PLA', finish: ['Rainbow'], reinforcement: null, series: 'Standard' },
-	'PLA Silk': { polymer: 'PLA', finish: ['Silk'], reinforcement: null, series: 'Standard' },
+	'PLA Rainbow': { polymer: 'PLA', finish: ['Rainbow'], reinforcement: null, series: 'Basic' },
+	'PLA Silk': { polymer: 'PLA', finish: ['Silk'], reinforcement: null, series: 'Basic' },
 	'PLA Silk Rainbow': {
 		polymer: 'PLA',
 		finish: ['Silk', 'Rainbow'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
 	'PLA Silk+': { polymer: 'PLA', finish: ['Silk'], reinforcement: null, series: 'Plus' },
 	'PLA Temperature Changing': {
 		polymer: 'PLA',
 		finish: ['Temperature Changing'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
 	// "Transparent" describes the colour, not the surface, so it is not a finish — it is meant
 	// to be covered by `color.family = transparent` (TD-0002 §5.2.1, note under the table).
@@ -116,18 +121,18 @@ const TAXONOMY = {
 		polymer: 'PLA',
 		finish: ['Rainbow'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
 	'PLA Tri-silk': {
 		polymer: 'PLA',
 		finish: ['Tri-Silk'],
 		reinforcement: null,
-		series: 'Standard'
+		series: 'Basic'
 	},
 	'PLA+': { polymer: 'PLA', finish: [], reinforcement: null, series: 'Plus' },
-	'PLA-CF': { polymer: 'PLA', finish: [], reinforcement: 'CF', series: 'Standard' },
-	TPU: { polymer: 'TPU', finish: [], reinforcement: null, series: 'Standard' },
-	'Wood PLA': { polymer: 'PLA', finish: ['Wood'], reinforcement: null, series: 'Standard' }
+	'PLA-CF': { polymer: 'PLA', finish: [], reinforcement: 'CF', series: 'Basic' },
+	TPU: { polymer: 'TPU', finish: [], reinforcement: null, series: 'Basic' },
+	'Wood PLA': { polymer: 'PLA', finish: ['Wood'], reinforcement: null, series: 'Basic' }
 }
 
 /** Case-insensitive index, so 'pla silk' and 'PLA Silk' resolve to the same row. */

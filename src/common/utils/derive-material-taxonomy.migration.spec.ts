@@ -56,8 +56,8 @@ describe('the taxonomy table', () => {
 	})
 
 	it.each([
-		['ABS-GF', 'ABS', 'GF', 'Standard'],
-		['PA6-CF', 'PA6', 'CF', 'Standard'],
+		['ABS-GF', 'ABS', 'GF', 'Basic'],
+		['PA6-CF', 'PA6', 'CF', 'Basic'],
 		['PLA+', 'PLA', null, 'Plus'],
 		['PLA Silk+', 'PLA', null, 'Plus'],
 		['PETG High Speed', 'PETG', null, 'High Speed'],
@@ -131,7 +131,7 @@ describe('deriveAttributes', () => {
 			{ k: 'polymer', l: 'Тип пластику', v: 'PLA' },
 			{ k: 'finish', l: 'Ефект поверхні', v: 'Matte' },
 			{ k: 'finish', l: 'Ефект поверхні', v: 'Rainbow' },
-			{ k: 'series', l: 'Серія', v: 'Standard' }
+			{ k: 'series', l: 'Серія', v: 'Basic' }
 		])
 	})
 
@@ -159,7 +159,7 @@ describe('deriveAttributes', () => {
 		expect(result.attributes).toEqual([
 			{ k: 'material', l: 'Матеріал', v: 'PLA' },
 			{ k: 'polymer', l: 'Тип пластику', v: 'PLA' },
-			{ k: 'series', l: 'Серія', v: 'Standard' }
+			{ k: 'series', l: 'Серія', v: 'Basic' }
 		])
 	})
 

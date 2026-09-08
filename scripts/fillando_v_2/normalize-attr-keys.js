@@ -47,7 +47,13 @@ const ATTR_KEY_OVERRIDES = Object.freeze({
 	'ефект поверхні': 'finish',
 	армування: 'reinforcement',
 	серія: 'series',
-	'котушка в комплекті': 'spool_included'
+	'котушка в комплекті': 'spool_included',
+	// Not a TD-0002 dimension: this entry pins an existing key across a label change. The
+	// mock's specification row reads «Вага філаменту», the stored label is «Вага», and the key
+	// is derived from the label on every save — so renaming the label in the admin, or by
+	// migration, would move `vaha` to `vaha_filamentu` and silently drop the dimension out of
+	// the sidebar, the facets and every landing pinning it (Plan-0005 I-27).
+	'вага філаменту': 'vaha'
 })
 
 const CATEGORY_FIELDS = { keyField: 'key', labelField: 'label' }

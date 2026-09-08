@@ -84,6 +84,13 @@ REVALIDATE_SECRET (optional, min 32 chars — sent as `x-revalidate-secret` to t
 | Армування           | `reinforcement`  |
 | Серія               | `series`         |
 | Котушка в комплекті | `spool_included` |
+| Вага філаменту      | `vaha`           |
+
+The last row is not a TD-0002 dimension. It pins an existing key across a label change: the
+mock's specification row reads «Вага філаменту», the stored label is «Вага», and the key is
+recomputed from the label on every save — so renaming the label, in the admin or by migration,
+would move `vaha` to `vaha_filamentu` and drop the dimension out of the sidebar, the facets and
+any landing pinning it. Both labels therefore resolve to `vaha` (Plan-0005 I-27).
 
 Rules:
 
@@ -112,7 +119,7 @@ yarn migrate --colors-only                           # after the frontend is liv
 yarn migrate:verify                                  # read-only report, safe on production
 ```
 
-Everything that migrates catalogue data lives in **`scripts/fillando_v_2/`** with its own [README](scripts/fillando_v_2/README.md); older one-off migrations stay in `scripts/migrations/`. `yarn migrate` is the single entry point and runs the nine scripts in order.
+Everything that migrates catalogue data lives in **`scripts/fillando_v_2/`** with its own [README](scripts/fillando_v_2/README.md); older one-off migrations stay in `scripts/migrations/`. `yarn migrate` is the single entry point and runs the twelve scripts in order.
 
 `rehearse-on-dump.sh` restores a `mongodump` into the disposable MongoDB from
 `docker-compose.test.yml` and runs the whole chain against it. It restores only the catalogue
@@ -129,7 +136,10 @@ An apply makes **two passes**: steps after the taxonomy append attributes, the t
 6. `seed-colors.js` — the colour dictionary, 103 entries. 47 of them were added on 2026-09-05 to cover the spellings this catalogue actually stores (Dual-Silk and Tri-Silk gradients, the numbered Sunlu rainbows, thermochromic pairs); `colour-dictionary-coverage.spec.ts` asserts every one still resolves. `synonyms` live here, not in the database, and the normalizer reads them from this file.
 7. `seed-landings.js` — the 14 landings as drafts; runs after 3 and 5 because its filters key off the dimensions they create. A landing whose dry run lists 0 products stays unpublished.
 8. `fill-landing-copy.js` — writes the reviewed copy from `landing-copy.js` into those landings, leaving them **draft**. Only landings whose copy is still empty are touched, so text edited in the admin is never overwritten, and the copy is validated against the `sanitizeRichText` allowlist before the write because this path bypasses the API sanitizer.
-9. `normalize-variant-colors.js` — points variants at the dictionary, still **skipping any variant that carries the refill marker**; after step 4 the real refill no longer does, so its colour resolves like any other. **Do not run this on production until Plan-0004 tasks 12 and 32 are both live**: it rewrites `v_value` to the English name, and until the storefront renders `color` instead, the whole shop flips to English colour names. Variant slugs change with no 301 (the owner's decision); `reports/slug-map.json` records every move and is merged, never truncated, across runs. Unidentifiable spellings are left untouched and listed in `reports/color-report.json` for a human. A slug collision aborts the run — `--force` applies the rest.
+9. `backfill-variant-weight.js` — writes `ProductVariant.weight_g` from the filament weight attribute plus the spool and packaging allowance; a refill carries no spool, so its allowance is different. This is the number the delivery estimate and `g:shipping_weight` both read.
+10. `backfill-attribute-units.js` — fills `required_attributes[].unit` where the unit follows unambiguously from the label («Вага» → `кг`, «Діаметр» → `мм`, «Температура друку» → `°C`) and renames the weight label to «Вага філаменту». Without a unit the specification table drops the row rather than print «Вага | 1»; the rename is safe only because `ATTR_KEY_OVERRIDES` pins both labels to `vaha`, and the step refuses to rename if that entry is missing.
+11. `normalize-variant-colors.js` — points variants at the dictionary, still **skipping any variant that carries the refill marker**; after step 4 the real refill no longer does, so its colour resolves like any other. **Do not run this on production until Plan-0004 tasks 12 and 32 are both live**: it rewrites `v_value` to the English name, and until the storefront renders `color` instead, the whole shop flips to English colour names. Variant slugs change with no 301 (the owner's decision); `reports/slug-map.json` records every move and is merged, never truncated, across runs. Unidentifiable spellings are left untouched and listed in `reports/color-report.json` for a human. A slug collision aborts the run — `--force` applies the rest.
+12. `rename-products-short.js` — the short product names of the mock, from the reviewed dictionary in `short-names.js`. Held back with the colour step: it regenerates every variant slug with no 301 (the owner's decision), and `reports/rename-report.json` is what `--rollback` reads.
 
 Reports land in `scripts/fillando_v_2/reports/` and are gitignored.
 

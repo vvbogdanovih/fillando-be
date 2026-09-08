@@ -110,14 +110,22 @@ describe('generateAttrKey', () => {
 })
 
 describe('ATTR_KEY_OVERRIDES', () => {
-	it('contains exactly the five catalogue filter dimensions', () => {
+	it('contains the five catalogue filter dimensions plus the pinned weight label', () => {
 		expect(ATTR_KEY_OVERRIDES).toEqual({
 			'тип пластику': 'polymer',
 			'ефект поверхні': 'finish',
 			армування: 'reinforcement',
 			серія: 'series',
-			'котушка в комплекті': 'spool_included'
+			'котушка в комплекті': 'spool_included',
+			'вага філаменту': 'vaha'
 		})
+	})
+
+	it('pins «Вага філаменту» to the key the stored «Вага» label already produces', () => {
+		// The two labels must reach the same dimension: the row is renamed for the shopper,
+		// the sidebar and the landings keep filtering by `vaha` (Plan-0005 I-27).
+		expect(generateAttrKey('Вага')).toBe('vaha')
+		expect(generateAttrKey('Вага філаменту')).toBe('vaha')
 	})
 
 	it('stores every label already in normalized form', () => {

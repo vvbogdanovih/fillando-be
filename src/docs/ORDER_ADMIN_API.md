@@ -9,8 +9,9 @@ table below. The module also exposes user-owned routes (`POST /orders`, `GET /or
 Customer-facing responses (`POST /orders`, `GET /orders/me*`) go through a customer
 projection that omits `items[].vendor_sku` (the supplier article snapshot is for the admin
 invoice and vendor e-mail only); admin routes return the full item. `POST /orders` also
-refuses draft/archived variants (`400 Variant <sku> is not available`) — they are hidden from
-every public read and must not be orderable by id.
+refuses draft/archived variants (`400 VARIANT_UNAVAILABLE`) — they are hidden from every
+public read and must not be orderable by id; see _`POST /orders` refusals_ below for the full
+list of codes.
 
 ---
 
@@ -32,6 +33,36 @@ every public read and must not be orderable by id.
 | `GET`   | `/orders/lookup/:orderNumber?token=…`                | public, HMAC token        | Payment state of an order (`order_number`, `payment_method`, `payment_status`, `total_price`, `order_status`, `delivery_method`, `can_change_payment_method`) for the checkout success page — see `LIQPAY_FLOW.md` |
 | `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order `NEW`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
 | `PATCH` | `/orders/me/:id/payment-method`                      | `JwtAuthGuard`, owner     | The same change for a signed-in buyer's own order; returns the customer order shape                                                                                                                                |
+
+---
+
+## `POST /orders` refusals
+
+Every refusal of order creation is read by the buyer on the checkout page — the storefront
+echoes `message` verbatim for anything but a `429` — so all of them are Ukrainian, phrased as an
+action, and carry a machine-readable `code`. Line-level ones also carry `variant_id`, which is
+what the storefront pins the message to (Plan-0005, screen «Чекаут: помилки»).
+
+| Status | `code`                         | Extra fields                                      | When                                                       |
+| ------ | ------------------------------ | ------------------------------------------------- | ---------------------------------------------------------- |
+| `404`  | `VARIANT_NOT_FOUND`            | `variant_id`                                      | the id in the cart matches no variant at all               |
+| `400`  | `VARIANT_UNAVAILABLE`          | `variant_id`, `sku`                               | the variant is `draft`/`archived` (archived while in cart) |
+| `409`  | `OUT_OF_STOCK`                 | `variant_id`, `sku`, `available` (0), `requested` | `stock === 0` — the line has to be removed                 |
+| `409`  | `INSUFFICIENT_STOCK`           | `variant_id`, `sku`, `available`, `requested`     | `0 < stock < requested` — the quantity can be reduced      |
+| `400`  | `DELIVERY_ADDRESS_REQUIRED`    | —                                                 | non-`PICKUP` delivery with no `delivery_address`           |
+| `400`  | `NOVA_POST_WAREHOUSE_REQUIRED` | —                                                 | `NOVA_POST` without `warehouse_description` / `_number`    |
+| `400`  | `COURIER_ADDRESS_REQUIRED`     | —                                                 | `COURIER` without `street` / `building`                    |
+| `400`  | `COUPON_INVALID`               | —                                                 | no active coupon with that code                            |
+| `400`  | `COUPON_EXPIRED`               | —                                                 | the coupon's `valid_until` has passed                      |
+
+`OUT_OF_STOCK` and `INSUFFICIENT_STOCK` are split because the advice differs: at zero there is
+nothing left to reduce, so the text asks for the line to be removed rather than for a smaller
+quantity. Both keep `available`, so a client may also branch on `available === 0`.
+
+The payment/delivery combination refusal (`COD` needs a carrier, `CASH` needs pickup) is a
+`400` with a Ukrainian sentence and no `code` — it is not tied to one cart line.
+`validateDeliveryData` is shared with the admin `PATCH /orders/:id`, so an admin edit missing
+the same fields answers with the same codes.
 
 ---
 
@@ -97,6 +128,16 @@ order also recalculates the payment status
 
 Without this, a cancelled unpaid order kept reading «Очікує оплату» in the
 customer account, the admin panel, reports and the PDF invoice.
+
+## A claimed card retry sets the payment back to `PENDING`
+
+`POST /liqpay/checkout` claims one live session per order. When it grants that claim it also
+writes `payment_status = PENDING`, which matters for the admin view: an order whose card payment
+was declined reads `FAILED` only until the buyer opens a retry, after which it reads `PENDING`
+again with a fresh `liqpay_checkout_started_at`. The next callback decides it (`PAID` or
+`FAILED` again). This is what stops two tabs of a `FAILED` order from opening two live gateway
+sessions; the retry itself is still allowed immediately. See `LIQPAY_FLOW.md` → _One live
+session, retries included_.
 
 ## Gateway callback on a cancelled order
 

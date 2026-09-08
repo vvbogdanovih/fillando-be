@@ -4,7 +4,9 @@ import { PaymentMethod, PaymentStatus } from 'src/common/types/enums'
  * How long one LiqPay checkout is treated as possibly still live (TD-0009 §5.4.3). While the
  * payment is PENDING a second payload within this window is refused: the first session may yet
  * complete, and two live sessions is how a buyer gets charged twice. A FAILED payment is a
- * session LiqPay itself has closed, so it may be retried at once.
+ * session LiqPay itself has closed, so it may be retried at once — and the moment that retry is
+ * claimed, `OrderService.claimLiqpayCheckout` puts the payment back to PENDING, so the window
+ * below starts counting for the retry too and a second tab cannot open a second live session.
  */
 export const LIQPAY_SESSION_COOLDOWN_MS = 15 * 60_000
 

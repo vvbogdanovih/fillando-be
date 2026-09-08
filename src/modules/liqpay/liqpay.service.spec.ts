@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
+import {
+	BadRequestException,
+	ConflictException,
+	NotFoundException,
+	ServiceUnavailableException
+} from '@nestjs/common'
 import { ENV } from 'src/common/constants'
 import {
 	liqpaySignature,
@@ -6,6 +11,7 @@ import {
 	verifyOrderAccessToken
 } from 'src/common/services/crypto.util'
 import { OrderStatus, PaymentMethod, PaymentProvider, PaymentStatus } from 'src/common/types/enums'
+import { liqpayRetryAfterSeconds } from 'src/modules/order/helpers/liqpay-session.helpers'
 import { LiqpayService } from './liqpay.service'
 
 // LiqpayService only needs PaymentProvidersService as a DI token; importing the real module pulls
@@ -25,6 +31,7 @@ const buildOrder = (overrides: Record<string, unknown> = {}) => ({
 	payment_status: PaymentStatus.PENDING,
 	order_status: OrderStatus.NEW,
 	total_price: 1234.5,
+	liqpay_checkout_started_at: null as Date | null,
 	...overrides
 })
 
@@ -208,5 +215,68 @@ describe('LiqpayService.buildCheckout — one live session at a time (TD-0009 §
 			BadRequestException
 		)
 		expect(orderService.claimLiqpayCheckout).not.toHaveBeenCalled()
+	})
+})
+
+describe('LiqpayService.buildCheckout — a failed attempt must not leave a clock behind (I-e)', () => {
+	type MutableOrder = OrderFixture & { liqpay_checkout_started_at: Date | null }
+
+	it('never stamps a session when the provider credentials cannot be read', async () => {
+		const { service, orderService, paymentProviders } = buildService(buildOrder())
+		// The provider was switched off between the checkout render and this submit.
+		paymentProviders.getActiveCredentials.mockRejectedValue(
+			new NotFoundException('No active LIQPAY payment provider configured')
+		)
+
+		const error = (await service
+			.buildCheckout(ORDER_NUMBER)
+			.catch((e: unknown) => e)) as ServiceUnavailableException
+
+		expect(error).toBeInstanceOf(ServiceUnavailableException)
+		const body = error.getResponse() as Record<string, unknown>
+		expect(body.code).toBe('LIQPAY_UNAVAILABLE')
+		expect(String(body.message)).toContain('Оплату карткою не розпочато')
+		expect(orderService.claimLiqpayCheckout).not.toHaveBeenCalled()
+	})
+
+	it('leaves the order with no session at all, so the buyer is told «not started», not «wait»', async () => {
+		const order = buildOrder() as MutableOrder
+		const { service, paymentProviders } = buildService(order)
+		paymentProviders.getActiveCredentials.mockRejectedValue(new Error('decrypt failed'))
+
+		await expect(service.buildCheckout(ORDER_NUMBER)).rejects.toBeInstanceOf(
+			ServiceUnavailableException
+		)
+
+		expect(order.liqpay_checkout_started_at).toBeNull()
+		// null, not a countdown: the storefront offers «pay now» again instead of a 15-minute clock
+		expect(liqpayRetryAfterSeconds(order)).toBeNull()
+	})
+
+	it('hands the payload to exactly one of two tabs submitting at the same time', async () => {
+		const order = buildOrder() as MutableOrder
+		const { service, orderService } = buildService(order)
+		// What the conditional write does in Mongo: whoever finds the stamp already set gets null.
+		orderService.claimLiqpayCheckout.mockImplementation(() => {
+			if (order.liqpay_checkout_started_at) return Promise.resolve(null)
+			order.liqpay_checkout_started_at = new Date()
+			order.payment_status = PaymentStatus.PENDING
+			return Promise.resolve(order)
+		})
+
+		const results = await Promise.allSettled([
+			service.buildCheckout(ORDER_NUMBER),
+			service.buildCheckout(ORDER_NUMBER)
+		])
+
+		const payloads = results.filter(r => r.status === 'fulfilled')
+		expect(payloads).toHaveLength(1)
+		expect((payloads[0] as PromiseFulfilledResult<{ data: string }>).value.data).toBeTruthy()
+
+		const refused = results.find(r => r.status === 'rejected') as PromiseRejectedResult
+		expect(refused.reason).toBeInstanceOf(ConflictException)
+		expect(
+			((refused.reason as ConflictException).getResponse() as Record<string, unknown>).code
+		).toBe('LIQPAY_SESSION_ACTIVE')
 	})
 })

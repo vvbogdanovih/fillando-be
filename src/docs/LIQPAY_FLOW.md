@@ -86,15 +86,22 @@ Public endpoint. Body: `{ "order_number": "FO-0000123" }` (validated against `/^
 - `400 Замовлення скасовано` if `order_status === CANCELLED` or `payment_status` is `VOIDED` /
   `REFUNDED` — a cancelled order must never be charged from a stale "try again" tab. Only
   `PENDING` and `FAILED` orders reach the gateway; that is how a retry works;
+- reads the active LiqPay credentials — **before** claiming the session. A provider switched
+  off between the checkout render and this submit, or a key that fails to decrypt, answers
+  `503 { code: 'LIQPAY_UNAVAILABLE' }` with «Оплату карткою не розпочато …» and leaves
+  `liqpay_checkout_started_at` untouched, so the buyer is told nothing was started instead of
+  being given a 15-minute clock for a session that never existed. Reading credentials is a
+  read, so the two-tab race is still decided by the conditional claim below;
 - claims the session with one conditional write (`OrderService.claimLiqpayCheckout`): the
   stamp `liqpay_checkout_started_at = now` is set only if the order is still an unpaid LiqPay
   order and either no session was opened, the previous one is older than
   `LIQPAY_SESSION_COOLDOWN_MS` (15 minutes), or the payment is `FAILED` (a session LiqPay
-  itself closed). Two tabs racing for the same order therefore get exactly one payload, and a
-  refused or failed claim hands nothing out. A refused claim is re-read and answered with
+  itself closed). The same write also sets `payment_status = PENDING`, which is what limits a
+  retry after `FAILED` to one live session — see _One live session, retries included_ below.
+  Two tabs racing for the same order therefore get exactly one payload, and a refused or
+  failed claim hands nothing out. A refused claim is re-read and answered with
   `409 { code: 'LIQPAY_SESSION_ACTIVE', retry_after_seconds }` while the cooldown runs, or a
   `400` when the order was paid or locked meanwhile (TD-0009 §5.4.3);
-- reads the active LiqPay credentials;
 - builds the LiqPay params:
 
     | Param         | Value                                                                             |
@@ -114,6 +121,34 @@ Public endpoint. Body: `{ "order_number": "FO-0000123" }` (validated against `/^
   `signature = base64(sha1(private_key + data + private_key))` (`liqpaySignature`).
 
 Response: `{ data, signature, action_url: 'https://www.liqpay.ua/api/3/checkout' }`.
+
+#### One live session, retries included
+
+There are no transactions here (standalone MongoDB), so the claim is deliberately a single
+`findOneAndUpdate` pinned on the whole state it read — payment method, payment status, order
+status and the session stamp. Nothing is written unless the order is still exactly an unpaid
+LiqPay order without a live session, and the write is what decides the race.
+
+| Payment before the claim         | Claim   | Payment after | What the buyer gets                                 |
+| -------------------------------- | ------- | ------------- | --------------------------------------------------- |
+| `PENDING`, no stamp              | granted | `PENDING`     | the payload                                         |
+| `PENDING`, stamp < 15 min        | refused | unchanged     | `409 LIQPAY_SESSION_ACTIVE` + `retry_after_seconds` |
+| `PENDING`, stamp ≥ 15 min        | granted | `PENDING`     | the payload, stamp refreshed                        |
+| `FAILED` (any stamp)             | granted | **`PENDING`** | the payload at once — no waiting for a retry        |
+| `FAILED`, second tab in parallel | refused | `PENDING`     | `409 LIQPAY_SESSION_ACTIVE` — the first tab has it  |
+| `PAID` / `VOIDED` / `REFUNDED`   | refused | unchanged     | `400` (already paid / cancelled)                    |
+
+TD-0009 §5.4.3 allows a retry after `FAILED` immediately, because LiqPay closed that session
+itself, and that stays true: nothing new to wait for. What changed is that the granted retry is
+a payment in flight again, so the claim moves `FAILED` back to `PENDING`. Without it both tabs
+of a `FAILED` order claimed a session — exactly the double-charge the cooldown exists to
+prevent — because `FAILED` is what the order reads until the next callback arrives.
+
+The visible consequence: after a retry is opened, the lookup reports `payment_status: PENDING`
+and a counting-down `liqpay_retry_after_seconds`, not `FAILED` with `0`. If the buyer abandons
+that retry too, the next one waits out the cooldown or switches payment method — the same rule
+that has always applied to a first attempt. A callback reporting the retry as failed puts the
+order back to `FAILED`, and the next retry is immediate again.
 
 ### 3. Browser form-POST to LiqPay
 
@@ -302,14 +337,18 @@ Response: the extended lookup shape above.
    page load — the page is reached on failure too.
 4. `FAILED` → render the failure state with a "try again" action that calls
    `POST /liqpay/checkout` with the same `order_number` and re-submits the form, and a
-   "choose another payment method" action that calls the payment-method `PATCH`. The checkout
+   "choose another payment method" action that calls the payment-method `PATCH`. A granted
+   retry turns the order back into `PENDING`, so a page that polls after it will see `PENDING`,
+   not `FAILED`, and a second "try again" from another tab gets `409 LIQPAY_SESSION_ACTIVE`. The checkout
    endpoint allows a retry for `PENDING` and `FAILED` orders only: already-`PAID` ones get
    `400 Замовлення вже оплачено` (a double-submit after a late callback cannot charge twice) and
    cancelled ones get `400 Замовлення скасовано`. Messages are Ukrainian because the storefront
    shows them to the buyer as they are.
 5. `PENDING` after the polling window → the same two actions. "Pay now" may answer
    `409 LIQPAY_SESSION_ACTIVE` with `retry_after_seconds`; tell the buyer to wait or to pick
-   another method — the cooldown is what makes offering the button safe.
+   another method — the cooldown is what makes offering the button safe. It may also answer
+   `503 LIQPAY_UNAVAILABLE`: nothing was started, so keep both actions available and show the
+   message as it is (a `FAILED` order stays `FAILED` — no clock appears).
 6. `VOIDED` / `REFUNDED` → the order was cancelled; show that instead of a retry button (the
    server rejects a retry anyway, the frontend gate is UX, not security). `can_change_payment_method`
    is `false` here too, so no method change is offered.
@@ -325,6 +364,10 @@ Response: the extended lookup shape above.
 - Wrong token and unknown order are indistinguishable (`404` with the same message), and the
   comparison is constant-time, so the endpoint does not act as an order-number oracle.
 - Do not log the token. Order numbers are fine to log (they already appear everywhere).
+- A provider that cannot be read never becomes the buyer's problem to guess at: the checkout
+  answers `503 LIQPAY_UNAVAILABLE`, the failure is logged with the order number, and no session
+  stamp is written — a misconfigured or rotated key cannot lock an order out of paying for
+  15 minutes.
 - **Rate limits** (`@nestjs/throttler`, opt-in per handler — `API_AND_SWAGGER.md` §4a):
   the lookup 30 / minute per IP, the payment-method `PATCH` 5 / minute, `POST /liqpay/checkout`
   10 / minute. No DB hit happens before the token is verified, so a rejected request costs one

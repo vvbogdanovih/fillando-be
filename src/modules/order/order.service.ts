@@ -44,6 +44,23 @@ import {
 } from './helpers/liqpay-session.helpers'
 import { GenerateReportDto } from './dto/generate-report.dto'
 
+/**
+ * The variant fields an order line is built from. `ProductVariantRepository.findByIds` answers
+ * lean documents typed as the schema class, which carries no `_id`, so the map holds this shape:
+ * naming it keeps every buyer-facing refusal below type-checked instead of `any`.
+ */
+interface OrderableVariant {
+	_id: Types.ObjectId
+	product_id: Types.ObjectId
+	name: string
+	sku: string
+	vendor_product_sku?: string | null
+	price: number
+	stock: number
+	status: ProductStatus
+	images?: string[] | null
+}
+
 @Injectable()
 export class OrderService {
 	private readonly logger = new Logger(OrderService.name)
@@ -123,22 +140,33 @@ export class OrderService {
 			| undefined
 	): void {
 		if (deliveryMethod !== DeliveryMethod.PICKUP && !deliveryAddress) {
-			throw new BadRequestException('delivery_address is required for this delivery method')
+			throw new BadRequestException({
+				statusCode: 400,
+				error: 'Bad Request',
+				code: 'DELIVERY_ADDRESS_REQUIRED',
+				message: 'Вкажіть адресу доставки, щоб оформити замовлення'
+			})
 		}
 		if (deliveryMethod === DeliveryMethod.NOVA_POST) {
 			const a = deliveryAddress!
 			if (!a.warehouse_description || a.warehouse_number == null) {
-				throw new BadRequestException(
-					'warehouse_description and warehouse_number are required for NOVA_POST delivery'
-				)
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'NOVA_POST_WAREHOUSE_REQUIRED',
+					message: 'Оберіть відділення Нової Пошти, щоб оформити замовлення'
+				})
 			}
 		}
 		if (deliveryMethod === DeliveryMethod.COURIER) {
 			const a = deliveryAddress!
 			if (!a.street || !a.building) {
-				throw new BadRequestException(
-					'street and building are required for COURIER delivery'
-				)
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'COURIER_ADDRESS_REQUIRED',
+					message: "Вкажіть вулицю та номер будинку, щоб кур'єр привіз замовлення"
+				})
 			}
 		}
 	}
@@ -185,22 +213,46 @@ export class OrderService {
 		let subtotalPrice = 0
 
 		for (const item of items) {
-			const variant = variantMap.get(item.variant_id)
-			if (!variant) throw new NotFoundException(`Variant ${item.variant_id} not found`)
+			const variant = variantMap.get(item.variant_id) as OrderableVariant | undefined
+			// Every refusal below is read by the buyer on the checkout page — the storefront
+			// echoes `message` as it is — so all of them are Ukrainian, say what to do, and carry
+			// a machine-readable `code` plus the `variant_id` the storefront pins them to
+			// (Plan-0005, screen «Чекаут: помилки»). The realistic path is a guest cart holding a
+			// variant that was archived or sold out while it sat there.
+			if (!variant) {
+				throw new NotFoundException({
+					statusCode: 404,
+					error: 'Not Found',
+					code: 'VARIANT_NOT_FOUND',
+					message:
+						'Цього товару вже немає в каталозі — приберіть позицію з кошика, щоб оформити замовлення',
+					variant_id: item.variant_id
+				})
+			}
 			// Draft/archived variants are hidden from every public read; they must not be
 			// orderable by id either.
 			if (variant.status !== ProductStatus.ACTIVE) {
-				throw new BadRequestException(`Variant ${variant.sku} is not available`)
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'VARIANT_UNAVAILABLE',
+					message: `Товар знято з продажу (${variant.sku}) — приберіть позицію з кошика, щоб оформити замовлення`,
+					variant_id: String(variant._id),
+					sku: variant.sku
+				})
 			}
 			if (variant.stock < item.quantity) {
-				// Structured, not just a sentence: the storefront pins this to the cart line it is
-				// about and tells the shopper what to do (Plan-0005, screen «Чекаут: помилки»).
-				// 409 like the cart's own quantity check — the request is well-formed, the stock is not.
+				// 409 like the cart's own quantity check — the request is well-formed, the stock
+				// is not. Nothing is left to reduce at zero, so that case gets its own code and
+				// its own advice: remove the line instead of lowering a quantity below one.
+				const soldOut = variant.stock <= 0
 				throw new ConflictException({
 					statusCode: 409,
 					error: 'Conflict',
-					code: 'INSUFFICIENT_STOCK',
-					message: `Доступно лише ${variant.stock} шт. (${variant.sku}) — зменште кількість, щоб оформити замовлення`,
+					code: soldOut ? 'OUT_OF_STOCK' : 'INSUFFICIENT_STOCK',
+					message: soldOut
+						? `Товар закінчився (${variant.sku}) — приберіть позицію з кошика, щоб оформити замовлення`
+						: `Доступно лише ${variant.stock} шт. (${variant.sku}) — зменште кількість, щоб оформити замовлення`,
 					variant_id: String(variant._id),
 					sku: variant.sku,
 					available: variant.stock,
@@ -274,10 +326,20 @@ export class OrderService {
 			const formattedCouponCode = this.formatDiscountCode(dto.coupon_code)
 			const coupon = await this.discountCouponRepository.findActiveByCode(formattedCouponCode)
 			if (!coupon) {
-				throw new BadRequestException('Invalid coupon code')
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'COUPON_INVALID',
+					message: `Купон «${formattedCouponCode}» не знайдено — перевірте код або оформіть замовлення без купона`
+				})
 			}
 			if (new Date(coupon.valid_until).getTime() < Date.now()) {
-				throw new BadRequestException('Coupon is expired')
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'COUPON_EXPIRED',
+					message: `Термін дії купона «${formattedCouponCode}» закінчився — оформіть замовлення без нього`
+				})
 			}
 
 			const discountPercent = coupon.discount_percent
@@ -572,6 +634,16 @@ export class OrderService {
 	 * exactly one payload. Returns the stamped order, or `null` when the claim is refused —
 	 * a PENDING payment whose previous session is younger than the cooldown, or an order that
 	 * is no longer an unpaid LiqPay order. `LiqpayService` turns `null` into the right error.
+	 *
+	 * The same write moves a `FAILED` payment back to `PENDING`. A retry after a declined card
+	 * stays allowed at once — the gateway closed that session itself, so there is nothing to
+	 * wait for — but the retry is a payment in flight again, and `PENDING` + a fresh stamp is
+	 * what makes the *second simultaneous* retry miss this filter. Without it both tabs of a
+	 * `FAILED` order claimed a session and the buyer could be charged twice.
+	 *
+	 * There are no transactions here (standalone MongoDB), so this is deliberately one
+	 * `findOneAndUpdate` pinned on the whole state it read: nothing is written unless the
+	 * order is still exactly the unpaid LiqPay order without a live session.
 	 */
 	async claimLiqpayCheckout(
 		orderId: Types.ObjectId,
@@ -589,7 +661,12 @@ export class OrderService {
 					{ payment_status: PaymentStatus.FAILED }
 				]
 			},
-			{ $set: { liqpay_checkout_started_at: new Date(now) } }
+			{
+				$set: {
+					liqpay_checkout_started_at: new Date(now),
+					payment_status: PaymentStatus.PENDING
+				}
+			}
 		)
 	}
 

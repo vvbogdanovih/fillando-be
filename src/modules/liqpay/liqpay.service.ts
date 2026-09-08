@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
+import {
+	BadRequestException,
+	ConflictException,
+	Injectable,
+	Logger,
+	ServiceUnavailableException
+} from '@nestjs/common'
 import { ENV } from 'src/common/constants'
 import { OrderStatus, PaymentMethod, PaymentProvider, PaymentStatus } from 'src/common/types/enums'
 import {
@@ -56,9 +62,18 @@ export class LiqpayService {
 		) {
 			throw new BadRequestException('Замовлення скасовано')
 		}
+		// The provider credentials come before the claim on purpose. Reading them is a read, so
+		// two tabs still race on the conditional claim below and exactly one wins — but a
+		// provider that was switched off between the checkout render and this submit, or a key
+		// that fails to decrypt, now throws before anything is stamped. Claiming first would
+		// leave the buyer with a 15-minute clock for a session that was never opened.
+		const creds = await this.readCredentials(order.order_number)
+
 		// One live session at a time (TD-0009 §5.4.3). The claim is a conditional write, so two
 		// tabs racing for the same order get exactly one payload; it is taken before the payload
-		// is built and awaited, so a refused or failed claim never hands a payload out.
+		// is built and awaited, so a refused or failed claim never hands a payload out. A claim
+		// on a FAILED payment also moves it back to PENDING, which is what stops a second tab
+		// from opening a second live session for the same retry (see claimLiqpayCheckout).
 		const claimed = await this.orderService.claimLiqpayCheckout(order._id)
 		if (!claimed) {
 			const fresh = await this.orderService.findByNumber(orderNumber)
@@ -81,8 +96,6 @@ export class LiqpayService {
 			)
 		}
 
-		const creds = await this.paymentProviders.getActiveCredentials(PaymentProvider.LIQPAY)
-
 		const params = {
 			version: 3,
 			public_key: creds.public_key,
@@ -100,6 +113,29 @@ export class LiqpayService {
 		const signature = liqpaySignature(creds.private_key, data)
 
 		return { data, signature, action_url: LIQPAY_CHECKOUT_URL }
+	}
+
+	/**
+	 * The active LiqPay credentials, or an honest «the card payment was not started» refusal.
+	 * The gateway is unreachable for us, not the buyer's mistake, hence 503 — and the storefront
+	 * echoes `message`, so it must say that nothing was started and what else can be done.
+	 */
+	private async readCredentials(orderNumber: string): Promise<ProviderCredentials> {
+		try {
+			return await this.paymentProviders.getActiveCredentials(PaymentProvider.LIQPAY)
+		} catch (err: unknown) {
+			this.logger.error(
+				{ err },
+				`LiqPay checkout for order ${orderNumber} could not read the provider credentials`
+			)
+			throw new ServiceUnavailableException({
+				statusCode: 503,
+				error: 'Service Unavailable',
+				code: 'LIQPAY_UNAVAILABLE',
+				message:
+					'Оплату карткою не розпочато — сервіс оплати тимчасово недоступний. Кошти не списано: спробуйте ще раз за кілька хвилин або оберіть інший спосіб оплати'
+			})
+		}
 	}
 
 	/**

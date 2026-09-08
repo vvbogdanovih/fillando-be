@@ -8,6 +8,10 @@ import {
 	PaymentStatus,
 	ProductStatus
 } from 'src/common/types/enums'
+import {
+	LIQPAY_SESSION_COOLDOWN_MS,
+	liqpayRetryAfterSeconds
+} from './helpers/liqpay-session.helpers'
 import { OrderService } from './order.service'
 
 const buildOrder = (overrides: Record<string, unknown> = {}) => ({
@@ -978,5 +982,326 @@ describe('OrderService.applyGatewayPaymentResult — after the buyer switched me
 		expect(result.payment_status).toBe(PaymentStatus.PAID)
 		expect(emailService.sendOrderPaidConfirmation).not.toHaveBeenCalled()
 		expect(emailService.sendLiqpayPaidAfterMethodChange).not.toHaveBeenCalled()
+	})
+})
+
+describe('OrderService.claimLiqpayCheckout — one live session, retries included (TD-0009 §5.4.3)', () => {
+	const ORDER_ID = new Types.ObjectId('64b8f0000000000000000009')
+	const NOW = Date.parse('2026-09-08T20:00:00Z')
+
+	type Doc = Record<string, unknown>
+
+	/** Just enough of Mongo's filter language to prove the claim really is a conditional write. */
+	const matches = (doc: Doc, filter: Doc): boolean =>
+		Object.entries(filter).every(([key, condition]) => {
+			if (key === '$or') return (condition as Doc[]).some(branch => matches(doc, branch))
+			const value = doc[key]
+			if (condition instanceof Types.ObjectId) return String(value) === String(condition)
+			if (
+				condition !== null &&
+				typeof condition === 'object' &&
+				!(condition instanceof Date)
+			) {
+				return Object.entries(condition as Doc).every(([op, operand]) => {
+					if (op === '$in') return (operand as unknown[]).includes(value)
+					if (op === '$ne') return value !== operand
+					if (op === '$lt')
+						return (
+							value instanceof Date && value.getTime() < (operand as Date).getTime()
+						)
+					throw new Error(`unsupported operator ${op}`)
+				})
+			}
+			if (condition instanceof Date && value instanceof Date)
+				return value.getTime() === condition.getTime()
+			return value === condition
+		})
+
+	/** One document mutated by an atomic findOneAndUpdate, the way Mongo serialises the racers. */
+	const buildService = (overrides: Doc = {}) => {
+		const doc: Doc = {
+			_id: ORDER_ID,
+			payment_method: PaymentMethod.LIQPAY,
+			payment_status: PaymentStatus.PENDING,
+			order_status: OrderStatus.NEW,
+			liqpay_checkout_started_at: null,
+			...overrides
+		}
+		const update = jest.fn((filter: unknown, payload: UpdatePayload) => {
+			if (!matches(doc, filter as Doc)) return Promise.resolve(null)
+			Object.assign(doc, payload.$set)
+			return Promise.resolve(doc)
+		})
+		const service = new OrderService(
+			{ update } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+		return { service, doc, update }
+	}
+
+	it('lets a FAILED payment retry at once — no waiting is introduced', async () => {
+		const { service, doc } = buildService({
+			payment_status: PaymentStatus.FAILED,
+			liqpay_checkout_started_at: new Date(NOW - 60_000)
+		})
+		// The buyer had nothing to wait for before the claim…
+		expect(liqpayRetryAfterSeconds(doc as never, NOW)).toBe(0)
+
+		const claimed = await service.claimLiqpayCheckout(ORDER_ID, NOW)
+
+		expect(claimed).not.toBeNull()
+		expect(doc.liqpay_checkout_started_at).toEqual(new Date(NOW))
+	})
+
+	it('gives a session to only one of two simultaneous retries after FAILED (I-18)', async () => {
+		const { service, doc } = buildService({
+			payment_status: PaymentStatus.FAILED,
+			liqpay_checkout_started_at: new Date(NOW - 60_000)
+		})
+
+		const first = await service.claimLiqpayCheckout(ORDER_ID, NOW)
+		const second = await service.claimLiqpayCheckout(ORDER_ID, NOW)
+
+		expect(first).not.toBeNull()
+		expect(second).toBeNull()
+		// The retry in flight is a pending payment again — that is what closes the second tab out
+		expect(doc.payment_status).toBe(PaymentStatus.PENDING)
+	})
+
+	it('marks the claimed retry PENDING so the lookup shows the session, not a stale failure', async () => {
+		const { service, update, doc } = buildService({
+			payment_status: PaymentStatus.FAILED,
+			liqpay_checkout_started_at: new Date(NOW - 60_000)
+		})
+
+		await service.claimLiqpayCheckout(ORDER_ID, NOW)
+
+		expect(update.mock.calls[0][1].$set).toEqual({
+			liqpay_checkout_started_at: new Date(NOW),
+			payment_status: PaymentStatus.PENDING
+		})
+		expect(liqpayRetryAfterSeconds(doc as never, NOW)).toBe(15 * 60)
+	})
+
+	it('still refuses a second session while a PENDING one is inside the cooldown', async () => {
+		const { service } = buildService({ liqpay_checkout_started_at: new Date(NOW - 60_000) })
+
+		await expect(service.claimLiqpayCheckout(ORDER_ID, NOW)).resolves.toBeNull()
+	})
+
+	it('claims again once the cooldown of a PENDING session has passed', async () => {
+		const { service } = buildService({
+			liqpay_checkout_started_at: new Date(NOW - LIQPAY_SESSION_COOLDOWN_MS - 1)
+		})
+
+		await expect(service.claimLiqpayCheckout(ORDER_ID, NOW)).resolves.not.toBeNull()
+	})
+
+	it.each([
+		['a cancelled order', { order_status: OrderStatus.CANCELLED }],
+		['a paid order', { payment_status: PaymentStatus.PAID }],
+		['a voided payment', { payment_status: PaymentStatus.VOIDED }],
+		['an order moved to COD', { payment_method: PaymentMethod.COD }]
+	])('never claims %s', async (_label, overrides) => {
+		const { service, doc } = buildService(overrides)
+
+		await expect(service.claimLiqpayCheckout(ORDER_ID, NOW)).resolves.toBeNull()
+		expect(doc.liqpay_checkout_started_at).toBeNull()
+	})
+})
+
+describe('OrderService.create — every refusal the buyer can read is Ukrainian and coded (I-15, I-17)', () => {
+	const VARIANT_ID = '64b8f0000000000000000001'
+
+	const buildVariant = (overrides: Record<string, unknown> = {}) => ({
+		_id: new Types.ObjectId(VARIANT_ID),
+		product_id: new Types.ObjectId('64b8f0000000000000000002'),
+		name: 'PLA 1.75 чорний',
+		sku: 'SKU-1',
+		vendor_product_sku: 'V-1',
+		price: 500,
+		stock: 10,
+		status: ProductStatus.ACTIVE,
+		images: [],
+		...overrides
+	})
+
+	const buildService = (variants: unknown[] = [buildVariant()], coupon: unknown = null) => {
+		const orderRepository = { create: jest.fn() }
+		const service = new OrderService(
+			orderRepository as never,
+			{ increment: jest.fn().mockResolvedValue(123) } as never,
+			{ findByIds: jest.fn().mockResolvedValue(variants) } as never,
+			{ findActiveByCode: jest.fn().mockResolvedValue(coupon) } as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+		return { service, orderRepository }
+	}
+
+	const dto = (overrides: Record<string, unknown> = {}) => ({
+		items: [{ variant_id: VARIANT_ID, quantity: 2 }],
+		customer: { name: 'Тест', phone: '+380000000000', email: 'buyer@example.com' },
+		payment_method: PaymentMethod.IBAN,
+		delivery_method: DeliveryMethod.PICKUP,
+		...overrides
+	})
+
+	const refusal = async (service: OrderService, payload: Record<string, unknown>) => {
+		const error = (await service.create(payload as never).catch((e: unknown) => e)) as {
+			getResponse: () => Record<string, unknown>
+		}
+		return { error, body: error.getResponse() }
+	}
+
+	const isUkrainian = (message: unknown) => /^[^A-Za-z]*[а-яїієґА-ЯЇІЄҐ]/.test(String(message))
+
+	it('answers an unknown variant with 404 VARIANT_NOT_FOUND and the id to highlight', async () => {
+		const { service, orderRepository } = buildService([])
+
+		const { error, body } = await refusal(service, dto())
+
+		expect(error).toBeInstanceOf(NotFoundException)
+		expect(body).toEqual({
+			statusCode: 404,
+			error: 'Not Found',
+			code: 'VARIANT_NOT_FOUND',
+			message:
+				'Цього товару вже немає в каталозі — приберіть позицію з кошика, щоб оформити замовлення',
+			variant_id: VARIANT_ID
+		})
+		expect(orderRepository.create).not.toHaveBeenCalled()
+	})
+
+	it.each([ProductStatus.DRAFT, ProductStatus.ARCHIVED])(
+		'answers a %s variant with 400 VARIANT_UNAVAILABLE in Ukrainian',
+		async status => {
+			const { service, orderRepository } = buildService([buildVariant({ status })])
+
+			const { error, body } = await refusal(service, dto())
+
+			expect(error).toBeInstanceOf(BadRequestException)
+			expect(body).toEqual({
+				statusCode: 400,
+				error: 'Bad Request',
+				code: 'VARIANT_UNAVAILABLE',
+				message:
+					'Товар знято з продажу (SKU-1) — приберіть позицію з кошика, щоб оформити замовлення',
+				variant_id: VARIANT_ID,
+				sku: 'SKU-1'
+			})
+			expect(isUkrainian(body.message)).toBe(true)
+			expect(orderRepository.create).not.toHaveBeenCalled()
+		}
+	)
+
+	it('tells the buyer to remove a sold-out line instead of reducing it below one (I-17)', async () => {
+		const { service } = buildService([buildVariant({ stock: 0 })])
+
+		const { error, body } = await refusal(service, dto())
+
+		expect(error).toBeInstanceOf(ConflictException)
+		expect(body).toEqual({
+			statusCode: 409,
+			error: 'Conflict',
+			code: 'OUT_OF_STOCK',
+			message:
+				'Товар закінчився (SKU-1) — приберіть позицію з кошика, щоб оформити замовлення',
+			variant_id: VARIANT_ID,
+			sku: 'SKU-1',
+			available: 0,
+			requested: 2
+		})
+	})
+
+	it('keeps INSUFFICIENT_STOCK and «зменште кількість» while something is left to buy', async () => {
+		const { service } = buildService([buildVariant({ stock: 1 })])
+
+		const { body } = await refusal(service, dto())
+
+		expect(body.code).toBe('INSUFFICIENT_STOCK')
+		expect(body.message).toBe(
+			'Доступно лише 1 шт. (SKU-1) — зменште кількість, щоб оформити замовлення'
+		)
+	})
+
+	it('names the missing delivery data in Ukrainian instead of the DTO field', async () => {
+		const { service } = buildService()
+
+		const { body } = await refusal(service, dto({ delivery_method: DeliveryMethod.NOVA_POST }))
+
+		expect(body).toEqual({
+			statusCode: 400,
+			error: 'Bad Request',
+			code: 'DELIVERY_ADDRESS_REQUIRED',
+			message: 'Вкажіть адресу доставки, щоб оформити замовлення'
+		})
+	})
+
+	it('asks for a Nova Post branch, not for warehouse_description', async () => {
+		const { service } = buildService()
+
+		const { body } = await refusal(
+			service,
+			dto({
+				delivery_method: DeliveryMethod.NOVA_POST,
+				delivery_address: { city_name: 'Київ' }
+			})
+		)
+
+		expect(body.code).toBe('NOVA_POST_WAREHOUSE_REQUIRED')
+		expect(body.message).toBe('Оберіть відділення Нової Пошти, щоб оформити замовлення')
+	})
+
+	it('asks a courier order for the street and the building number', async () => {
+		const { service } = buildService()
+
+		const { body } = await refusal(
+			service,
+			dto({
+				delivery_method: DeliveryMethod.COURIER,
+				delivery_address: { city_name: 'Київ' }
+			})
+		)
+
+		expect(body.code).toBe('COURIER_ADDRESS_REQUIRED')
+		expect(body.message).toBe("Вкажіть вулицю та номер будинку, щоб кур'єр привіз замовлення")
+	})
+
+	it('answers an unknown coupon with COUPON_INVALID and the code as it was normalised', async () => {
+		const { service } = buildService()
+
+		const { body } = await refusal(service, dto({ coupon_code: ' spring24 ' }))
+
+		expect(body).toEqual({
+			statusCode: 400,
+			error: 'Bad Request',
+			code: 'COUPON_INVALID',
+			message:
+				'Купон «SPRING24» не знайдено — перевірте код або оформіть замовлення без купона'
+		})
+	})
+
+	it('answers an expired coupon with COUPON_EXPIRED', async () => {
+		const { service } = buildService([buildVariant()], {
+			_id: new Types.ObjectId('64b8f0000000000000000003'),
+			code: 'SPRING24',
+			discount_percent: 10,
+			valid_until: new Date('2020-01-01T00:00:00Z'),
+			is_reusable: false
+		})
+
+		const { body } = await refusal(service, dto({ coupon_code: 'SPRING24' }))
+
+		expect(body.code).toBe('COUPON_EXPIRED')
+		expect(body.message).toBe(
+			'Термін дії купона «SPRING24» закінчився — оформіть замовлення без нього'
+		)
 	})
 })

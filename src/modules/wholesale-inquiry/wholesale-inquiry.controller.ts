@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
@@ -16,7 +17,15 @@ import { WholesaleInquiryService } from './wholesale-inquiry.service'
 export class WholesaleInquiryController {
 	constructor(private readonly wholesaleInquiryService: WholesaleInquiryService) {}
 
+	/**
+	 * The only unauthenticated write in the service, so it is also the only one a script can
+	 * repeat for free: without a limit one client fills `wholesale_inquiries` as fast as Mongo
+	 * accepts and buries the real leads. Ten a minute is what `POST /orders` allows, and a
+	 * genuine enquiry is rarer than an order (Plan-0005 I-o).
+	 */
 	@Post(ENDPOINTS.WHOLESALE_INQUIRIES.CREATE)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 10, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.WHOLESALE_INQUIRIES.CREATE)
 	create(@Body() dto: CreateWholesaleInquiryDto) {
 		return this.wholesaleInquiryService.create(dto)

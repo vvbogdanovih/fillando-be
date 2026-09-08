@@ -210,12 +210,10 @@ no database, they run with plain `yarn test`:
       that `role`.
     - `send(app, method, path, { role?, body? })` — supertest shorthand that sets the header when
       `role` is given.
-- `src/modules/product/product.controller.rbac.spec.ts`,
-  `src/modules/vendor/vendor.controller.rbac.spec.ts`,
-  `src/modules/upload/upload.controller.rbac.spec.ts` — table-driven (`it.each`): for every
+- `*.controller.rbac.spec.ts` next to each controller — table-driven (`it.each`): for every
   admin-only endpoint (writes **and** the admin-only GETs — `GET /products`, `GET /products/:id`,
-  `GET /products/:id/variants`, `GET /products/:id/variants/:variantId`, and all three vendor
-  GETs) assert 401 with no header,
+  `GET /products/:id/variants`, `GET /products/:id/variants/:variantId`, all three vendor GETs,
+  every read of `/payment-details`) assert 401 with no header,
   403 for `Role.USER`, 2xx for `Role.ADMIN`, and that the stubbed service method was called exactly
   once only in the ADMIN case; for every public GET assert 200 without a header. An admin-only GET
   belongs in the admin table, never in `PUBLIC_GETS` — a row in the wrong table is a red flag in
@@ -237,10 +235,66 @@ no database, they run with plain `yarn test`:
    stub surfaces as a 500 in the ADMIN case, never as a 403, so guard results cannot be masked.
 3. Pass a `body` (`{}` is enough) whenever the handler dereferences the DTO.
 
-A **new or changed** write endpoint without a row in its module's RBAC spec should be treated as a
-review blocker. Modules guarded before this harness existed (categories, payment-details,
-payment-providers, orders, users, discount-coupons, wholesale-inquiries, nova-post, prom) have no
-RBAC spec yet — adding one is ~30 lines with `createRbacApp` and is a welcome follow-up.
+### Modules covered by a spec
+
+| Module                   | Spec                                          | What it pins                                                                                                                                          |
+| ------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ProductModule`          | `product.controller.rbac.spec.ts`             | 13 admin endpoints (writes + the four full-document reads), 6 public storefront GETs                                                                  |
+| `VendorModule`           | `vendor.controller.rbac.spec.ts`              | all 6 endpoints admin-only — the module has no public route                                                                                           |
+| `UploadModule`           | `upload.controller.rbac.spec.ts`              | class-level `@UseGuards` + `@Roles`, all 3 endpoints                                                                                                  |
+| `ColorModule`            | `color.controller.rbac.spec.ts`               | 3 writes admin-only, 2 public reads, `GET /colors/admin` admin-only and not swallowed by `/:id`                                                       |
+| `LandingModule`          | `landing.controller.rbac.spec.ts`             | writes admin-only, the draft-exposing reads admin-only, the `status: active` reads public                                                             |
+| `FeedModule`             | `feed.controller.rbac.spec.ts`                | regenerate + status admin-only, `google-shopping.xml` public                                                                                          |
+| `CategoryModule`         | `category.controller.rbac.spec.ts`            | 4 writes admin-only (`PUT /:id` has its own row next to `PATCH /:id`), 3 public reads, `/slug/:slug` not swallowed by `/:id`                          |
+| `OrderModule`            | `order.controller.rbac.spec.ts`               | 9 admin endpoints, 3 user-owned (`JwtAuthGuard` only, USER must pass), 3 guest endpoints, route order around `/:id`, and the three `@Throttle` limits |
+| `PaymentDetailsModule`   | `payment-details.controller.rbac.spec.ts`     | all 7 endpoints admin-only, reads included — the shop's own IBAN; `/active` not swallowed by `/:id`                                                   |
+| `UsersModule`            | `users.controller.rbac.spec.ts`               | `GET /users` admin-only; `GET`/`PATCH /users/me` need a token and **no** role, and the caller's id reaches the service                                |
+| `WholesaleInquiryModule` | `wholesale-inquiry.controller.rbac.spec.ts`   | inbox + status write admin-only, `POST /wholesale-inquiries` public (the storefront form)                                                             |
+| `AuthModule`             | `auth.controller.throttle.spec.ts`            | `ThrottlerGuard` + `@Throttle` on login (10/min), register (10/min), refresh (30/min); failed logins count; the limits are per handler                |
+| `DiscountCouponModule`   | `discount-coupon.controller.throttle.spec.ts` | the 20/min limit on `POST /discount-coupons/validate` and the internal-token bypass                                                                   |
+| `ProductModule`          | `product.controller.throttle.spec.ts`         | the 120/min limit on `GET /products/catalog` and the internal-token bypass                                                                            |
+
+Every one of these specs also lists its **public** endpoints explicitly, not just the guarded
+ones. A guard added to a public route breaks the shop as thoroughly as a missing guard exposes
+it — an anonymous `POST /orders` (guest checkout), `POST /wholesale-inquiries` (the wholesale
+form), `GET /categories` (the header menu) or the `/orders/lookup/:orderNumber` link in the
+confirmation email would simply start answering 401, with nothing in the logs to say why. The
+public rows are therefore assertions, not documentation.
+
+Three details of the harness worth knowing before writing the next spec:
+
+- **Guard order is proved by two assertions, not by reading the decorator.** `RolesGuard` reads
+  `req.user.role`, so `@UseGuards(RolesGuard, JwtAuthGuard)` answers before the token is
+  validated: an anonymous caller gets 403 instead of 401, and a real ADMIN gets 403 too. "401
+  without a token" plus "2xx for ADMIN" is what tells the correct order from the swapped one.
+- **A missing `@Roles(...)` shows up in the ADMIN case only.** `RolesGuard` is default-deny, so
+  dropping the decorator returns 403 for everyone — the 401 and USER rows stay green. Never
+  write a spec that omits the ADMIN row.
+- **`OptionalJwtAuthGuard` is not overridden by the harness** (only `JwtAuthGuard` is). A
+  controller that uses it — `POST /orders`, `GET /auth/me` — needs a passport `'jwt'` strategy
+  registered, or the request dies at "Unknown authentication strategy". `order.controller.rbac.spec.ts`
+  registers a header-reading stand-in strategy (same `x-test-role` convention as the harness)
+  and keeps the real guard, which is what makes its guest-checkout assertions meaningful.
+
+### Rule for a new controller
+
+A new controller that carries a **write endpoint** — or a read that returns a full document —
+arrives with its own `*.controller.rbac.spec.ts` in the same PR. Not a follow-up, not a
+TODO: the spec is part of the endpoint, the same way its DTO is. A **new or changed** write
+endpoint without a row in its module's RBAC spec is a review blocker. Rate-limited handlers get
+the same treatment: `@UseGuards(ThrottlerGuard)` + `@Throttle(...)` comes with a case in a
+`*.controller.throttle.spec.ts` (or, where the module already has one, in its RBAC spec — see
+`OrderModule`) plus a row in `API_AND_SWAGGER.md` §4a.
+
+Still without an RBAC spec: `PaymentProvidersModule`, `DiscountCouponModule` (throttling is
+covered, the role guards are not), `CartModule`, `LiqpayModule`, `NovaPostModule`, `PromModule`.
+Writing one is ~30 lines with `createRbacApp`.
+
+**Known gap, not covered by a passing test:** `POST /wholesale-inquiries` is the only
+unauthenticated write in the backend with no `ThrottlerGuard` — `POST /orders` is capped at
+10/min, `POST /discount-coupons/validate` at 20/min, `POST /auth/login` at 10/min. A skipped
+test in `wholesale-inquiry.controller.rbac.spec.ts` holds the behaviour it should have
+(10/min, 429 with `Retry-After`); enable it together with the decorator and the §4a row.
 
 Integration specs (`*.int-spec.ts`, run with `yarn test:db:up && yarn test:integration`) use the
 disposable MongoDB from `docker-compose.test.yml` via `test/integration-db.ts`; the RBAC specs do

@@ -29,6 +29,7 @@ import {
 	pickColor,
 	type AttrLike
 } from './product-attribute.helpers'
+import { toPublicAttributes } from './product-public.mappers'
 
 /** What a `color_id` on the wire resolves to: the pair stored on the variant, plus its label. */
 interface ResolvedColor {
@@ -245,15 +246,17 @@ export class ProductService {
 
 		return this.productVariantRepository.findCatalogItems({
 			category_id,
-			page: page ? Math.max(1, parseInt(page, 10)) : 1,
-			limit: limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20,
-			price_min: price_min !== undefined ? parseFloat(price_min) : undefined,
-			price_max: price_max !== undefined ? parseFloat(price_max) : undefined,
+			page: parseWholeParam(page, { fallback: 1, min: 1 }),
+			limit: parseWholeParam(limit, { fallback: 20, min: 1, max: 100 }),
+			price_min: parsePriceParam(price_min),
+			price_max: parsePriceParam(price_max),
 			sort: sort ?? 'newest',
 			attrFilters,
 			// Colour lives on the variant, not in `product.attributes`, so it cannot go through
 			// `attrFilters` — an `$elemMatch` on `attributes` would match nothing at all.
-			colorFamilies: color_family ? splitFilterValues(color_family) : [],
+			// `typeof`, not just truthiness: a repeated `?color_family=a&color_family=b` arrives
+			// as an array, and `.split` on one is a 500.
+			colorFamilies: typeof color_family === 'string' ? splitFilterValues(color_family) : [],
 			facetKeys
 		})
 	}
@@ -270,10 +273,20 @@ export class ProductService {
 		const attributes: AttrLike[] = Array.isArray(result.product.attributes)
 			? (result.product.attributes as AttrLike[])
 			: []
+		// Units belong to the category, so the specification table can only print «1 кг» once the
+		// category is joined (I-27). Looked up by the slug the repository already resolved — the
+		// product projection carries no `category_id`; a payload without a category simply has no
+		// units, exactly as before.
+		const categorySlug: string | null =
+			typeof result.category_slug === 'string' ? result.category_slug : null
+		const category = categorySlug
+			? await this.categoryRepository.findBySlug(categorySlug)
+			: null
 		return {
 			...result,
 			product: {
 				...result.product,
+				attributes: toPublicAttributes(attributes, category?.required_attributes),
 				manufacturer: pickAttr(attributes, MANUFACTURER_PATTERNS)
 			}
 		}
@@ -657,6 +670,39 @@ const CATALOG_RESERVED_KEYS = new Set([
 	'sort',
 	'color_family'
 ])
+
+/**
+ * A catalogue query parameter as a whole number.
+ *
+ * Anything unreadable falls back to the default: `?limit=abc`, an empty `?limit=`, or a repeated
+ * `?page=1&page=2` that Express hands over as an array (hence the `typeof` check — the declared
+ * `Record<string, string>` is a hope, not a guarantee). `parseInt('abc')` is `NaN`, and `NaN`
+ * passes through `Math.min`/`Math.max` unchanged: it used to reach `$skip`/`$limit` and make the
+ * aggregation throw, so `/filament?limit=abc` was an error screen instead of the first page.
+ * A readable number outside the bounds is clamped rather than refused — someone editing the URL
+ * still gets a page.
+ */
+function parseWholeParam(
+	raw: unknown,
+	{ fallback, min, max }: { fallback: number; min: number; max?: number }
+): number {
+	if (typeof raw !== 'string' || !raw.trim()) return fallback
+	const value = Number(raw)
+	if (!Number.isFinite(value)) return fallback
+	const bounded = Math.max(min, Math.floor(value))
+	return max === undefined ? bounded : Math.min(max, bounded)
+}
+
+/**
+ * A price bound, or `undefined` (no bound at all) when the value is not a readable number.
+ * `parseFloat('abc')` is `NaN`, which Mongo happily compares against and matches nothing — the
+ * shopper saw an empty catalogue with no way to tell why.
+ */
+function parsePriceParam(raw: unknown): number | undefined {
+	if (typeof raw !== 'string' || !raw.trim()) return undefined
+	const value = Number(raw)
+	return Number.isFinite(value) ? value : undefined
+}
 
 /** `?polymer=PLA,PETG` is an OR within one dimension. Values may never contain a comma. */
 function splitFilterValues(value: string): string[] {

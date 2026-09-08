@@ -16,14 +16,18 @@ const buildService = () => {
 	}
 	const numbersRepository = { increment: jest.fn() }
 	const colorRepository = { findById: jest.fn().mockResolvedValue(null) }
+	const categoryRepository = {
+		findById: jest.fn().mockResolvedValue(null),
+		findBySlug: jest.fn().mockResolvedValue(null)
+	}
 	const service = new ProductService(
 		productRepository as never,
 		productVariantRepository as never,
 		numbersRepository as never,
 		colorRepository as never,
-		{ findById: jest.fn().mockResolvedValue(null) } as never
+		categoryRepository as never
 	)
-	return { service, productRepository, productVariantRepository }
+	return { service, productRepository, productVariantRepository, categoryRepository }
 }
 
 const BAD_ID = 'not-an-object-id'
@@ -102,5 +106,85 @@ describe('ProductService.getVariantBySlug — manufacturer', () => {
 		await expect(service.getVariantBySlug('draft-slug')).rejects.toBeInstanceOf(
 			NotFoundException
 		)
+	})
+})
+
+/**
+ * The unit of a characteristic lives on the category, not on the product, so the product page
+ * can only print «Вага | 1 кг» once the category is joined in (I-27).
+ */
+describe('ProductService.getVariantBySlug — attribute units', () => {
+	const CATEGORY = {
+		required_attributes: [
+			{ key: 'vaha', label: 'Вага', filter_type: 'multi-select', unit: 'кг' },
+			{ key: 'polymer', label: 'Тип пластику', filter_type: 'multi-select', unit: null }
+		]
+	}
+
+	const page = (
+		attributes: Array<{ k: string; l: string; v: unknown }>,
+		categorySlug = 'filament'
+	) => ({
+		variant: { id: 'v1', status: 'active' },
+		product: { id: 'p1', name: 'Sunlu PLA Silk', attributes },
+		siblings: [],
+		category_slug: categorySlug,
+		category_name: 'Філамент',
+		spooled_counterpart: null
+	})
+
+	it('carries the unit the category defines for the attribute key', async () => {
+		const { service, productVariantRepository, categoryRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(
+			page([{ k: 'vaha', l: 'Вага', v: 1 }])
+		)
+		categoryRepository.findBySlug.mockResolvedValue(CATEGORY)
+
+		const result = await service.getVariantBySlug('sunlu-pla-silk-gold')
+
+		expect(categoryRepository.findBySlug).toHaveBeenCalledWith('filament')
+		expect(result.product.attributes).toEqual([{ k: 'vaha', l: 'Вага', v: 1, unit: 'кг' }])
+	})
+
+	it('leaves unit null for an attribute the category has no entry for', async () => {
+		const { service, productVariantRepository, categoryRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(
+			page([
+				{ k: 'polymer', l: 'Тип пластику', v: 'PLA' },
+				{ k: 'seriia', l: 'Серія', v: 'Silk' }
+			])
+		)
+		categoryRepository.findBySlug.mockResolvedValue(CATEGORY)
+
+		const result = await service.getVariantBySlug('sunlu-pla-silk-gold')
+
+		expect(result.product.attributes).toEqual([
+			{ k: 'polymer', l: 'Тип пластику', v: 'PLA', unit: null },
+			{ k: 'seriia', l: 'Серія', v: 'Silk', unit: null }
+		])
+	})
+
+	it('does not look a category up when the payload carries no category slug', async () => {
+		const { service, productVariantRepository, categoryRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(
+			page([{ k: 'vaha', l: 'Вага', v: 1 }], null as unknown as string)
+		)
+
+		const result = await service.getVariantBySlug('sunlu-pla-silk-gold')
+
+		expect(categoryRepository.findBySlug).not.toHaveBeenCalled()
+		expect(result.product.attributes).toEqual([{ k: 'vaha', l: 'Вага', v: 1, unit: null }])
+	})
+
+	it('adds nothing but the unit — no supplier field reaches the public attribute', async () => {
+		const { service, productVariantRepository, categoryRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue(
+			page([{ k: 'vaha', l: 'Вага', v: 1, vendor_product_sku: 'SKU-1' } as never])
+		)
+		categoryRepository.findBySlug.mockResolvedValue(CATEGORY)
+
+		const result = await service.getVariantBySlug('sunlu-pla-silk-gold')
+
+		expect(Object.keys(result.product.attributes[0]).sort()).toEqual(['k', 'l', 'unit', 'v'])
 	})
 })

@@ -4,6 +4,7 @@ import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.sc
 import {
 	PRICE_SHEET_PUBLIC_PROJECTION,
 	PUBLIC_VARIANT_FIELDS,
+	toPublicAttributes,
 	toPublicVariant
 } from './product-public.mappers'
 
@@ -140,6 +141,79 @@ describe('toPublicVariant', () => {
 	it('does not spread the source: unknown extra fields on the document are dropped', () => {
 		const withExtra = { ...fixture, secret_margin: 150 } as unknown as LeanVariantDoc
 		expect(toPublicVariant(withExtra)).not.toHaveProperty('secret_margin')
+	})
+})
+
+/**
+ * The unit is the category's, matched to the attribute by key: without it the specification
+ * table printed «Вага | 1» and the shopper could not tell a kilogram from a spool (I-27).
+ */
+describe('toPublicAttributes', () => {
+	const CATEGORY_ATTRS = [
+		{ key: 'vaha', unit: 'кг' },
+		{ key: 'diametr', unit: 'мм' },
+		{ key: 'polymer', unit: null }
+	]
+
+	const ATTRIBUTES = [
+		{ k: 'vaha', l: 'Вага', v: 1 },
+		{ k: 'polymer', l: 'Тип пластику', v: 'PLA' },
+		{ k: 'seriia', l: 'Серія', v: 'Silk' }
+	]
+
+	it('joins the unit the category defines for the attribute key', () => {
+		const rows = toPublicAttributes(ATTRIBUTES, CATEGORY_ATTRS)
+
+		expect(rows[0]).toEqual({ k: 'vaha', l: 'Вага', v: 1, unit: 'кг' })
+	})
+
+	it('emits unit: null when the category entry carries no unit', () => {
+		const rows = toPublicAttributes(ATTRIBUTES, CATEGORY_ATTRS)
+
+		expect(rows[1]).toEqual({ k: 'polymer', l: 'Тип пластику', v: 'PLA', unit: null })
+	})
+
+	it('emits unit: null for an attribute the category says nothing about', () => {
+		const rows = toPublicAttributes(ATTRIBUTES, CATEGORY_ATTRS)
+
+		expect(rows[2]).toEqual({ k: 'seriia', l: 'Серія', v: 'Silk', unit: null })
+	})
+
+	it('keeps the key on every row so the row shape never varies', () => {
+		for (const row of toPublicAttributes(ATTRIBUTES, CATEGORY_ATTRS)) {
+			expect(Object.keys(row).sort()).toEqual(['k', 'l', 'unit', 'v'])
+		}
+	})
+
+	it('treats a blank unit as no unit rather than printing a stray space', () => {
+		const rows = toPublicAttributes(
+			[{ k: 'vaha', l: 'Вага', v: 1 }],
+			[{ key: 'vaha', unit: '  ' }]
+		)
+
+		expect(rows[0].unit).toBeNull()
+	})
+
+	it('does not spread the source: unknown extra fields on an attribute are dropped', () => {
+		const rows = toPublicAttributes(
+			[{ k: 'vaha', l: 'Вага', v: 1, vendor_product_sku: 'SKU-1' }] as never,
+			CATEGORY_ATTRS
+		)
+
+		expect(rows[0]).not.toHaveProperty('vendor_product_sku')
+	})
+
+	it('answers with an empty list for a product with no attributes', () => {
+		expect(toPublicAttributes([], CATEGORY_ATTRS)).toEqual([])
+		expect(toPublicAttributes(undefined, CATEGORY_ATTRS)).toEqual([])
+	})
+
+	it('still maps the attributes when the category is unknown — just without units', () => {
+		expect(toPublicAttributes(ATTRIBUTES)).toEqual([
+			{ k: 'vaha', l: 'Вага', v: 1, unit: null },
+			{ k: 'polymer', l: 'Тип пластику', v: 'PLA', unit: null },
+			{ k: 'seriia', l: 'Серія', v: 'Silk', unit: null }
+		])
 	})
 })
 

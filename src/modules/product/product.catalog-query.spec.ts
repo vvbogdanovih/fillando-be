@@ -37,6 +37,8 @@ type CatalogParams = {
 	facetKeys: string[]
 	page: number
 	limit: number
+	price_min?: number
+	price_max?: number
 	sort: string
 }
 
@@ -111,6 +113,84 @@ describe('ProductService.getCatalog — reserved parameters', () => {
 
 		expect(params.page).toBe(1)
 		expect(params.limit).toBe(100)
+	})
+})
+
+/**
+ * `parseInt('abc')` is `NaN`, and `NaN` survives `Math.min`/`Math.max` untouched — it used to
+ * reach `$skip`/`$limit`, make the aggregation throw and show the shopper an error screen for a
+ * URL as ordinary as `/filament?limit=abc`. Junk is a default now, never a 500 (I-10).
+ */
+describe('ProductService.getCatalog — junk numeric parameters', () => {
+	it.each([
+		['limit=abc', { limit: 'abc' }, { page: 1, limit: 20 }],
+		['page=abc', { page: 'abc' }, { page: 1, limit: 20 }],
+		['page=-5', { page: '-5' }, { page: 1, limit: 20 }],
+		['limit=99999', { limit: '99999' }, { page: 1, limit: 100 }],
+		['limit=0', { limit: '0' }, { page: 1, limit: 1 }],
+		['limit= (empty)', { limit: '' }, { page: 1, limit: 20 }],
+		['page=NaN', { page: 'NaN' }, { page: 1, limit: 20 }],
+		['page=Infinity', { page: 'Infinity' }, { page: 1, limit: 20 }],
+		['page=2.7', { page: '2.7' }, { page: 2, limit: 20 }]
+	])('%s → readable pagination, never NaN', async (_name, query, expected) => {
+		const params = await callWith(query)
+
+		expect(params.page).toBe(expected.page)
+		expect(params.limit).toBe(expected.limit)
+		expect(Number.isNaN(params.page)).toBe(false)
+		expect(Number.isNaN(params.limit)).toBe(false)
+	})
+
+	it('keeps a readable page and limit as they are', async () => {
+		const params = await callWith({ page: '3', limit: '48' })
+
+		expect(params.page).toBe(3)
+		expect(params.limit).toBe(48)
+	})
+
+	it.each(['price_min', 'price_max'])(
+		'drops %s entirely when it is not a number, instead of matching on NaN',
+		async key => {
+			const params = await callWith({ [key]: 'abc' })
+
+			expect(params.price_min).toBeUndefined()
+			expect(params.price_max).toBeUndefined()
+		}
+	)
+
+	it('keeps readable price bounds', async () => {
+		const params = await callWith({ price_min: '250', price_max: '999.5' })
+
+		expect(params.price_min).toBe(250)
+		expect(params.price_max).toBe(999.5)
+	})
+
+	it('still forwards the attribute filters when the numbers next to them are junk', async () => {
+		const params = await callWith({ limit: 'abc', page: 'abc', polymer: 'PLA,PETG' })
+
+		expect(params.attrFilters).toEqual({ polymer: ['PLA', 'PETG'] })
+		expect(params.page).toBe(1)
+		expect(params.limit).toBe(20)
+	})
+
+	it('survives a repeated parameter, which Express hands over as an array', async () => {
+		const { service, findCatalogItems } = buildService()
+
+		await service.getCatalog({
+			category_id: CATEGORY_ID,
+			page: ['1', '2'],
+			limit: ['10', '20'],
+			price_min: ['1', '2'],
+			color_family: ['black', 'white'],
+			polymer: ['PLA', 'PETG']
+		} as unknown as Record<string, string>)
+
+		const params = firstCall(findCatalogItems)
+		expect(params.page).toBe(1)
+		expect(params.limit).toBe(20)
+		expect(params.price_min).toBeUndefined()
+		expect(params.colorFamilies).toEqual([])
+		expect(params.attrFilters).not.toHaveProperty('polymer')
 	})
 })
 

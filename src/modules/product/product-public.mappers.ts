@@ -1,7 +1,9 @@
 import { Types } from 'mongoose'
 import { ColorFamily, ProductStatus } from 'src/common/types/enums'
+import { RequiredAttribute } from 'src/database/mongoose/schemas/category.schema'
 import { Color } from 'src/database/mongoose/schemas/color.schema'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
+import type { AttrLike } from './product-attribute.helpers'
 
 /**
  * PUBLIC SURFACE — the only variant fields allowed to leave the backend through an
@@ -96,6 +98,47 @@ export function toPublicVariant(
 		// are computed from it on the storefront (TD-0006 §5.4).
 		weight_g: variant.weight_g ?? null
 	}
+}
+
+/**
+ * One row of the specification table on the public product page: the product attribute as it is
+ * stored, plus the unit the category defines for that key — without it the table printed
+ * «Вага | 1» and the shopper had to guess whether that was a kilogram or a spool (I-27).
+ *
+ * `unit` is `null` whenever the category has no entry for the key, or that entry carries no unit.
+ * The key is always present so the row shape does not vary between attributes.
+ */
+export type PublicProductAttribute = {
+	k: string
+	l: string
+	v: string | number | boolean
+	unit: string | null
+}
+
+/**
+ * Explicit allowlist copy of the product attributes for public responses — same rule as
+ * {@link toPublicVariant}: never spread the source, so a field added to the schema cannot reach
+ * the storefront by accident. `unit` is the ONLY thing joined in from elsewhere; supplier fields
+ * stay out of the public surface without exception.
+ *
+ * Units live on the category (`required_attributes[].unit`), not on the product, so they are
+ * matched by attribute key. An attribute the category says nothing about simply has no unit.
+ */
+export function toPublicAttributes(
+	attributes: AttrLike[] | null | undefined,
+	requiredAttributes?: Pick<RequiredAttribute, 'key' | 'unit'>[] | null
+): PublicProductAttribute[] {
+	const unitByKey = new Map(
+		// Trimmed before the emptiness check: a unit saved as a blank string is truthy and would
+		// print as a stray space after the value.
+		(requiredAttributes ?? []).map(attr => [attr.key, attr.unit?.trim() || null])
+	)
+	return (attributes ?? []).map(attr => ({
+		k: attr.k ?? '',
+		l: attr.l ?? '',
+		v: attr.v ?? '',
+		unit: attr.k ? (unitByKey.get(attr.k) ?? null) : null
+	}))
 }
 
 /**

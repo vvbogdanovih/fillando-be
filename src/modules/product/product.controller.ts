@@ -46,7 +46,17 @@ export class ProductController {
 		return this.productService.findAll()
 	}
 
+	// Three `$facet` aggregations per request — the most expensive public read, and the storefront
+	// calls it on every filter click, so it is throttled generously rather than left open (§4a).
+	//
+	// `Record<string, string>` rather than a DTO on purpose: besides the reserved parameters the
+	// catalogue accepts arbitrary attribute filters (`?polymer=PLA`), and the global
+	// `ValidationPipe` runs with `whitelist: true` — a DTO class would strip every key it does not
+	// declare and the filters would silently stop working. The reserved parameters are parsed
+	// defensively in the service instead.
 	@Get(ENDPOINTS.PRODUCTS.CATALOG)
+	@UseGuards(ThrottlerGuard)
+	@Throttle({ default: { limit: 120, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.PRODUCTS.CATALOG)
 	getCatalog(@Query() query: Record<string, string>) {
 		return this.productService.getCatalog(query)
@@ -100,7 +110,12 @@ export class ProductController {
 		return this.productService.getVariantBySlug(slug)
 	}
 
+	// The raw product document carries `vendor_id` — which supplier the product is bought from —
+	// so it is admin-only like the variant reads: supplier fields leave the backend through no
+	// public route, without exception. The storefront reads `/products/by-slug/:slug`.
 	@Get(ENDPOINTS.PRODUCTS.GET_BY_ID)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.GET_BY_ID)
 	findById(@Param('id') id: string) {
 		return this.productService.findById(id)

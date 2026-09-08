@@ -15,19 +15,30 @@ import { CheckVendorAvailabilityDto } from './dto/check-vendor-availability.dto'
 export class VendorController {
 	constructor(private readonly vendorService: VendorService) {}
 
+	// A `Vendor` IS a supplier: the list, a single record and even the availability probe (which
+	// answers whether a supplier name or slug is taken) are supplier data, so every read here is
+	// admin-only — supplier fields leave the backend through no public route, without exception.
+	// Only the admin UI calls these; the storefront reads `/products/by-slug/:slug` and
+	// `/products/catalog`, neither of which mentions a vendor.
 	@Get(ENDPOINTS.VENDORS.GET_ALL)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.VENDORS.GET_ALL)
 	findAll() {
 		return this.vendorService.findAll()
 	}
 
 	@Get(ENDPOINTS.VENDORS.CHECK_AVAILABILITY)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.VENDORS.CHECK_AVAILABILITY)
 	checkAvailability(@Query() dto: CheckVendorAvailabilityDto) {
 		return this.vendorService.checkAvailability(dto)
 	}
 
 	@Get(ENDPOINTS.VENDORS.GET_BY_ID)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.VENDORS.GET_BY_ID)
 	findById(@Param('id') id: string) {
 		return this.vendorService.findById(id)

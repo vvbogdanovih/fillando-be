@@ -149,12 +149,13 @@ export const API_OPERATION = {
 	},
 	VENDORS: {
 		GET_ALL: {
-			summary: 'Get all vendors',
-			description: 'Get all vendors'
+			summary: 'Get all vendors (admin)',
+			description:
+				'Admin-only; a vendor is a supplier, so the list never leaves through a public route.'
 		},
 		GET_BY_ID: {
-			summary: 'Get vendor by id',
-			description: 'Get a single vendor by id'
+			summary: 'Get vendor by id (admin)',
+			description: 'Admin-only; returns a single supplier record.'
 		},
 		CREATE: {
 			summary: 'Create vendor',
@@ -169,8 +170,9 @@ export const API_OPERATION = {
 			description: 'Delete a vendor'
 		},
 		CHECK_AVAILABILITY: {
-			summary: 'Check vendor availability',
-			description: 'Check if a vendor name or slug is available (not taken)'
+			summary: 'Check vendor availability (admin)',
+			description:
+				'Admin-only; checks if a vendor name or slug is available (not taken). Used by the admin vendor form — answering it publicly would confirm which suppliers exist.'
 		}
 	},
 	PRODUCTS: {
@@ -180,8 +182,9 @@ export const API_OPERATION = {
 				'Admin-only, unpaginated list of every product for the admin catalogue screen. Public storefront must use /products/catalog.'
 		},
 		GET_BY_ID: {
-			summary: 'Get product by id',
-			description: 'Get a single product by id'
+			summary: 'Get product by id (admin)',
+			description:
+				'Admin-only; returns the raw product document including `vendor_id` — which supplier the product is bought from. The storefront uses /products/by-slug/:slug.'
 		},
 		CREATE: {
 			summary: 'Create product',
@@ -259,7 +262,7 @@ export const API_OPERATION = {
 		BY_SLUG: {
 			summary: 'Get variant by slug',
 			description:
-				'Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product (with `manufacturer` read from the «Виробник» attribute) and category. Draft variants respond 404; archived ones respond 200 with `status: archived` so the storefront can render a discontinued page.'
+				'Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product (with `manufacturer` read from the «Виробник» attribute, and every attribute carrying the `unit` its category defines for that key, `null` when there is none) and category. Draft variants respond 404; archived ones respond 200 with `status: archived` so the storefront can render a discontinued page.'
 		}
 	},
 	UPLOAD: {

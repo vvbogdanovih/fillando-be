@@ -6,10 +6,13 @@
 `VendorModule` and `UploadModule`, and on all modules that were already role-guarded before
 (`CategoryModule`, `PaymentDetailsModule`, `PaymentProvidersModule`, the admin part of
 `OrderModule`, `UsersModule` list, `DiscountCouponModule`, `WholesaleInquiryModule`,
-`NovaPostModule` / `PromModule` sync). Three product **reads** are admin-only as well —
+`NovaPostModule` / `PromModule` sync). Reads that would expose a supplier are admin-only as well —
 `GET /products` (unpaginated full dump), `GET /products/:id/variants` and
-`GET /products/:id/variants/:variantId` (full variant documents including supplier identifiers) —
-see [Admin-only reads](#admin-only-reads). The complete list is in
+`GET /products/:id/variants/:variantId` (full variant documents including supplier identifiers),
+`GET /products/:id` (the product document carries `vendor_id`) and every read of `VendorModule`
+(`GET /vendors`, `GET /vendors/check-availability`, `GET /vendors/:id` — a `Vendor` *is* a
+supplier) — see [Admin-only reads](#admin-only-reads). `VendorModule` therefore has no public route
+at all. The complete list is in
 [Enforced Admin-Only Endpoints](#enforced-admin-only-endpoints).
 
 Two behaviour changes landed together with that work (closes `todo/AUDIT_CRITICAL.md` #3):
@@ -107,8 +110,8 @@ production only.
 
 | Module                   | Admin-only endpoints                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Public / user-owned in the same module                                                                                                                                                                                                                               |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ProductModule`          | Writes: `POST /products` (create), `POST /products/validate`, `PATCH /products/:id`, `DELETE /products/:id`, `POST /products/:id/variants` (add variant), `PATCH /products/:id/variants/:variantId`, `DELETE /products/:id/variants/:variantId`, `PATCH /products/:id/variants/:variantId/images`, `POST /products/price-list/pdf`. Reads: `GET /products` (unpaginated dump), `GET /products/:id/variants`, `GET /products/:id/variants/:variantId` (full documents incl. `vendor_product_sku` / `prom_id` / `prom_*`) | Public GETs (projected, `status = active` only): `/products/catalog`, `/products/search`, `/products/variants/slugs`, `/products/variants/count`, `/products/price-sheet`, `/products/by-slug/:slug`; `/products/:id` (product header — no variant or supplier data) |
-| `VendorModule`           | `POST /vendors`, `PATCH /vendors/:id`, `DELETE /vendors/:id`                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Public GETs: `/vendors`, `/vendors/check-availability`, `/vendors/:id`                                                                                                                                                                                               |
+| `ProductModule`          | Writes: `POST /products` (create), `POST /products/validate`, `PATCH /products/:id`, `DELETE /products/:id`, `POST /products/:id/variants` (add variant), `PATCH /products/:id/variants/:variantId`, `DELETE /products/:id/variants/:variantId`, `PATCH /products/:id/variants/:variantId/images`, `POST /products/price-list/pdf`. Reads: `GET /products` (unpaginated dump), `GET /products/:id` (raw document incl. `vendor_id`), `GET /products/:id/variants`, `GET /products/:id/variants/:variantId` (full documents incl. `vendor_product_sku` / `prom_id` / `prom_*`) | Public GETs (projected, `status = active` only): `/products/catalog` (throttled, 120/min), `/products/search`, `/products/variants/slugs`, `/products/variants/count`, `/products/price-sheet`, `/products/by-slug/:slug` |
+| `VendorModule`           | All: `GET /vendors`, `GET /vendors/check-availability`, `GET /vendors/:id`, `POST /vendors`, `PATCH /vendors/:id`, `DELETE /vendors/:id`                                                                                                                                                                                                                                                                                                                                                                                 | — (a vendor is a supplier; nothing here is public)                                                                                                                                                                                                                   |
 | `UploadModule`           | All (class-level): `POST /upload/presign`, `POST /upload/confirm`, `DELETE /upload`                                                                                                                                                                                                                                                                                                                                                                                                                                     | —                                                                                                                                                                                                                                                                    |
 | `CategoryModule`         | `POST /categories`, `PATCH /categories/:id`, `PUT /categories/:id`, `DELETE /categories/:id`                                                                                                                                                                                                                                                                                                                                                                                                                            | Public GETs: `/categories`, `/categories/slug/:slug`, `/categories/:id`                                                                                                                                                                                              |
 | `PaymentDetailsModule`   | All: `GET /payment-details`, `GET /payment-details/active`, `GET /payment-details/:id`, `POST /payment-details`, `PATCH /payment-details/:id`, `DELETE /payment-details/:id`, `PATCH /payment-details/:id/activate`                                                                                                                                                                                                                                                                                                     | —                                                                                                                                                                                                                                                                    |
@@ -135,8 +138,12 @@ supplier/internal fields or an unpaginated dump is admin-only.** In `ProductModu
 | Endpoint                                | Why admin-only                                                                                                                                                                              | Consumer      |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
 | `GET /products`                         | Returns every product without pagination or status filter. The storefront lists via `/products/catalog`.                                                                                    | Admin UI only |
+| `GET /products/:id`                     | Returns the raw `products` document, and it carries `vendor_id` — which supplier the product is bought from. The storefront reads `/products/by-slug/:slug`.                                | Admin UI only |
 | `GET /products/:id/variants`            | Returns full `product_variants` documents — `vendor_product_sku`, `prom_id`, `prom_base_price`, `prom_discount_ratio`, `prom_discount_seen_at` — for every status incl. `draft`/`archived`. | Admin UI only |
 | `GET /products/:id/variants/:variantId` | Same document shape for a single variant.                                                                                                                                                   | Admin UI only |
+| `GET /vendors`                          | The supplier list itself.                                                                                                                                                                   | Admin UI only |
+| `GET /vendors/:id`                      | A single supplier record.                                                                                                                                                                   | Admin UI only |
+| `GET /vendors/check-availability`       | Answers whether a supplier name or slug is taken — a public probe confirms which suppliers exist.                                                                                           | Admin UI only |
 
 The admin UI **needs** `vendor_product_sku` / `prom_id` to edit a variant, so these endpoints are
 guarded rather than projected: same `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`
@@ -151,7 +158,8 @@ document, and list only `status = active` variants (`ProductStatus.ACTIVE`):
 
 - `GET /products/by-slug/:slug` — `toPublicVariant` allowlist (`id`, `name`, `slug`, `sku`, `price`,
   `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`) for the variant
-  and its siblings, plus `product.manufacturer` from the «Виробник» attribute. A `draft` slug → 404;
+  and its siblings, `toPublicAttributes` for `product.attributes` (`k`, `l`, `v`, `unit`), plus
+  `product.manufacturer` from the «Виробник» attribute. A `draft` slug → 404;
   an `archived` slug → 200 with `status: archived` (the discontinued product page, TD-0006 §5.4) —
   siblings stay `active`-only.
 - `GET /products/price-sheet` — `PRICE_SHEET_PUBLIC_PROJECTION`; search no longer matches
@@ -161,9 +169,11 @@ document, and list only `status = active` variants (`ProductStatus.ACTIVE`):
   sitemap cache key, so archiving a variant must change it).
 - `GET /products/catalog`, `GET /products/search` — storefront projections, active only.
 
-Both allowlists live in `src/modules/product/product-public.mappers.ts`; `GET /products/:id` stays
-public because a `Product` document is only the shared header (name, attributes, description,
-variant type) and carries no variant or supplier data. The projection rules are in
+The allowlists live in `src/modules/product/product-public.mappers.ts` — `toPublicVariant` for the
+variant and its siblings, `toPublicAttributes` for `product.attributes` (`k`, `l`, `v`, plus the
+`unit` the category declares for that key). `GET /products/:id` used to be public on the grounds
+that a `Product` document is only the shared header; it is not — the header includes `vendor_id`,
+so it is now guarded like the variant reads. The projection rules are in
 `src/docs/API_AND_SWAGGER.md` §4 "Public projections".
 
 ---
@@ -203,8 +213,9 @@ no database, they run with plain `yarn test`:
 - `src/modules/product/product.controller.rbac.spec.ts`,
   `src/modules/vendor/vendor.controller.rbac.spec.ts`,
   `src/modules/upload/upload.controller.rbac.spec.ts` — table-driven (`it.each`): for every
-  admin-only endpoint (writes **and** the admin-only GETs — `GET /products`,
-  `GET /products/:id/variants`, `GET /products/:id/variants/:variantId`) assert 401 with no header,
+  admin-only endpoint (writes **and** the admin-only GETs — `GET /products`, `GET /products/:id`,
+  `GET /products/:id/variants`, `GET /products/:id/variants/:variantId`, and all three vendor
+  GETs) assert 401 with no header,
   403 for `Role.USER`, 2xx for `Role.ADMIN`, and that the stubbed service method was called exactly
   once only in the ADMIN case; for every public GET assert 200 without a header. An admin-only GET
   belongs in the admin table, never in `PUBLIC_GETS` — a row in the wrong table is a red flag in

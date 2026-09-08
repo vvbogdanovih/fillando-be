@@ -41,12 +41,14 @@ type AdminRow = [method: HttpMethod, path: string, body: object | undefined, han
 /**
  * Every handler behind `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Role.ADMIN)`.
  *
- * The three GETs are admin-only on purpose: `/products` is the unpaginated full dump for the
- * admin catalogue screen, and the variant reads return raw documents carrying supplier
- * identifiers (`vendor_product_sku`, `prom_id`) that must never leave through a public route.
+ * The four GETs are admin-only on purpose: `/products` is the unpaginated full dump for the
+ * admin catalogue screen, the variant reads return raw documents carrying supplier identifiers
+ * (`vendor_product_sku`, `prom_id`), and `/products/:id` returns the raw product document with
+ * `vendor_id` — the supplier behind the product. None of them may leave through a public route.
  */
 const ADMIN_ENDPOINTS: AdminRow[] = [
 	['get', '/products', undefined, productService.findAll],
+	['get', `/products/${PRODUCT_ID}`, undefined, productService.findById],
 	['get', `/products/${PRODUCT_ID}/variants`, undefined, productService.getVariants],
 	['get', `/products/${PRODUCT_ID}/variants/${VARIANT_ID}`, undefined, productService.getVariant],
 	['post', '/products/validate', {}, productService.validate],
@@ -77,8 +79,7 @@ const PUBLIC_GETS: [path: string, handler: ServiceMock][] = [
 	['/products/variants/slugs', productService.getAllVariantSlugs],
 	['/products/variants/count', productService.getVariantCount],
 	['/products/price-sheet', productService.getPriceSheet],
-	['/products/by-slug/x', productService.getVariantBySlug],
-	[`/products/${PRODUCT_ID}`, productService.findById]
+	['/products/by-slug/x', productService.getVariantBySlug]
 ]
 
 describe('ProductController RBAC', () => {

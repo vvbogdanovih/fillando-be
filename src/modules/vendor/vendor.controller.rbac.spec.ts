@@ -17,18 +17,23 @@ const vendorService = {
 	delete: resolved()
 }
 
-type WriteRow = [method: HttpMethod, path: string, body: object | undefined, handler: jest.Mock]
+type AdminRow = [method: HttpMethod, path: string, body: object | undefined, handler: jest.Mock]
 
-const WRITE_ENDPOINTS: WriteRow[] = [
+/**
+ * Every handler of the controller — the module has no public route left.
+ *
+ * A `Vendor` IS a supplier, so the reads are admin-only for the same reason as the writes: the
+ * list, a single record and the availability probe (which confirms whether a supplier name or
+ * slug is taken) are all supplier data. Only the admin UI calls them; the storefront never
+ * mentions a vendor.
+ */
+const ADMIN_ENDPOINTS: AdminRow[] = [
+	['get', '/vendors', undefined, vendorService.findAll],
+	['get', '/vendors/check-availability', undefined, vendorService.checkAvailability],
+	['get', `/vendors/${VENDOR_ID}`, undefined, vendorService.findById],
 	['post', '/vendors', {}, vendorService.create],
 	['patch', `/vendors/${VENDOR_ID}`, {}, vendorService.update],
 	['delete', `/vendors/${VENDOR_ID}`, undefined, vendorService.delete]
-]
-
-const PUBLIC_GETS: [path: string, handler: jest.Mock][] = [
-	['/vendors', vendorService.findAll],
-	['/vendors/check-availability', vendorService.checkAvailability],
-	[`/vendors/${VENDOR_ID}`, vendorService.findById]
 ]
 
 describe('VendorController RBAC', () => {
@@ -49,8 +54,8 @@ describe('VendorController RBAC', () => {
 		jest.clearAllMocks()
 	})
 
-	describe('write endpoints are ADMIN-only', () => {
-		it.each(WRITE_ENDPOINTS)(
+	describe('every endpoint is ADMIN-only (writes + supplier reads)', () => {
+		it.each(ADMIN_ENDPOINTS)(
 			'%s %s → 401 without a token',
 			async (method, path, body, handler) => {
 				const res = await send(app, method, path, { body })
@@ -60,14 +65,14 @@ describe('VendorController RBAC', () => {
 			}
 		)
 
-		it.each(WRITE_ENDPOINTS)('%s %s → 403 for USER', async (method, path, body, handler) => {
+		it.each(ADMIN_ENDPOINTS)('%s %s → 403 for USER', async (method, path, body, handler) => {
 			const res = await send(app, method, path, { role: Role.USER, body })
 
 			expect(res.status).toBe(403)
 			expect(handler).not.toHaveBeenCalled()
 		})
 
-		it.each(WRITE_ENDPOINTS)('%s %s → 2xx for ADMIN', async (method, path, body, handler) => {
+		it.each(ADMIN_ENDPOINTS)('%s %s → 2xx for ADMIN', async (method, path, body, handler) => {
 			const res = await send(app, method, path, { role: Role.ADMIN, body })
 
 			expect(res.status).toBeGreaterThanOrEqual(200)
@@ -80,15 +85,6 @@ describe('VendorController RBAC', () => {
 
 			expect(vendorService.create).toHaveBeenCalledTimes(1)
 			expect(vendorService.create).toHaveBeenCalledWith({ name: 'Acme' })
-		})
-	})
-
-	describe('read endpoints stay public', () => {
-		it.each(PUBLIC_GETS)('GET %s → 200 without a token', async (path, handler) => {
-			const res = await send(app, 'get', path)
-
-			expect(res.status).toBe(200)
-			expect(handler).toHaveBeenCalledTimes(1)
 		})
 	})
 })

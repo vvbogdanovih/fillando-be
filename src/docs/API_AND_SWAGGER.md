@@ -141,9 +141,18 @@ else falls into one of two buckets:
 Admin-only reads today: `GET /products` (unpaginated full dump, used only by the admin UI),
 `GET /products/:id/variants` and `GET /products/:id/variants/:variantId` (full variant documents
 including `vendor_product_sku`, `prom_id` and the `prom_*` pricing fields, which the admin UI needs
-to edit a variant). They are guarded exactly like writes. When the storefront needs part of the same
-data, it gets a **projection** on a separate public endpoint — never the raw document with a hope
-that the client ignores the extra fields (see [Public projections](#public-projections) below).
+to edit a variant), `GET /products/:id` (the raw product document carries `vendor_id` — which
+supplier the product is bought from) and **every** read of `VendorModule` — `GET /vendors`,
+`GET /vendors/check-availability`, `GET /vendors/:id` — because a `Vendor` **is** a supplier. They
+are guarded exactly like writes. When the storefront needs part of the same data, it gets a
+**projection** on a separate public endpoint — never the raw document with a hope that the client
+ignores the extra fields (see [Public projections](#public-projections) below).
+
+The rule has no exception for "the field is harmless on its own": the shop resells at supplier
+price + margin, so the *link* between a product and its supplier is enough to look the supplier's
+price up. Before closing such an endpoint, check who calls it — every consumer of these five was in
+`fillando-fe/src/app/admin/**`, which talks to the API through the cookie-authenticated
+`httpService`, so an `ADMIN` session keeps working unchanged.
 
 ```ts
 import { UseGuards } from '@nestjs/common'
@@ -195,6 +204,7 @@ someone decides otherwise. For the product domain the allowlists live in
 | Export                                               | Used by                                                                 | Fields                                                                                                                      |
 | ---------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `toPublicVariant(variant)` + `PUBLIC_VARIANT_FIELDS` | `GET /products/by-slug/:slug` (the variant and its siblings)            | `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`       |
+| `toPublicAttributes(attributes, requiredAttributes)`  | `GET /products/by-slug/:slug` (`product.attributes`)                    | `k`, `l`, `v`, `unit`                                                                                                       |
 | `PRICE_SHEET_PUBLIC_PROJECTION`                      | `ProductVariantRepository.findPriceSheet` → `GET /products/price-sheet` | `id`, `product_name`, `slug`, `v_value`, `sku`, `price`, `stock`, `stock_updated_at`, `image`, `attributes`, `variant_type` |
 
 Never on either list: `vendor_product_sku`, `prom_id`, `prom_base_price`, `prom_discount_ratio`,
@@ -206,6 +216,13 @@ additionally resolves an `archived` slug (200, `status: archived`, for the disco
 page — TD-0006 §5.4); a `draft` slug → 404. The response also carries `product.manufacturer`,
 read from the «Виробник» attribute with the same `pickAttr(MANUFACTURER_PATTERNS)` the price sheet
 uses — `Vendor` is the supplier and is never exposed as the brand.
+
+`product.attributes` goes through `toPublicAttributes` for the same reason, and is the one place a
+field is joined **in** rather than dropped: each attribute carries the `unit` its category declares
+for that key (`categories.required_attributes[].unit`), so the specification table prints
+«Вага | 1 кг» instead of «Вага | 1». `unit` is `null` when the category has no entry for the key or
+that entry has no unit, and the key is always present so the row shape does not vary. Units are the
+only addition — the supplier rule above stays absolute.
 
 Rules:
 
@@ -251,11 +268,19 @@ login(...) {}
 | `POST /liqpay/checkout`                            | 10                         |
 | `POST /discount-coupons/validate`                  | 20                         |
 | `GET /products/price-sheet`                        | 20                         |
+| `GET /products/catalog`                            | 120                        |
 | `GET /orders/lookup/:orderNumber`                  | 30                         |
 | `PATCH /orders/lookup/:orderNumber/payment-method` | 5                          |
 
 - The IP comes from `req.ips[0] ?? req.ip`; `main.ts` sets `trust proxy 1`, so behind the
   production Nginx (`X-Forwarded-For`) this is the real client.
+- `GET /products/catalog` is deliberately the loosest limit in the table (120/min = 2/s). It runs
+  three `$facet` aggregations, so it must not be free — but it is also the endpoint the storefront
+  calls on every filter click, it is rendered server-side (all SSR renders share the one container
+  IP), and behind Cloudflare the leftmost `X-Forwarded-For` entry is only the real client as long as
+  the edge is configured to send it. A tight limit here breaks browsing, not scraping. **Follow-up:**
+  the storefront's `serverFetch` does not send `X-Internal-Token` yet, so SSR catalogue renders are
+  counted like a visitor's; adding the header exempts them (`skipIf`) and is the proper fix.
 - A blocked request gets `429` with a `Retry-After` header (exposed through CORS).
 - **Internal bypass:** requests carrying `X-Internal-Token: <INTERNAL_API_TOKEN>` are never
   throttled (`skipIf` → `src/common/guards/internal-request.util.ts`, constant-time compare).
@@ -263,7 +288,9 @@ login(...) {}
   fetches only. Today no SSR fetch targets a throttled endpoint, so the header is a safety net.
 - `ThrottlerGuard` goes **first** in `@UseGuards(...)` so an over-limit client is rejected
   before any auth work. Add a case to `*.controller.throttle.spec.ts` when you guard a new
-  handler (see `discount-coupon.controller.throttle.spec.ts`).
+  handler (see `discount-coupon.controller.throttle.spec.ts`,
+  `product.controller.throttle.spec.ts`). A handler's own `@Throttle` overrides the module
+  default, so the spec asserts the real limit: raising it in the controller alone fails the spec.
 
 ---
 
@@ -275,9 +302,9 @@ Non-exhaustive — see `app.module.ts` for the full list (18 feature modules) an
 | Module           | Base path     | Guard (writes + admin-only reads)                                                                                                                                                                                                                                     |
 | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AuthModule`     | `/auth`       | Public (issues its own tokens)                                                                                                                                                                                                                                        |
-| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                                                                                                                                                   |
+| `VendorModule`   | `/vendors`    | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on **every** route, reads included — a vendor is a supplier                                                                                                                                                        |
 | `CategoryModule` | `/categories` | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)`                                                                                                                                                                                                                   |
-| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on writes **and** on `GET /`, `GET /:id/variants`, `GET /:id/variants/:variantId`                                                                                                                                 |
+| `ProductModule`  | `/products`   | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` on writes **and** on `GET /`, `GET /:id`, `GET /:id/variants`, `GET /:id/variants/:variantId`                                                                                                                     |
 | `UploadModule`   | `/upload`     | `JwtAuthGuard` + `RolesGuard` + `Roles(Role.ADMIN)` (class-level, all)                                                                                                                                                                                                |
 | `UsersModule`    | `/users`      | `JwtAuthGuard` on GET/PATCH `/me`; `GET /users` is `Roles(Role.ADMIN)`                                                                                                                                                                                                |
 | `OrderModule`    | `/orders`     | `JwtAuthGuard` + `RolesGuard` + `Roles(ADMIN)` on admin routes; `POST /` uses `OptionalJwtAuthGuard` (guest checkout). Public read: `GET /orders/lookup/:orderNumber?token=…` — no guard, gated by an HMAC token (see `LIQPAY_FLOW.md`)                               |

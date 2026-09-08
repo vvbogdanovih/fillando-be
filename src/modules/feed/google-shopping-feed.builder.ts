@@ -5,7 +5,12 @@ import {
 	pickAttr,
 	pickColor
 } from 'src/modules/product/product-attribute.helpers'
-import type { FeedExclusionReason, FeedRawRow, FeedWarningCode } from './feed.types'
+import type {
+	FeedExclusionReason,
+	FeedRawRow,
+	FeedRequiredAttributeRef,
+	FeedWarningCode
+} from './feed.types'
 
 /** Google caps `title` at 150 and `description` at 5000 characters. */
 const TITLE_MAX = 150
@@ -80,8 +85,28 @@ export const descriptionText = (html: string | null | undefined): string => {
 	return truncate(text, DESCRIPTION_MAX)
 }
 
+/**
+ * A required attribute is fulfilled only when it carries a value. The admin form stores an
+ * unfilled one as `{ k: 'diameter', l: 'Діаметр', v: '' }`, so the key being present proves
+ * nothing — TD-0006 §5.3 warns about an unfulfilled `required_attributes`, not a missing key.
+ *
+ * The value is not always a string: `0` and `false` are values, an array is empty only when
+ * every element is, and anything else is taken as filled rather than guessed at.
+ */
+export const isAttrValueEmpty = (value: unknown): boolean => {
+	if (value === null || value === undefined) return true
+	if (typeof value === 'string') return value.trim() === ''
+	if (Array.isArray(value)) return value.every(isAttrValueEmpty)
+	return false
+}
+
 export type BuiltItem =
-	| { ok: true; xml: string; warnings: FeedWarningCode[]; missing_required: string[] }
+	| {
+			ok: true
+			xml: string
+			warnings: FeedWarningCode[]
+			missing_required: FeedRequiredAttributeRef[]
+	  }
 	| { ok: false; reason: FeedExclusionReason }
 
 export interface BuildItemContext {
@@ -126,8 +151,15 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	if (row.weight_g === null || row.weight_g === undefined) warnings.push('no_weight')
 
 	const missingRequired = (row.category.required_attributes ?? [])
-		.map(r => r.key)
-		.filter(key => !attributes.some(a => a?.k === key))
+		.map(r => ({ required: r, attr: attributes.find(a => a?.k === r.key) }))
+		.filter(({ attr }) => !attr || isAttrValueEmpty(attr.v))
+		.map(
+			({ required, attr }): FeedRequiredAttributeRef => ({
+				key: required.key,
+				// The category's own label first, the product's copy of it second, the key last.
+				label: required.label?.trim() || attr?.l?.trim() || required.key
+			})
+		)
 	if (missingRequired.length > 0) warnings.push('missing_required_attribute')
 
 	// Dictionary colour first (Ukrainian — the feed's language and what the page shows), the

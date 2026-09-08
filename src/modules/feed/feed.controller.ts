@@ -23,8 +23,10 @@ export class FeedController {
 	) {}
 
 	/**
-	 * Public, like sitemap.xml. A 503 before the first generation is deliberate: a fetch
-	 * failure makes Merchant retry, an empty channel makes it delist everything.
+	 * Public, like sitemap.xml. A 503 is deliberate wherever there is no XML to serve: a fetch
+	 * failure makes Merchant retry, an empty channel makes it delist everything. That covers
+	 * both the window before the first generation and a run that produced zero items —
+	 * `FeedService` refuses to cache such a run, so the cached XML always holds items.
 	 */
 	@Get(ENDPOINTS.FEEDS.GOOGLE_SHOPPING_XML)
 	@ApiOperation(API_OPERATION.FEEDS.GOOGLE_SHOPPING_XML)

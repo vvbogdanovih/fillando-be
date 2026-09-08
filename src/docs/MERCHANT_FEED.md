@@ -29,6 +29,16 @@ until the first generation finishes, and on Railway restarts are routine. So:
    30 days after the last successful fetch. An **empty `<channel>`** would instead be read as
    "every item is gone" and delist the catalogue — that is why the endpoint never serves one.
 3. A failed regeneration keeps the previous XML and records `last_error` for the status screen.
+4. A run that ends with **zero items** is a failure too, not a catalogue of nothing. The XML is
+   not even built: the cache is left exactly as it was, the summary comes back with
+   `ok: false` / `failure_reason: 'empty_feed'`, and the reason lands in both `summary.error` and
+   `FeedStatus.last_error`. With a previous XML cached, Merchant keeps fetching that one and its
+   `generated_at` does not move — `FeedStatus.summary` always describes the XML actually being
+   served, so a refused run never replaces it. With nothing cached the state stays "not
+   generated" and the public GET keeps answering 503. The trigger is not hypothetical: a
+   catalogue-wide loss of the «Виробник» attribute excludes every variant, and a
+   `findActiveForFeed` that returns nothing (a bad migration, an empty collection) would
+   otherwise publish a valid, empty channel — the one document that delists the whole account.
 
 The hourly job honours `RUN_CRON` like the Prom sync, with the same overlap guard
 (`FeedService.isRunning`); `POST /regenerate` is the manual fallback and answers 409 while a
@@ -77,9 +87,42 @@ Merchant survives a stock-out.
 
 ### Warnings (item stays, Google lists it worse)
 
-`no_google_product_category`, `no_description`, `no_weight`, `missing_required_attribute` (with a
-count per missing key). This is where the category's `required_attributes` get visibility without
-enforcement on write (TD-0006 §2).
+| Code                         | Raised when                                                  | `unit`     |
+| ---------------------------- | ------------------------------------------------------------ | ---------- |
+| `no_google_product_category` | the category has no `google_product_category`                | `category` |
+| `no_description`             | `product.description.html` is empty — the title stands in    | `item`     |
+| `no_weight`                  | `variant.weight_g` is null                                   | `item`     |
+| `missing_required_attribute` | a `required_attributes` entry of the category is unfulfilled | `item`     |
+
+This is where the category's `required_attributes` get visibility without enforcement on write
+(TD-0006 §2).
+
+**Unfulfilled means missing _or_ empty.** The admin form saves a required attribute left blank as
+`{ k: 'diameter', l: 'Діаметр', v: '' }` — the key is present, so a key-presence check fires for
+nothing the admin ever created, while TD-0006 §5.3 asks for "невиконаний `required_attributes`".
+`isAttrValueEmpty` treats `undefined`, `null`, a blank string and an all-blank list as no value;
+`0` and `false` are values and fulfil the requirement.
+
+**What each counter counts.** Per warning:
+
+- `count` + `unit` — affected entities in the unit of that kind, always read together.
+  `no_google_product_category` counts **distinct categories**: one untagged category with forty
+  variants is one thing to fix, and the admin screen's own label reads «1 категорія». Every other
+  kind counts feed rows.
+- `item_count` — feed rows carrying the warning, whatever `unit` says. Always present.
+- `skus` — the first 20 affected SKUs.
+- `detail` — `{ key: count }` for `missing_required_attribute`; kept unchanged for readers that
+  only need numbers.
+- `attributes` — `[{ key, label, count }]`, the same gaps with the label the screen prints
+  («Діаметр», never `diameter`). The label comes from the category's `required_attributes`, falls
+  back to the product's own `attributes[].l`, and only then to the key.
+
+Per generation, `FeedGenerationSummary` also carries both totals explicitly, because they are
+different numbers and summing `count` across kinds is neither of them:
+
+- `warning_kinds` — distinct kinds present. This is the admin KPI «попереджень» (the mock shows
+  four kinds, not the positions behind them).
+- `warned_items` — feed rows carrying at least one warning, counted once each.
 
 ## Where the numbers come from
 
@@ -108,9 +151,11 @@ tasks 30–34). Two things to get right in the cabinets, not in code:
 
 ## Testing
 
-Unit: `google-shopping-feed.builder.spec.ts` (every field, every exclusion, every warning, no
-supplier value), `product-type.resolver.spec.ts`, `feed.service.spec.ts` (cold start, summary,
-overlap guard, failure keeps the last XML). RBAC: `feed.controller.rbac.spec.ts` (public XML,
+Unit: `google-shopping-feed.builder.spec.ts` (every field, every exclusion, every warning, an
+empty required value counting as unfulfilled, the label fallbacks, no supplier value),
+`product-type.resolver.spec.ts`, `feed.service.spec.ts` (cold start, summary, overlap guard,
+failure keeps the last XML, a zero-item run refused with and without a cached XML, categories
+counted once for the taxonomy gap). RBAC: `feed.controller.rbac.spec.ts` (public XML,
 503 before the first generation, admin-only regenerate/status). Integration:
 `product-variant.repository.int-spec.ts` — `findActiveForFeed` returns ACTIVE only and no supplier
 field.

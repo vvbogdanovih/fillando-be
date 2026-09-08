@@ -45,6 +45,14 @@ export class FeedCronService implements OnModuleInit {
 	private async generateOnBootstrap(): Promise<void> {
 		try {
 			const summary = await this.feedService.generate()
+			if (!summary.ok) {
+				// Refused, not published: zero items would delist the catalogue. The GET keeps
+				// answering 503 until a run finds items.
+				this.logger.error(
+					`Google Shopping feed not published at startup: ${summary.error ?? summary.failure_reason}`
+				)
+				return
+			}
 			this.logger.log(`Google Shopping feed ready at startup: ${summary.item_count} items`)
 		} catch (err) {
 			// The public GET keeps answering 503 + Retry-After until the next run succeeds.
@@ -60,7 +68,12 @@ export class FeedCronService implements OnModuleInit {
 			return
 		}
 		try {
-			await this.feedService.generate()
+			const summary = await this.feedService.generate()
+			if (!summary.ok) {
+				this.logger.error(
+					`Scheduled feed regeneration published nothing: ${summary.error ?? summary.failure_reason}`
+				)
+			}
 		} catch (err) {
 			this.logger.error(`Scheduled feed regeneration failed: ${(err as Error).message}`)
 		}

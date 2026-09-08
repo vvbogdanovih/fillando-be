@@ -5,6 +5,7 @@ import {
 	buildItem,
 	cdata,
 	descriptionText,
+	isAttrValueEmpty,
 	priceBandLabel,
 	salesVelocityLabel,
 	stockDepthLabel,
@@ -97,6 +98,23 @@ describe('xml helpers', () => {
 		expect(descriptionText(null)).toBe('')
 		expect(descriptionText('x'.repeat(6000)).length).toBe(5000)
 	})
+
+	it('reads an attribute value as empty only when it truly carries none', () => {
+		expect([
+			isAttrValueEmpty(undefined),
+			isAttrValueEmpty(null),
+			isAttrValueEmpty('  ')
+		]).toEqual([true, true, true])
+		expect([isAttrValueEmpty(0), isAttrValueEmpty(false), isAttrValueEmpty('1,75 мм')]).toEqual(
+			[false, false, false]
+		)
+		// An older save could have stored a list of values; empty is still empty.
+		expect([isAttrValueEmpty([]), isAttrValueEmpty(['']), isAttrValueEmpty(['PLA'])]).toEqual([
+			true,
+			true,
+			false
+		])
+	})
 })
 
 describe('buildItem', () => {
@@ -183,7 +201,42 @@ describe('buildItem', () => {
 				'no_weight'
 			].sort()
 		)
-		expect(built.ok && built.missing_required).toEqual(['spool_included'])
+		expect(built.ok && built.missing_required).toEqual([
+			{ key: 'spool_included', label: 'Котушка в комплекті' }
+		])
+	})
+
+	it('treats an attribute stored empty by the admin form as an unfulfilled requirement', () => {
+		const r = row()
+		// What the admin form saves for a required attribute left blank: the key is there.
+		r.product!.attributes = r.product!.attributes.map(a =>
+			a.k === 'spool_included' ? { ...a, v: '   ' } : a
+		)
+
+		const built = buildItem(r, CTX)
+		expect(built.ok && built.warnings).toContain('missing_required_attribute')
+		expect(built.ok && built.missing_required).toEqual([
+			{ key: 'spool_included', label: 'Котушка в комплекті' }
+		])
+	})
+
+	it('labels the gap from the product attribute when the category has no label', () => {
+		const r = row()
+		r.category!.required_attributes = [{ key: 'diameter', label: '' }]
+		r.product!.attributes.push({ k: 'diameter', l: 'Діаметр', v: '' })
+
+		const built = buildItem(r, CTX)
+		expect(built.ok && built.missing_required).toEqual([{ key: 'diameter', label: 'Діаметр' }])
+	})
+
+	it('keeps a non-string attribute value fulfilled — a number is a value', () => {
+		const r = row()
+		r.category!.required_attributes = [{ key: 'diameter', label: 'Діаметр' }]
+		r.product!.attributes.push({ k: 'diameter', l: 'Діаметр', v: 0 })
+
+		const built = buildItem(r, CTX)
+		expect(built.ok && built.warnings).not.toContain('missing_required_attribute')
+		expect(built.ok && built.missing_required).toEqual([])
 	})
 
 	it('falls back to the legacy colour and material heuristics when the dictionary has a gap', () => {

@@ -32,6 +32,13 @@ const row = (overrides: Partial<FeedRawRow> = {}): FeedRawRow => ({
 	...overrides
 })
 
+/** A variant Merchant would reject outright — the cheapest way to make a run yield zero items. */
+const brandlessRow = (sku: string): FeedRawRow =>
+	row({
+		sku,
+		product: { ...row().product!, attributes: [{ k: 'polymer', l: 'Тип пластику', v: 'PLA' }] }
+	})
+
 const build = (rows: FeedRawRow[], landings: unknown[] = [], sold = new Map<string, number>()) => {
 	const productVariantRepository = { findActiveForFeed: jest.fn().mockResolvedValue(rows) }
 	const landingRepository = { findActive: jest.fn().mockResolvedValue(landings) }
@@ -90,10 +97,73 @@ describe('FeedService', () => {
 		])
 		expect(summary.warnings).toEqual(
 			expect.arrayContaining([
-				{ code: 'no_weight', count: 1, skus: ['FL-NOWEIGHT'] },
-				{ code: 'no_google_product_category', count: 1, skus: ['FL-NOGPC'] }
+				{ code: 'no_weight', count: 1, unit: 'item', item_count: 1, skus: ['FL-NOWEIGHT'] },
+				{
+					code: 'no_google_product_category',
+					count: 1,
+					unit: 'category',
+					item_count: 1,
+					skus: ['FL-NOGPC']
+				}
 			])
 		)
+		expect(summary.warning_kinds).toBe(2)
+		expect(summary.warned_items).toBe(2)
+		expect(summary).toMatchObject({ ok: true, failure_reason: null, error: null })
+	})
+
+	it('counts the taxonomy gap in categories, not in feed rows', async () => {
+		const untagged = { ...row().category!, google_product_category: null }
+		const rows = [
+			row({ sku: 'FL-A', category: untagged }),
+			row({ sku: 'FL-B', category: untagged }),
+			row({ sku: 'FL-C', category: { ...untagged, id: 'c2', name: 'Аксесуари' } })
+		]
+
+		const summary = await build(rows).service.generate()
+
+		expect(summary.warnings).toEqual([
+			{
+				code: 'no_google_product_category',
+				count: 2,
+				unit: 'category',
+				item_count: 3,
+				skus: ['FL-A', 'FL-B', 'FL-C']
+			}
+		])
+		expect(summary.warning_kinds).toBe(1)
+		expect(summary.warned_items).toBe(3)
+	})
+
+	it('warns about a required attribute left empty and names it by its label', async () => {
+		const required = [{ key: 'diameter', label: 'Діаметр' }]
+		const blank = row({
+			sku: 'FL-BLANK',
+			product: {
+				...row().product!,
+				attributes: [...row().product!.attributes, { k: 'diameter', l: 'Діаметр', v: '' }]
+			},
+			category: { ...row().category!, required_attributes: required }
+		})
+		const absent = row({
+			sku: 'FL-ABSENT',
+			category: { ...row().category!, required_attributes: required }
+		})
+
+		const summary = await build([blank, absent]).service.generate()
+
+		expect(summary.item_count).toBe(2)
+		expect(summary.warnings).toEqual([
+			{
+				code: 'missing_required_attribute',
+				count: 2,
+				unit: 'item',
+				item_count: 2,
+				skus: ['FL-BLANK', 'FL-ABSENT'],
+				detail: { diameter: 2 },
+				attributes: [{ key: 'diameter', label: 'Діаметр', count: 2 }]
+			}
+		])
 	})
 
 	it('refines product_type from the matching landing and counts it', async () => {
@@ -131,6 +201,44 @@ describe('FeedService', () => {
 
 		release([row()])
 		await expect(first).resolves.toMatchObject({ item_count: 1 })
+		expect(service.isRunning).toBe(false)
+	})
+
+	it('refuses to publish a zero-item feed and keeps the previous XML', async () => {
+		const { service, productVariantRepository } = build([row()])
+		await service.generate()
+		const before = service.getXml()
+		const publishedSummary = service.getStatus().summary
+
+		// Every variant excluded — the shape of a data collapse, e.g. «Виробник» wiped catalogue-wide.
+		productVariantRepository.findActiveForFeed.mockResolvedValueOnce([
+			brandlessRow('FL-NOBRAND')
+		])
+		const summary = await service.generate()
+
+		expect(summary).toMatchObject({ ok: false, failure_reason: 'empty_feed', item_count: 0 })
+		expect(summary.error).toContain('Фід не оновлено')
+		expect(summary.error).toContain('виключено: 1')
+		expect(service.getXml()).toEqual(before)
+		const status = service.getStatus()
+		expect(status.last_error).toBe(summary.error)
+		// The generated_at of the published feed must not move for a run that published nothing.
+		expect(status.summary).toBe(publishedSummary)
+		expect(status.xml_ready).toBe(true)
+	})
+
+	it('stays "not generated" when the very first run yields zero items', async () => {
+		const { service } = build([brandlessRow('FL-NOBRAND')])
+
+		const summary = await service.generate()
+
+		expect(summary).toMatchObject({ ok: false, failure_reason: 'empty_feed', item_count: 0 })
+		expect(summary.error).toContain('Фід не згенеровано')
+		expect(summary.error).toContain('503')
+		// Nothing cached, so the controller keeps answering 503 instead of an empty channel.
+		expect(service.getXml()).toBeNull()
+		expect(service.getStatus()).toMatchObject({ xml_ready: false, summary: null })
+		expect(service.getStatus().last_error).toBe(summary.error)
 		expect(service.isRunning).toBe(false)
 	})
 

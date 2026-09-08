@@ -1115,6 +1115,129 @@ describe('OrderService.claimLiqpayCheckout — one live session, retries include
 	})
 })
 
+describe('OrderService.findMyOrderById — the cabinet gets the same retry clock (I-33)', () => {
+	const USER_ID = '64b8f0000000000000000010'
+	const ORDER_ID = '64b8f0000000000000000020'
+
+	const cardOrder = (overrides: Record<string, unknown> = {}) =>
+		buildOrder({
+			order_status: OrderStatus.NEW,
+			payment_status: PaymentStatus.PENDING,
+			payment_method: PaymentMethod.LIQPAY,
+			liqpay_checkout_started_at: null,
+			...overrides
+		})
+
+	const buildService = (order: OrderFixture | null) => {
+		const orderRepository = {
+			findByIdAndUserId: jest.fn().mockResolvedValue(order),
+			findById: jest.fn().mockResolvedValue(order),
+			findAllByUserPaginated: jest.fn().mockResolvedValue(order ? [order] : []),
+			countDocumentsByUser: jest.fn().mockResolvedValue(order ? 1 : 0)
+		}
+		const service = new OrderService(
+			orderRepository as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+		return { service, orderRepository }
+	}
+
+	const readMyOrder = async (order: OrderFixture) =>
+		(await buildService(order).service.findMyOrderById(USER_ID, ORDER_ID)) as Record<
+			string,
+			unknown
+		>
+
+	it('reports null when no card session was ever opened — nothing to wait for', async () => {
+		const result = await readMyOrder(cardOrder())
+
+		expect(result.liqpay_retry_after_seconds).toBeNull()
+		// PENDING + NEW — the same rule the success page reads from the public lookup
+		expect(result.can_change_payment_method).toBe(true)
+	})
+
+	it('counts down the seconds left of a session opened a minute ago', async () => {
+		const result = await readMyOrder(
+			cardOrder({ liqpay_checkout_started_at: new Date(Date.now() - 60_000) })
+		)
+
+		expect(result.liqpay_retry_after_seconds).toBe(LIQPAY_SESSION_COOLDOWN_MS / 1000 - 60)
+	})
+
+	it('reports 0 once the stamp of the previous session has gone stale', async () => {
+		const result = await readMyOrder(
+			cardOrder({
+				liqpay_checkout_started_at: new Date(Date.now() - LIQPAY_SESSION_COOLDOWN_MS - 1000)
+			})
+		)
+
+		expect(result.liqpay_retry_after_seconds).toBe(0)
+	})
+
+	it('lets a declined card be retried at once: 0, not the rest of the window', async () => {
+		const result = await readMyOrder(
+			cardOrder({
+				payment_status: PaymentStatus.FAILED,
+				liqpay_checkout_started_at: new Date(Date.now() - 60_000)
+			})
+		)
+
+		expect(result.liqpay_retry_after_seconds).toBe(0)
+		expect(result.can_change_payment_method).toBe(true)
+	})
+
+	it('agrees with the helper the public lookup uses instead of computing its own number', async () => {
+		const order = cardOrder({ liqpay_checkout_started_at: new Date(Date.now() - 120_000) })
+
+		const result = await readMyOrder(order)
+
+		expect(result.liqpay_retry_after_seconds).toBe(liqpayRetryAfterSeconds(order as never))
+	})
+
+	it('adds exactly those two fields — nothing else joins the buyer projection', async () => {
+		const { service } = buildService(cardOrder())
+
+		const admin = (await service.findById(ORDER_ID)) as Record<string, unknown>
+		const mine = (await service.findMyOrderById(USER_ID, ORDER_ID)) as Record<string, unknown>
+
+		expect(Object.keys(mine).filter(key => !(key in admin))).toEqual([
+			'can_change_payment_method',
+			'liqpay_retry_after_seconds'
+		])
+	})
+
+	it('carries the clock in the list of my orders too, still without vendor_sku', async () => {
+		const { service } = buildService(
+			cardOrder({ liqpay_checkout_started_at: new Date(Date.now() - 60_000) })
+		)
+
+		const result = (await service.findMyOrders(USER_ID, {})) as {
+			items: Array<Record<string, unknown>>
+		}
+
+		expect(result.items[0].liqpay_retry_after_seconds).toBe(
+			LIQPAY_SESSION_COOLDOWN_MS / 1000 - 60
+		)
+		expect((result.items[0].items as Array<Record<string, unknown>>)[0]).not.toHaveProperty(
+			'vendor_sku'
+		)
+	})
+
+	it("answers 404 for another user's order — not 403, and not an order without the clock", async () => {
+		const { service, orderRepository } = buildService(null)
+
+		await expect(service.findMyOrderById(USER_ID, ORDER_ID)).rejects.toBeInstanceOf(
+			NotFoundException
+		)
+		expect(orderRepository.findByIdAndUserId).toHaveBeenCalledTimes(1)
+	})
+})
+
 describe('OrderService.create — every refusal the buyer can read is Ukrainian and coded (I-15, I-17)', () => {
 	const VARIANT_ID = '64b8f0000000000000000001'
 

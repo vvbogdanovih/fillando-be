@@ -295,11 +295,25 @@ export class OrderService {
 	 * Customer-facing shape (POST /orders, GET /orders/me*): like {@link mapOrderResponse}
 	 * minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
 	 * and vendor e-mail only and must never reach a buyer.
+	 *
+	 * Plus the two derived payment fields the public lookup already carries, computed by the
+	 * same helpers so the cabinet and the success page can never drift: without the clock the
+	 * cabinet's «Оплатити карткою» has to guess and let the server refuse (I-33). What the
+	 * buyer needs is the number of seconds, so only that derived value is added here — never
+	 * a raw session stamp or another internal payment field.
 	 */
 	private mapCustomerOrderResponse(order: any) {
 		const mapped = this.mapOrderResponse(order)
+		const paymentState = mapped as {
+			payment_method: PaymentMethod
+			payment_status: PaymentStatus
+			order_status: OrderStatus
+			liqpay_checkout_started_at: Date | null
+		}
 		return {
 			...mapped,
+			can_change_payment_method: canCustomerChangePaymentMethod(paymentState),
+			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(paymentState),
 			items: mapped.items.map((item: any) => {
 				const customerItem = { ...item }
 				delete customerItem.vendor_sku

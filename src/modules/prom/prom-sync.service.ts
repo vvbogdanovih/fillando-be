@@ -1,6 +1,11 @@
 import { Injectable, Logger, MessageEvent } from '@nestjs/common'
 import { Observable, Subject } from 'rxjs'
+import { Optional } from '@nestjs/common'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
+import {
+	StorefrontRevalidationService,
+	storefrontRevalidation
+} from 'src/common/services/storefront-revalidation.service'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import { ResolvedVendorPrice, resolveShopPrice, resolveVendorPrice } from './prom-pricing'
 import { PromProduct, PromService } from './prom.service'
@@ -37,7 +42,13 @@ export class PromSyncService {
 
 	constructor(
 		private readonly promService: PromService,
-		private readonly variantRepo: ProductVariantRepository
+		private readonly variantRepo: ProductVariantRepository,
+		/**
+		 * Same process-wide instance the admin services use, so a sync running while someone
+		 * saves a product shares one throttle window instead of opening a second one.
+		 */
+		@Optional()
+		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation
 	) {}
 
 	/** True while a sync (manual or scheduled) is in progress. */
@@ -104,6 +115,11 @@ export class PromSyncService {
 						summary.updated++
 						if (patch.price !== undefined) summary.pricesUpdated++
 						if (priceRejected) summary.priceSkipped++
+						// This write goes through the repository rather than ProductService, so
+						// it is the one stock and price change the storefront would otherwise
+						// learn about only when the hour lapsed. The service collapses a whole
+						// sync into one purge per window (Plan-0005 I-h).
+						this.revalidation.revalidate('products', 'prom-sync')
 					}
 				} catch (err) {
 					this.logger.warn(

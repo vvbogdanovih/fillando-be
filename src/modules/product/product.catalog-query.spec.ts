@@ -26,7 +26,9 @@ const buildService = (category: unknown = CATEGORY) => {
 		{ findCatalogItems } as never,
 		{} as never,
 		{} as never,
-		{ findById } as never
+		{ findById } as never,
+		// A stub, never the shared singleton: a unit test must not POST to the storefront.
+		{ revalidate: jest.fn() } as never
 	)
 	return { service, findCatalogItems, findById }
 }

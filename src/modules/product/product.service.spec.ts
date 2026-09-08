@@ -25,7 +25,9 @@ const buildService = () => {
 		productVariantRepository as never,
 		numbersRepository as never,
 		colorRepository as never,
-		categoryRepository as never
+		categoryRepository as never,
+		// A stub, never the shared singleton: a unit test must not POST to the storefront.
+		{ revalidate: jest.fn() } as never
 	)
 	return { service, productRepository, productVariantRepository, categoryRepository }
 }

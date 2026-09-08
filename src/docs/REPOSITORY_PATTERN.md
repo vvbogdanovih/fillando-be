@@ -198,7 +198,45 @@ appear in the query filter, not just in the update.
 
 ---
 
-## 7. Global exception filter
+## 7. Conditional and bulk writes (no transactions available)
+
+This deployment runs a **standalone MongoDB 7**, so `session.withTransaction` fails outright.
+Anything that writes a derived copy of another document therefore cannot be atomic with it, and
+the repository method is what makes the pair recoverable instead.
+
+Two rules, both visible in `product-variant.repository.ts`:
+
+**Filter on the drift, not on the caller's intent.** `updateColorFamilyByColorId` and
+`renameVariants` both match `{ <field>: { $ne: <target> } }`, so the write is a no-op when the
+value is already right. That is what makes the backfill idempotent: re-issuing the same
+`PATCH /colors/:id` repairs a backfill that failed halfway, and a PATCH that changed nothing
+relevant writes nothing at all. A service that decides "the name changed, so write" instead
+loses that property — the retry stops repairing.
+
+**One round trip, not one per document.** A colour rename touches dozens of variants across many
+products, and the new name needs each variant's *product* name. The pair is:
+
+```ts
+// read: one $lookup pass, projecting only the fields the name is built and diffed from
+findNameSourcesByColorId(colorId: string): Promise<VariantNameSource[]>
+
+// write: one bulkWrite, each updateOne filtered on the name actually differing
+renameVariants(renames: Array<{ id: Types.ObjectId; name: string }>): Promise<number>
+```
+
+The service plans in memory between the two calls and returns how many documents moved, which is
+what the log line reports. A `findById` per variant, or an `update` per variant, is the shape to
+avoid — it is also the shape that makes a partial failure impossible to reason about.
+
+**Derived fields are only ever written from their source of truth.** The dictionary is written
+first, the copies second (see `ColorService.update`). Never the reverse order, and never a
+recomputation of a field the design keeps stable on purpose: a colour rename rewrites
+`ProductVariant.name` but must not touch `v_value` or `slug`, because addresses are generated
+from `v_value` and may not move under an indexed page.
+
+---
+
+## 8. Global exception filter
 
 `src/database/mongoose/mongoose.filter.ts` — registered globally in `main.ts`.
 
@@ -212,7 +250,7 @@ Any other `MongoServerError` is not caught by this filter and will surface as a 
 
 ---
 
-## 8. Rules
+## 9. Rules
 
 - **Services never import `@InjectModel` or `Model<T>` directly** — all DB access goes through a repository.
 - **Repositories contain no business logic** — no throwing HTTP exceptions, no password hashing, no token signing.

@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
+import { Types } from 'mongoose'
 import { ColorFamily } from 'src/common/types/enums'
 import { ColorService } from './color.service'
 
@@ -11,6 +12,7 @@ const buildService = (
 		inUse?: number
 		dictionary?: unknown[]
 		usage?: Map<string, number>
+		nameSources?: unknown[]
 	} = {}
 ) => {
 	const updated = overrides.color ?? {
@@ -28,10 +30,19 @@ const buildService = (
 	const productVariantRepository = {
 		updateColorFamilyByColorId: jest.fn().mockResolvedValue(3),
 		countByColorId: jest.fn().mockResolvedValue(overrides.inUse ?? 0),
-		countAllByColorId: jest.fn().mockResolvedValue(overrides.usage ?? new Map())
+		countAllByColorId: jest.fn().mockResolvedValue(overrides.usage ?? new Map()),
+		findNameSourcesByColorId: jest.fn().mockResolvedValue(overrides.nameSources ?? []),
+		renameVariants: jest
+			.fn()
+			.mockImplementation((renames: unknown[]) => Promise.resolve(renames.length))
 	}
-	const service = new ColorService(colorRepository as never, productVariantRepository as never)
-	return { service, colorRepository, productVariantRepository }
+	const revalidation = { revalidate: jest.fn() }
+	const service = new ColorService(
+		colorRepository as never,
+		productVariantRepository as never,
+		revalidation as never
+	)
+	return { service, colorRepository, productVariantRepository, revalidation }
 }
 
 describe('ColorService.create', () => {
@@ -144,6 +155,195 @@ describe('ColorService.update — denormalized color_family', () => {
 			NotFoundException
 		)
 		expect(productVariantRepository.updateColorFamilyByColorId).not.toHaveBeenCalled()
+	})
+})
+
+/**
+ * I-f: an admin fixing a colour spelling has to reach the *stored* variant names.
+ *
+ * `variantName`/`variantLabel` prefer the dictionary, so the product page showed the new
+ * spelling at once — while the catalogue card, the cart row, the price sheet and every order
+ * snapshot still read the old one, because those are the stored `ProductVariant.name`. The
+ * shopper saw two names for one colour, and the only repair was re-saving every product.
+ */
+describe('ColorService.update — stored variant names (I-f)', () => {
+	const VARIANT_A = new Types.ObjectId('000000000000000000000021')
+	const VARIANT_B = new Types.ObjectId('000000000000000000000022')
+
+	/** A stored variant as the join returns it: its current name plus what rebuilds it. */
+	const source = (over: Record<string, unknown> = {}) => ({
+		_id: VARIANT_A,
+		name: 'PLA Basic — Чорний (Black)',
+		v_value: 'Black',
+		product_name: 'PLA Basic',
+		...over
+	})
+
+	const dictionary = (over: Record<string, unknown> = {}) => ({
+		_id: GOOD_ID,
+		name_uk: 'Чорний',
+		name_en: 'Black',
+		family: ColorFamily.BLACK,
+		...over
+	})
+
+	type Rename = { id: Types.ObjectId; name: string }
+
+	/** What the backfill actually asked the repository to write. */
+	const written = (repo: { renameVariants: jest.Mock }): Rename[] => {
+		const calls = repo.renameVariants.mock.calls as Array<[Rename[]]>
+		return calls[0][0]
+	}
+
+	it('a new Ukrainian name reaches the stored variant names', async () => {
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [source()]
+		})
+		colorRepository.update.mockResolvedValue(dictionary({ name_uk: 'Вугільний' }))
+
+		await service.update(GOOD_ID, { name_uk: 'Вугільний' })
+
+		expect(written(productVariantRepository)).toEqual([
+			{ id: VARIANT_A, name: 'PLA Basic — Вугільний (Black)' }
+		])
+	})
+
+	it('a new English name reaches the bracketed half', async () => {
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [source()]
+		})
+		colorRepository.update.mockResolvedValue(dictionary({ name_en: 'Carbon' }))
+
+		await service.update(GOOD_ID, { name_en: 'Carbon' })
+
+		expect(written(productVariantRepository)).toEqual([
+			{ id: VARIANT_A, name: 'PLA Basic — Чорний (Carbon)' }
+		])
+	})
+
+	it("uses ProductService's own rule, collapsing a pair that is one word", async () => {
+		// «Candy (Candy)» would be the literal reading of the format and is nobody's idea of a
+		// name. Restating the rule here instead of importing it is how the catalogue card and
+		// the product page ended up in two languages in the first place.
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [source({ name: 'PLA Basic — Чорний (Black)', v_value: 'Candy' })]
+		})
+		colorRepository.update.mockResolvedValue(dictionary({ name_uk: 'Candy', name_en: 'Candy' }))
+
+		await service.update(GOOD_ID, { name_uk: 'Candy' })
+
+		expect(written(productVariantRepository)[0].name).toBe('PLA Basic — Candy')
+	})
+
+	it('never writes v_value or the slug — addresses stay where Google found them', async () => {
+		// `v_value` holds the canonical English spelling and the slug is generated from it, so a
+		// dictionary rename must not move a single URL. `v_value` disagreeing with `name_en` is
+		// the design (TD-0002 §5.2.2), not drift for a later reader to "fix".
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [source()]
+		})
+		colorRepository.update.mockResolvedValue(dictionary({ name_uk: 'Вугільний' }))
+
+		await service.update(GOOD_ID, { name_uk: 'Вугільний' })
+
+		for (const rename of written(productVariantRepository)) {
+			expect(Object.keys(rename).sort()).toEqual(['id', 'name'])
+		}
+	})
+
+	it('a PATCH that changes no name writes nothing at all', async () => {
+		// Reordering the dictionary or fixing a hex stop must not touch a single variant: there
+		// is no transaction here, so the write has to be filtered on drift to stay idempotent.
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [source()]
+		})
+		colorRepository.update.mockResolvedValue(dictionary())
+
+		await service.update(GOOD_ID, { order: 5 })
+
+		expect(written(productVariantRepository)).toEqual([])
+	})
+
+	it('skips the variants already carrying the right name', async () => {
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [
+				source({ name: 'PLA Basic — Вугільний (Black)' }),
+				source({ _id: VARIANT_B, name: 'PETG — Чорний (Black)', product_name: 'PETG' })
+			]
+		})
+		colorRepository.update.mockResolvedValue(dictionary({ name_uk: 'Вугільний' }))
+
+		await service.update(GOOD_ID, { name_uk: 'Вугільний' })
+
+		expect(written(productVariantRepository)).toEqual([
+			{ id: VARIANT_B, name: 'PETG — Вугільний (Black)' }
+		])
+	})
+
+	it('reads the product names in one pass, not one query per variant', async () => {
+		const { service, productVariantRepository } = buildService({
+			nameSources: [source(), source({ _id: VARIANT_B, product_name: 'PETG' })]
+		})
+
+		await service.update(GOOD_ID, { name_uk: 'Вугільний' })
+
+		expect(productVariantRepository.findNameSourcesByColorId).toHaveBeenCalledTimes(1)
+		expect(productVariantRepository.renameVariants).toHaveBeenCalledTimes(1)
+	})
+
+	it('writes the dictionary first, then the derived fields', async () => {
+		// The order is the compensation for the missing transaction, so it is asserted rather
+		// than left to the reading order of the method.
+		const { service, colorRepository, productVariantRepository } = buildService({
+			nameSources: [source()]
+		})
+		const calls: string[] = []
+		colorRepository.update.mockImplementation(() => {
+			calls.push('dictionary')
+			return Promise.resolve(dictionary({ name_uk: 'Вугільний' }))
+		})
+		productVariantRepository.updateColorFamilyByColorId.mockImplementation(() => {
+			calls.push('family')
+			return Promise.resolve(1)
+		})
+		productVariantRepository.renameVariants.mockImplementation(() => {
+			calls.push('names')
+			return Promise.resolve(1)
+		})
+
+		await service.update(GOOD_ID, { name_uk: 'Вугільний' })
+
+		expect(calls).toEqual(['dictionary', 'family', 'names'])
+	})
+
+	it('fails the request when the rename fails, so a retry can repair it', async () => {
+		const { service, productVariantRepository, revalidation } = buildService({
+			nameSources: [source()]
+		})
+		productVariantRepository.renameVariants.mockRejectedValue(new Error('down'))
+
+		await expect(service.update(GOOD_ID, { name_uk: 'Вугільний' })).rejects.toThrow('down')
+		expect(revalidation.revalidate).not.toHaveBeenCalled()
+	})
+
+	it('never touches the variant names when the colour does not exist', async () => {
+		const { service, colorRepository, productVariantRepository } = buildService()
+		colorRepository.update.mockResolvedValue(null)
+
+		await expect(service.update(GOOD_ID, { name_uk: 'Вугільний' })).rejects.toBeInstanceOf(
+			NotFoundException
+		)
+		expect(productVariantRepository.findNameSourcesByColorId).not.toHaveBeenCalled()
+		expect(productVariantRepository.renameVariants).not.toHaveBeenCalled()
+	})
+
+	it('purges the storefront once — the colour is on every catalogue card', async () => {
+		const { service, revalidation } = buildService({ nameSources: [source()] })
+
+		await service.update(GOOD_ID, { name_uk: 'Вугільний' })
+
+		expect(revalidation.revalidate).toHaveBeenCalledTimes(1)
+		expect(revalidation.revalidate).toHaveBeenCalledWith('products', expect.any(String))
 	})
 })
 

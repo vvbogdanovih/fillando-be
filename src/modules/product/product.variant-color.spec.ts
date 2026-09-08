@@ -41,7 +41,9 @@ const buildService = (
 		productVariantRepository as never,
 		numbersRepository as never,
 		colorRepository as never,
-		{ findById: jest.fn().mockResolvedValue(null) } as never
+		{ findById: jest.fn().mockResolvedValue(null) } as never,
+		// A stub, never the shared singleton: a unit test must not POST to the storefront.
+		{ revalidate: jest.fn() } as never
 	)
 	return { service, productVariantRepository, colorRepository }
 }
@@ -149,7 +151,8 @@ describe('updateVariant — colour', () => {
 			{ update: jest.fn(), findOne: jest.fn() } as never,
 			{} as never,
 			colorRepository as never,
-			{ findById: jest.fn().mockResolvedValue(null) } as never
+			{ findById: jest.fn().mockResolvedValue(null) } as never,
+			{ revalidate: jest.fn() } as never
 		)
 
 		await expect(

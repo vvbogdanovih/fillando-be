@@ -37,6 +37,19 @@ export interface SpooledCounterpart {
 /** The dictionary fields the public colour payload is built from. */
 type PublicColorSource = Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'>
 
+/**
+ * Everything the display name of one variant is built from, joined in a single pass.
+ *
+ * `name` is what is stored right now — the caller compares against it and writes only the
+ * variants that actually drifted.
+ */
+export interface VariantNameSource {
+	_id: Types.ObjectId
+	name: string
+	v_value: string | null
+	product_name: string
+}
+
 /** One ACTIVE variant as `findActiveForFeed` returns it — the Google Shopping feed's working set. */
 export interface FeedVariantRow {
 	id: string
@@ -113,6 +126,62 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				{ $set: { color_family: family } }
 			)
 			.exec()
+		return result.modifiedCount
+	}
+
+	/**
+	 * Every variant of one dictionary colour, each carrying its product's name.
+	 *
+	 * The display name is `«<product> — <Укр (EN)>»`, so renaming the colour needs the product
+	 * name of every variant that points at it — dozens, spread over many products. One `$lookup`
+	 * pass instead of a read per variant; the projection is the four fields the name is built
+	 * and diffed from, so a colour used across the catalogue is still one small payload.
+	 */
+	findNameSourcesByColorId(colorId: string): Promise<VariantNameSource[]> {
+		return this.model
+			.aggregate<VariantNameSource>([
+				{ $match: { color_id: new Types.ObjectId(colorId) } },
+				{
+					$lookup: {
+						from: 'products',
+						localField: 'product_id',
+						foreignField: '_id',
+						as: 'product',
+						// Only the name is needed — no point hauling descriptions.
+						pipeline: [{ $project: { _id: 0, name: 1 } }]
+					}
+				},
+				{ $unwind: '$product' },
+				{ $project: { _id: 1, name: 1, v_value: 1, product_name: '$product.name' } }
+			])
+			.exec()
+	}
+
+	/**
+	 * Writes the display names planned by {@link findNameSourcesByColorId}, in one round trip.
+	 *
+	 * Only `name` is touched. `v_value` and `slug` are left exactly as they are on purpose: the
+	 * slug is generated from `v_value`, and an admin fixing a spelling in the colour dictionary
+	 * must not move the address of a page Google already indexed (TD-0002 §5.2.2). `v_value`
+	 * drifting from `colors.name_en` is that design, not drift to repair.
+	 *
+	 * Every write is filtered on the name differing, the same way
+	 * {@link updateColorFamilyByColorId} is: there is no transaction to wrap the dictionary write
+	 * and this one in (standalone MongoDB), so re-issuing the same PATCH has to be free when
+	 * nothing moved and has to repair the variants when the previous attempt failed halfway.
+	 *
+	 * @returns how many variants were changed
+	 */
+	async renameVariants(renames: Array<{ id: Types.ObjectId; name: string }>): Promise<number> {
+		if (renames.length === 0) return 0
+		const result = await this.model.bulkWrite(
+			renames.map(rename => ({
+				updateOne: {
+					filter: { _id: rename.id, name: { $ne: rename.name } },
+					update: { $set: { name: rename.name } }
+				}
+			}))
+		)
 		return result.modifiedCount
 	}
 

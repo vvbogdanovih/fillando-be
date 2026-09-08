@@ -30,7 +30,9 @@ const buildService = (opts: {
 		productVariantRepository as never,
 		{} as never,
 		{} as never,
-		categoryRepository as never
+		categoryRepository as never,
+		// A stub, never the shared singleton: a unit test must not POST to the storefront.
+		{ revalidate: jest.fn() } as never
 	)
 	return { service, findSearchResults, productRepository, categoryRepository }
 }

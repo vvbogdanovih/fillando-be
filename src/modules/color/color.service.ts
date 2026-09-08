@@ -1,10 +1,21 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { Types } from 'mongoose'
 import { ColorRepository } from 'src/database/mongoose/repositories/color.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
+import {
+	StorefrontRevalidationService,
+	storefrontRevalidation
+} from 'src/common/services/storefront-revalidation.service'
 import { generateSlug } from 'src/common/utils'
+import { formatColorLabel, variantName } from 'src/modules/product/product.service'
 import { CreateColorDto } from './dto/create-color.dto'
 import { UpdateColorDto } from './dto/update-color.dto'
+
+/** The dictionary fields a variant's display name is built from. */
+interface ColorNames {
+	name_uk?: string | null
+	name_en?: string | null
+}
 
 @Injectable()
 export class ColorService {
@@ -12,7 +23,14 @@ export class ColorService {
 
 	constructor(
 		private readonly colorRepository: ColorRepository,
-		private readonly productVariantRepository: ProductVariantRepository
+		private readonly productVariantRepository: ProductVariantRepository,
+		/**
+		 * Not a registered provider: `@Optional()` leaves it `undefined` and the default takes
+		 * over, so this service shares one throttle window with the product and category writes
+		 * (see the singleton's own note). A spec passes its own instance.
+		 */
+		@Optional()
+		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation
 	) {}
 
 	findAll() {
@@ -57,13 +75,13 @@ export class ColorService {
 	}
 
 	/**
-	 * Updating `family` also rewrites the denormalized `color_family` on every variant of this
-	 * colour (TD-0002 §5.2.2).
+	 * Updating a colour also rewrites what the variants of that colour denormalize from it: the
+	 * `color_family` the catalogue filters by (TD-0002 §5.2.2) and the stored display `name`.
 	 *
 	 * The design asked for one transaction, which this deployment cannot give: the database is a
-	 * standalone MongoDB 7, and transactions need a replica set. So the two writes are ordered
+	 * standalone MongoDB 7, and transactions need a replica set. So the writes are ordered
 	 * instead — the dictionary, which is the source of truth, then the variants derived from it.
-	 * If the backfill fails the request fails too, and the variants are recomputable: re-issuing
+	 * If a backfill fails the request fails too, and the variants are recomputable: re-issuing
 	 * the same PATCH (or any later one) backfills again, because the check is on drift, not on a
 	 * change of value.
 	 */
@@ -85,7 +103,49 @@ export class ColorService {
 				`Colour ${updated.name_en} (${id}) is now "${updated.family}" — color_family rewritten on ${backfilled} variants`
 			)
 		}
+
+		const renamed = await this.renameVariantsOfColor(id, updated)
+		if (renamed > 0) {
+			this.logger.log(
+				`Colour ${updated.name_en} (${id}) — display name rewritten on ${renamed} variants`
+			)
+		}
+
+		// The colour is on every catalogue card, in the cart row and in the price sheet, so a
+		// rename that only the product page reflects is two names for one colour until the hour
+		// lapses (I-h).
+		this.revalidation.revalidate('products', 'colour update')
 		return updated
+	}
+
+	/**
+	 * Rewrites the stored `ProductVariant.name` of every variant of this colour.
+	 *
+	 * The name is `«<товар> — <Укр (EN)>»`, and the rule is `ProductService`'s own — imported,
+	 * not restated, because two implementations of it are exactly how the catalogue card and the
+	 * product page ended up in different languages. The product name comes back joined with the
+	 * variant, so a colour used across thirty products is one aggregation, not thirty reads.
+	 *
+	 * **`v_value` and the slug are deliberately untouched.** `v_value` holds the canonical
+	 * English spelling and the slug is generated from it, so addresses stay stable when an admin
+	 * fixes a spelling — `v_value` disagreeing with `colors.name_en` is that design (TD-0002
+	 * §5.2.2, "the slug keeps coming from `v_value`"), not drift to repair. Regenerating either
+	 * here would move pages Google has already indexed, with no 301 behind them.
+	 */
+	private async renameVariantsOfColor(colorId: string, color: ColorNames): Promise<number> {
+		const label = formatColorLabel(color.name_uk, color.name_en)
+		const sources = await this.productVariantRepository.findNameSourcesByColorId(colorId)
+
+		// Only the drifted ones. With no transaction available the backfill has to be
+		// idempotent: a PATCH that moves `order` or a hex stop must write nothing at all, and a
+		// backfill that failed halfway has to be repairable by re-issuing the same PATCH.
+		const renames: Array<{ id: Types.ObjectId; name: string }> = []
+		for (const source of sources) {
+			const name = variantName(source.product_name, source.v_value, label)
+			if (name !== source.name) renames.push({ id: source._id, name })
+		}
+
+		return this.productVariantRepository.renameVariants(renames)
 	}
 
 	/**

@@ -3,9 +3,14 @@ import {
 	ConflictException,
 	Injectable,
 	Logger,
-	NotFoundException
+	NotFoundException,
+	Optional
 } from '@nestjs/common'
 import { Types } from 'mongoose'
+import {
+	StorefrontRevalidationService,
+	storefrontRevalidation
+} from 'src/common/services/storefront-revalidation.service'
 import { ProductRepository } from 'src/database/mongoose/repositories/product.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
@@ -76,7 +81,14 @@ export class ProductService {
 		private readonly productVariantRepository: ProductVariantRepository,
 		private readonly numbersRepository: NumbersRepository,
 		private readonly colorRepository: ColorRepository,
-		private readonly categoryRepository: CategoryRepository
+		private readonly categoryRepository: CategoryRepository,
+		/**
+		 * Not a registered provider: `@Optional()` leaves it `undefined` and the default takes
+		 * over, which is how every write path shares one throttle window without three modules
+		 * each owning a copy (see the singleton's own note). A spec passes its own instance.
+		 */
+		@Optional()
+		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation
 	) {}
 
 	/**
@@ -112,30 +124,6 @@ export class ProductService {
 		if (!colorId) return null
 		const color = await this.colorRepository.findById(String(colorId))
 		return color ? formatColorLabel(color.name_uk, color.name_en) : null
-	}
-
-	/**
-	 * The shopper-facing name of a variant.
-	 *
-	 * `v_value` holds the canonical English dictionary spelling (`colors.name_en`) and the slug
-	 * is built from it, but the name shown in the catalogue listing, the price sheet, the cart
-	 * and the order snapshot is the shopper-facing «Чорний (Black)» — Ukrainian first, the
-	 * manufacturer's own spelling in brackets, the same form the product page prints. Storing it
-	 * here is what makes the cart, the order snapshot and the confirmation e-mail agree with the
-	 * page the shopper bought from, none of which joins the dictionary itself (Plan-0005 C1). Deriving the name from `v_value` instead renamed every migrated
-	 * variant to English on the first save, one product at a time, leaving the catalogue in two
-	 * languages. The dictionary wins whenever the variant points at it; `v_value` is the fallback
-	 * for variants that carry no colour.
-	 */
-	private variantName(
-		productName: string,
-		vValue: string | null | undefined,
-		colorLabel: string | null
-	): string {
-		// `||`, not `??`: a dictionary row saved with a blank name would otherwise swallow the
-		// suffix entirely and silently rename the variant to the bare product name.
-		const suffix = colorLabel?.trim() || vValue
-		return suffix ? `${productName} — ${suffix}` : productName
 	}
 
 	private async generateSku(): Promise<string> {
@@ -332,11 +320,7 @@ export class ProductService {
 							vendor_product_sku: variant.vendor_product_sku ?? systemSku,
 							product_id: product._id,
 							category_id: new Types.ObjectId(String(product.category_id)),
-							name: this.variantName(
-								product.name,
-								variant.v_value,
-								color?.label ?? null
-							),
+							name: variantName(product.name, variant.v_value, color?.label ?? null),
 							slug,
 							stock: variant.stock ?? 0,
 							images: variant.images ?? []
@@ -345,6 +329,7 @@ export class ProductService {
 				)
 			: []
 
+		this.revalidation.revalidate('products', 'product create')
 		return { ...product.toObject(), variants: createdVariants.map(v => v.toObject()) }
 	}
 
@@ -387,6 +372,9 @@ export class ProductService {
 
 		if (rename) await this.applyVariantRename(rename)
 
+		// After the derived writes, not before: the storefront must re-read a finished state, or
+		// it caches the product with its variants still half-renamed for another hour.
+		this.revalidation.revalidate('products', 'product update')
 		return updated
 	}
 
@@ -443,7 +431,7 @@ export class ProductService {
 			id: v._id,
 			sku: v.sku,
 			currentSlug: v.slug,
-			name: this.variantName(
+			name: variantName(
 				productName,
 				v.v_value,
 				v.color_id ? (nameByColorId.get(String(v.color_id)) ?? null) : null
@@ -487,6 +475,7 @@ export class ProductService {
 	async delete(id: string) {
 		const deleted = await this.productRepository.delete({ _id: id })
 		if (!deleted) throw new NotFoundException('Product not found')
+		this.revalidation.revalidate('products', 'product delete')
 		return { message: 'Product deleted' }
 	}
 
@@ -531,18 +520,20 @@ export class ProductService {
 		const systemSku = await this.generateSku()
 		const { color_id: _colorId, ...variantData } = dto
 		const color = await this.resolveColor(dto.color_id)
-		return this.productVariantRepository.create({
+		const created = await this.productVariantRepository.create({
 			...variantData,
 			...(color?.stored ?? {}),
 			sku: systemSku,
 			vendor_product_sku: dto.vendor_product_sku ?? systemSku,
 			product_id: product._id,
 			category_id: new Types.ObjectId(String(product.category_id)),
-			name: this.variantName(product.name, dto.v_value, color?.label ?? null),
+			name: variantName(product.name, dto.v_value, color?.label ?? null),
 			slug: generateSlug(dto.v_value ? `${product.name} ${dto.v_value}` : product.name),
 			stock: dto.stock ?? 0,
 			images: dto.images ?? []
 		})
+		this.revalidation.revalidate('products', 'variant create')
+		return created
 	}
 
 	async updateVariant(productId: string, variantId: string, dto: UpdateVariantDto) {
@@ -572,7 +563,7 @@ export class ProductService {
 			// needs a new name, and one that changes only `v_value` needs the colour already stored.
 			const vValue = dto.v_value !== undefined ? dto.v_value : existing.v_value
 			const colorLabel = color ? color.label : await this.storedColorLabel(existing.color_id)
-			patch.name = this.variantName(product.name, vValue, colorLabel)
+			patch.name = variantName(product.name, vValue, colorLabel)
 			patch.slug = generateSlug(vValue ? `${product.name} ${vValue}` : product.name)
 		}
 		if (dto.price !== undefined) patch.price_updated_at = new Date()
@@ -586,6 +577,10 @@ export class ProductService {
 			patch as any
 		)
 		if (!updated) throw new NotFoundException('Variant not found')
+		// Price, stock, weight and status all arrive through here, and every one of them is on
+		// the page, in the `Product` JSON-LD and in the Merchant feed: an «у наявності» the feed
+		// already contradicts is the worst of the four, so it may not wait out the hour.
+		this.revalidation.revalidate('products', 'variant update')
 		return updated
 	}
 
@@ -600,6 +595,7 @@ export class ProductService {
 			product_id: new Types.ObjectId(productId)
 		})
 		if (!deleted) throw new NotFoundException('Variant not found')
+		this.revalidation.revalidate('products', 'variant delete')
 		return { message: 'Variant deleted' }
 	}
 
@@ -617,6 +613,7 @@ export class ProductService {
 			{ $set: { images: dto.images } }
 		)
 		if (!updated) throw new NotFoundException('Variant not found')
+		this.revalidation.revalidate('products', 'variant images')
 		return updated
 	}
 }
@@ -637,11 +634,39 @@ function withSanitizedDescription<T extends { description?: { json: unknown; htm
 }
 
 /**
+ * The shopper-facing name of a variant.
+ *
+ * `v_value` holds the canonical English dictionary spelling (`colors.name_en`) and the slug
+ * is built from it, but the name shown in the catalogue listing, the price sheet, the cart
+ * and the order snapshot is the shopper-facing «Чорний (Black)» — Ukrainian first, the
+ * manufacturer's own spelling in brackets, the same form the product page prints. Storing it
+ * here is what makes the cart, the order snapshot and the confirmation e-mail agree with the
+ * page the shopper bought from, none of which joins the dictionary itself (Plan-0005 C1). Deriving the name from `v_value` instead renamed every migrated
+ * variant to English on the first save, one product at a time, leaving the catalogue in two
+ * languages. The dictionary wins whenever the variant points at it; `v_value` is the fallback
+ * for variants that carry no colour.
+ *
+ * Exported because a colour rename has to rebuild the very same string (`ColorService.update`,
+ * I-f): two implementations of this rule would put the catalogue card and the product page in
+ * two different languages again, which is the bug it was written to end.
+ */
+export function variantName(
+	productName: string,
+	vValue: string | null | undefined,
+	colorLabel: string | null
+): string {
+	// `||`, not `??`: a dictionary row saved with a blank name would otherwise swallow the
+	// suffix entirely and silently rename the variant to the bare product name.
+	const suffix = colorLabel?.trim() || vValue
+	return suffix ? `${productName} — ${suffix}` : productName
+}
+
+/**
  * "Чорний (Black)" — the Ukrainian name a shopper reads plus the canonical name a reseller
  * orders by (TD-0002 §5.2.2). Null when the variant has no dictionary colour, so the caller
  * can fall back to the attribute-derived one.
  */
-function formatColorLabel(
+export function formatColorLabel(
 	nameUk: string | null | undefined,
 	nameEn: string | null | undefined
 ): string | null {

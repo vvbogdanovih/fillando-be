@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common'
 import axios from 'axios'
 import { Types } from 'mongoose'
 import { LandingStatus } from 'src/common/types/enums'
+import { StorefrontRevalidationService } from 'src/common/services/storefront-revalidation.service'
 import { LandingService } from './landing.service'
 
 jest.mock('axios', () => ({
@@ -70,12 +71,22 @@ const buildService = (
 				)
 			)
 	}
+	// Its own instance, not the process-wide singleton: the throttle window is per instance,
+	// and a shared one would carry an open window from the previous test into this one.
+	const revalidation = new StorefrontRevalidationService()
 	const service = new LandingService(
 		landingRepository as never,
 		categoryRepository as never,
-		productVariantRepository as never
+		productVariantRepository as never,
+		revalidation
 	)
-	return { service, landingRepository, categoryRepository, productVariantRepository }
+	return {
+		service,
+		landingRepository,
+		categoryRepository,
+		productVariantRepository,
+		revalidation
+	}
 }
 
 const baseDto = {
@@ -420,6 +431,10 @@ describe('LandingService — storefront revalidation', () => {
 
 	it('purges the storefront landings cache after create, update and delete', async () => {
 		const { service } = buildService()
+		// Three writes inside one throttle window: the first purges at once, the other two are
+		// owed to the trailing purge the window fires when it closes. That the tail actually
+		// goes out is pinned in `storefront-revalidation.service.spec.ts`; what this test cares
+		// about is that a landing save purges landings, immediately, with the secret header.
 
 		await service.create({
 			category_id: CATEGORY_ID,
@@ -433,7 +448,7 @@ describe('LandingService — storefront revalidation', () => {
 		await service.delete(LANDING_ID)
 		await flush()
 
-		expect(axiosPost).toHaveBeenCalledTimes(3)
+		expect(axiosPost).toHaveBeenCalledTimes(1)
 		const [url, body, config] = axiosPost.mock.calls[0] as [
 			string,
 			unknown,

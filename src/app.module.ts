@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose'
 import { ScheduleModule } from '@nestjs/schedule'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { isInternalRequest } from './common/guards/internal-request.util'
+import { throttlerTracker } from './common/guards/throttler-tracker.util'
 import { LoggerModule } from 'nestjs-pino'
 import { stdSerializers } from 'pino-http'
 
@@ -58,7 +59,8 @@ import { ENV } from './common/constants'
 		// the public catalogue. `default` is the ceiling for any guarded handler without @Throttle.
 		ThrottlerModule.forRoot({
 			throttlers: [{ name: 'default', ttl: 60_000, limit: 20 }],
-			skipIf: isInternalRequest
+			skipIf: isInternalRequest,
+			getTracker: throttlerTracker
 		}),
 		MongooseModule.forRoot(ENV.DATABASE_URL),
 		ScheduleModule.forRoot(),

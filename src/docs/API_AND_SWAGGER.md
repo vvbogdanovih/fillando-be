@@ -271,9 +271,18 @@ login(...) {}
 | `GET /products/catalog`                            | 120                        |
 | `GET /orders/lookup/:orderNumber`                  | 30                         |
 | `PATCH /orders/lookup/:orderNumber/payment-method` | 5                          |
+| `POST /wholesale-inquiries`                        | 10                         |
 
-- The IP comes from `req.ips[0] ?? req.ip`; `main.ts` sets `trust proxy 1`, so behind the
-  production Nginx (`X-Forwarded-For`) this is the real client.
+- The IP comes from `req.ips[0] ?? req.ip`, via the `getTracker` in
+  `src/common/guards/throttler-tracker.util.ts`. `main.ts` sets `trust proxy 1`, so `req.ips`
+  is the `X-Forwarded-For` chain, client first. The library's own default is `req.ip`, which
+  behind a proxy is the proxy — every visitor arriving through one Cloudflare edge would have
+  shared a single allowance while a caller from another edge went uncounted. This paragraph
+  described the tracker for a while before the tracker existed (Plan-0005 I-39).
+- The header is only as trustworthy as the deployment: anything that can reach the app without
+  passing the proxy can set `X-Forwarded-For` itself. Keeping the origin unreachable except
+  through Cloudflare and Nginx is the release check (Plan-0005 A1), not something the tracker
+  can enforce.
 - `GET /products/catalog` is deliberately the loosest limit in the table (120/min = 2/s). It runs
   three `$facet` aggregations, so it must not be free — but it is also the endpoint the storefront
   calls on every filter click, it is rendered server-side (all SSR renders share the one container

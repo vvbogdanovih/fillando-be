@@ -18,7 +18,7 @@ half-finished until it is made.
 | 1   | ~~One product has an empty `material`~~ — **handled by step 3a** since 2026-09-05.                                                                                                                                                                                                                | Nothing to decide. `fix-known-data-defects.js` sets `Матеріал = PETG` on Kingroon PETG (CoPET) 3 кг and repairs its `category_id`, which was stored as a string.                                                                                     |
 | 2   | **49 colour spellings** the dictionary cannot identify, listed in `scripts/fillando_v_2/reports/color-report.json` after a dry run.                                                                                                                                                               | Those variants keep their current Ukrainian value and stay out of the colour filter. Nothing breaks; the filter is simply less complete.                                                                                                             |
 | 3   | ~~The refill is a variant, not a product~~ — **handled by step 3d** since 2026-09-05.                                                                                                                                                                                                             | Nothing to decide. `split-refill-products.js` moves FL-000253 onto its own product; the only manual step left is rewriting that product's description, which it inherits from the parent.                                                            |
-| 4   | ~~**Two 'Candy' variants sit on one product**~~ — **handled by step 3a** since 2026-09-07. `FL-000157` (Kingroon B01889, ₴890) and `FL-000162` (Kingroon HC258, ₴860) on _Kingroon PLA Silk Rainbow_ arrived from Prom with the same colour name; the owner told them apart from the photographs. | Nothing to decide. `fix-known-data-defects.js` sets `FL-000162` to «Rainbow Candy» (pastel shades; B01889 stays the saturated «Candy»), `seed-colors.js` carries both entries, so 3j matches all 293 colour variants and 3k renames all 43 products. |
+| 4   | ~~**Two 'Candy' variants sit on one product**~~ — **handled by step 3a** since 2026-09-07. `FL-000157` (Kingroon B01889, ₴890) and `FL-000162` (Kingroon HC258, ₴860) on _Kingroon PLA Silk Rainbow_ arrived from Prom with the same colour name; the owner told them apart from the photographs. | Nothing to decide. `fix-known-data-defects.js` sets `FL-000162` to «Rainbow Candy» (pastel shades; B01889 stays the saturated «Candy»), `seed-colors.js` carries both entries, so 3k matches all 293 colour variants and 3l renames all 43 products. |
 
 The same product as #1 also carries `category_id` as a **string** rather than an ObjectId. It is
 harmless today (its variant has the right type), but any future query that filters products by
@@ -36,9 +36,9 @@ const { generateSlug } = require('./dist/common/utils/attribute.utils')
 ```
 
 On `fillando-dev` this reported exactly one group, `FL-000157 + FL-000162`, until step 3a began
-telling them apart; after 3a it reports none. Step 3k (the product rename) runs the same check
+telling them apart; after 3a it reports none. Step 3l (the product rename) runs the same check
 itself and refuses any product that still collides, so a new pair of this shape must be settled
-**before 3k**.
+**before 3l**.
 
 ---
 
@@ -49,6 +49,13 @@ itself and refuses any product that still collides, so a new pair of this shape 
 Ships: RBAC on write endpoints, the public projections, rate limiting, the payment-status
 lookup, `ATTR_KEY_OVERRIDES`, the `colors` and `landings` modules, the colour filter, and the
 colour payload on every public product response.
+
+**Step 3j wants one more pair in `ATTR_KEY_OVERRIDES`:** `'вага філаменту': 'vaha'`, in
+`src/common/utils/attribute.utils.ts`, its mirror `toAttrKey` in
+`fillando-fe/src/common/utils/slug.utils.ts` and the copy in
+`scripts/fillando_v_2/normalize-attr-keys.js` (a unit test enforces BE ↔ migration sync).
+Without it 3j fills the units and refuses the label rename, which is safe but leaves the row
+reading «Вага». Not a blocker for this deploy — that one step can be re-run on its own later.
 
 **Merging is deploying.** `.github/workflows/deploy.yml` fires on every push to `main`: it pulls
 `main` on the LXC, rebuilds the image with `--no-cache` and restarts the container. Have
@@ -149,7 +156,7 @@ yarn migrate:verify
 
 **Everything that migrates catalogue data lives in `scripts/fillando_v_2/`, and one command runs
 all of it.** The order below is what `run-all.js` encodes; getting it wrong by hand is easy, so
-do not invoke the ten scripts individually.
+do not invoke the twelve scripts individually.
 
 ```bash
 yarn migrate --dry-run      # read every plan, writes nothing
@@ -361,7 +368,60 @@ flagged for a manual check.
 **Verify:** `reports/weight-report.json`; open a few variants in `/admin/products` and read
 «Вага, г». The delivery block on a product page shows a figure only once this has run.
 
-### 3j. `normalize-variant-colors.js` — the risky one
+### 3j. `backfill-attribute-units.js`
+
+```bash
+node scripts/fillando_v_2/backfill-attribute-units.js --dry-run
+node scripts/fillando_v_2/backfill-attribute-units.js
+```
+
+Closes the missing «Вага філаменту» row of the mock (Plan-0005 I-27), which is a **data** gap:
+the backend already carries the unit in the public product payload and the storefront already
+prints `value + unit`, but `required_attributes[].unit` is `null` in every category — every
+migration written before this one sets it that way — so the storefront has nothing to print
+after the bare `1` the products store and **drops the row** rather than show «Вага | 1».
+
+Two writes, in this order:
+
+1. **The unit, on the category.** From an explicit label → unit table in the script: «Вага» →
+   `кг`, «Діаметр» → `мм`, «Температура друку» → `°C`. An attribute is skipped, never guessed
+   at, when the label is not in the table, when the stored values already spell the unit
+   («1,75 мм» would print as «1,75 мм мм»), or when a value breaks the unit's sanity bound (a
+   weight above 20 is grams, not kilograms). Every skip is printed with its reason and lands in
+   `reports/attribute-units-report.json`.
+2. **The label, on the category and on every product.** «Вага» → «Вага філаменту», with the key
+   left exactly as it was.
+
+The value is **not** converted. This catalogue stores the net weight in kilograms and says so
+everywhere a shopper looks — product names («1,75 мм 1 кг»), the price sheet, the invoices — so
+the row reads «Вага філаменту | 1 кг». The mock spells the same fact as «1000 г»; the shop's own
+convention wins, and `backfill-variant-weight.js` reads the same attribute under the same rule.
+
+**The rename has a precondition, and the script enforces it rather than trusting the operator.**
+The label is the source of the attribute key (`generateAttrKey`), and
+`CategoryService.mapRequiredAttributes` / `ProductService` recompute the key from the label on
+every save — so «Вага філаменту» would become `vaha_filamentu` on the next admin save and the
+catalogue filters, the landings' pinned filters, the facets and the unit join (which matches
+`attributes[].k` to `required_attributes[].key`) would all stop matching. The step therefore
+renames the label **only** for an entry whose stored key is exactly what `ATTR_KEY_OVERRIDES`
+maps «вага філаменту» to. Without that entry it fills the units, prints the rename as waiting
+together with the three tables to change, and **exits 0** — the units are not held hostage to it.
+
+The order of the two writes is deliberate. There are no transactions here (standalone MongoDB),
+so the question is which half-state a shopper may see, and products-first would leave a product
+labelled «Вага філаменту» whose category still has no unit — the one combination the storefront
+hides, so the row would vanish instead of improving. Categories-first leaves at worst
+«Вага | 1 кг»: correct, visible, merely not yet the mock's wording.
+
+Expect on current data: **1 unit filled** (`vaha` → «кг»); «Діаметр» and the rest listed as
+skipped with their reason; the label rename reported as waiting until the override entry is
+deployed. A second run prints "Nothing to do.".
+
+**Verify:** the script's `Verify:` block is all `OK`; a product page shows the
+«Вага філаменту | 1 кг» row (or «Вага | 1 кг» while the rename waits); `/filament` still filters
+on `vaha`, i.e. the key did not move.
+
+### 3k. `normalize-variant-colors.js` — the risky one
 
 **Do not run this until steps 1 and 2 are both live in production.** It rewrites `v_value` to
 the canonical English name; until the storefront renders `color` instead, the shop displays
@@ -387,12 +447,12 @@ every old → new address and is merged across runs, never truncated, so it surv
 **Verify:** a migrated product page shows "Чорний (Black)"; the colour filter offers swatches;
 `reports/color-report.json` has the unmatched list for the manual pass.
 
-### 3k. `rename-products-short.js` — short product names, held back with 3j
+### 3l. `rename-products-short.js` — short product names, held back with 3k
 
-**Runs after 3j, in the same window**, and only once the frontend is live: it renames every
+**Runs after 3k, in the same window**, and only once the frontend is live: it renames every
 product from the long SEO name («Філамент (пластик для 3D принтера) Kingroon PLA Silk Rainbow
 1,75 мм 1 кг») to the short one the artboards draw («Kingroon PLA Silk Rainbow»), keeping the
-«— Чорний (Black)» suffix 3j wrote on the variants. The short names come from the committed
+«— Чорний (Black)» suffix 3k wrote on the variants. The short names come from the committed
 dictionary `scripts/fillando_v_2/short-names.js` (draft it with `--propose`, review, commit); a
 product carrying the long prefix with no entry is refused, not guessed at. Decisions the
 dictionary already records: «3 кг» stays (it tells the two Kingroon PETG reels apart),
@@ -414,7 +474,7 @@ pinned phases (park the movers on `…-moving-<id>`, rename the product, land ev
 way `ProductService.applyVariantRename` does; a document edited mid-run is skipped and reported,
 and a re-run picks up anything left parked.
 
-Variant **slugs change without a 301** — the owner's decision, recorded for 3j and confirmed again
+Variant **slugs change without a 301** — the owner's decision, recorded for 3k and confirmed again
 on 2026-09-06 knowing that 242 indexed product addresses will answer 404 until Google recrawls.
 Order items and the guest cart keep the long names by design (they are snapshots).
 
@@ -428,9 +488,9 @@ name).
 
 ## 4. After the migrations
 
-After 3k: purge the storefront caches and resubmit the sitemap. `POST /api/revalidate
+After 3l: purge the storefront caches and resubmit the sitemap. `POST /api/revalidate
 {"resource":"landings"}` with the `x-revalidate-secret` header on the frontend expires the
-`landings` and `sitemap` tags. This call is not optional after 3k: the sitemap's entry list is
+`landings` and `sitemap` tags. This call is not optional after 3l: the sitemap's entry list is
 memoised for a day and keyed on the variant **count**, which a rename never moves, so without it
 the sitemap keeps every old slug until the day is up (seen on dev, 2026-09-07: 301 old addresses
 until the call, 301 new right after). Product and catalogue pages are ISR-cached for up to an
@@ -445,12 +505,12 @@ Console; that is the accepted cost.
    `refill` matches its one variant, so it may be published too; `yarn migrate:verify` prints how
    many are ready.
 3. Work through `color-report.json`: add a synonym to `seed-colors.js` for each spelling worth
-   mapping, then re-run 3f and 3j. Both are idempotent. On dev every spelling is covered
+   mapping, then re-run 3f and 3k. Both are idempotent. On dev every spelling is covered
    (293/293).
 4. Resubmit the sitemap in Search Console — it now carries the legal pages, the price sheet and
    the published landings.
 
-**Editing a migrated product is safe from here on, and this is worth knowing why.** 3j writes
+**Editing a migrated product is safe from here on, and this is worth knowing why.** 3k writes
 `v_value` as the English `colors.name_en` but the display `name` as `"<product> — Чорний (Black)"`
 — Ukrainian first, the manufacturer's own spelling in brackets.
 `ProductService` builds `name` from the dictionary whenever the variant points at it and falls
@@ -490,8 +550,9 @@ have nothing to do with it:
 | 3f    | Delete the inserted colours — the API refuses while variants reference them, which is the safety you want.                                                                                                                                                                    |
 | 3g    | Delete the landings; they are drafts and invisible until published.                                                                                                                                                                                                           |
 | 3h    | Clear `intro_html` / `bottom_html` / `faq` on the landings; they are still drafts, so nothing was public.                                                                                                                                                                     |
-| 3j    | `v_value_legacy` holds the original spelling on every migrated variant, and `slug-map.json` holds every address change. Keep both for **one release**, then a follow-up can drop `v_value_legacy`.                                                                            |
-| 3k    | `node scripts/fillando_v_2/rename-products-short.js --rollback scripts/fillando_v_2/reports/rename-report.json` replays the report backwards — every product and variant back to its old name and slug, in the same three pinned phases. Keep the report for **one release**. |
+| 3j    | `reports/attribute-units-report.json` names every unit written and every label renamed. To undo a unit, `$set` that entry's `unit` back to `null`; to undo the label, `$set` it back to «Вага». The key was never touched, so nothing else has to move, and re-running rebuilds both from the same table. |
+| 3k    | `v_value_legacy` holds the original spelling on every migrated variant, and `slug-map.json` holds every address change. Keep both for **one release**, then a follow-up can drop `v_value_legacy`.                                                                            |
+| 3l    | `node scripts/fillando_v_2/rename-products-short.js --rollback scripts/fillando_v_2/reports/rename-report.json` replays the report backwards — every product and variant back to its old name and slug, in the same three pinned phases. Keep the report for **one release**. |
 
 A migration that fails verification exits non-zero and prints which check failed. None of them
 writes partially on purpose: the two riskiest pin the array they read in the update filter, so a

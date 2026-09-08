@@ -13,7 +13,7 @@ yarn migrate --colors-only
 ```
 
 `yarn migrate` is `node scripts/fillando_v_2/run-all.js`. It is the only thing you have to run:
-it invokes the ten scripts below in order, stops at the first failure, and prints which database
+it invokes the twelve scripts below in order, stops at the first failure, and prints which database
 it is about to touch before it starts. An apply on a terminal asks for confirmation; `--yes`
 skips that for scripts and CI.
 
@@ -47,8 +47,17 @@ yarn migrate:rehearse ~/Desktop/db_backup_for_test   # whole chain against a dum
 | 7   | `seed-landings.js`            | its pinned filters key off the dimensions steps 3 and 5 create                                                                                                                                                                                                                                                                                                     |
 | 8   | `fill-landing-copy.js`        | writes the reviewed copy into those landings, leaving them drafts                                                                                                                                                                                                                                                                                                  |
 | 9   | `backfill-variant-weight.js`  | sets `weight_g` on every variant from «Вага» plus a 220 g spool (refills without it); anywhere, since it touches only variants whose weight is still null                                                                                                                                                                                                          |
-| 10  | `normalize-variant-colors.js` | **held back**: it rewrites `v_value` to the English colour name, so until the storefront renders `color` the whole shop shows English colours                                                                                                                                                                                                                      |
-| 11  | `rename-products-short.js`    | **held back**, after 10: renames products to the short names in `short-names.js` («Kingroon PLA Silk Rainbow»), keeping the «— Чорний (Black)» suffix step 10 wrote; every variant slug is regenerated **without a 301** (the owner's decision) and appended to `slug-map.json`. A product with the long prefix and no dictionary entry is refused, not guessed at |
+| 10  | `backfill-attribute-units.js` | after 3 and 5, which decide which required attributes a category has: a unit can only be written onto an attribute that is already there. Fills `required_attributes[].unit` and renames the «Вага» label to «Вага філаменту»                                                                                                                                      |
+| 11  | `normalize-variant-colors.js` | **held back**: it rewrites `v_value` to the English colour name, so until the storefront renders `color` the whole shop shows English colours                                                                                                                                                                                                                      |
+| 12  | `rename-products-short.js`    | **held back**, after 11: renames products to the short names in `short-names.js` («Kingroon PLA Silk Rainbow»), keeping the «— Чорний (Black)» suffix step 11 wrote; every variant slug is regenerated **without a 301** (the owner's decision) and appended to `slug-map.json`. A product with the long prefix and no dictionary entry is refused, not guessed at |
+
+Step 10 has one precondition of its own. The attribute label is the source of the attribute
+key (`generateAttrKey`), so renaming «Вага» to «Вага філаменту» would move `vaha` to
+`vaha_filamentu` on the next admin save and every filter, landing and facet pinned on `vaha`
+would stop matching. The step therefore renames the label **only** when `ATTR_KEY_OVERRIDES`
+maps «вага філаменту» to the key the document already carries; until that entry is deployed it
+fills the units, reports the rename as waiting and exits 0. Nothing else in the chain depends on
+it, so a re-run of that single step finishes the job later.
 
 Supporting files, not steps: `landing-copy.js` is the reviewed landing text, `short-names.js` the
 reviewed short product names (draft it with `node rename-products-short.js --propose`), `verify-catalog-state.js`

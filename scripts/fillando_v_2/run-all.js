@@ -3,10 +3,11 @@
  *
  * The individual scripts are safe on their own but not interchangeable in order: the taxonomy
  * has to exist before anything filters on it, the refill has to be its own product before the
- * spool backfill can say anything true about its parent, and the colour normalisation must not
- * run until the storefront renders `color` — otherwise the whole shop flips to English colour
- * names. Getting that wrong by hand is easy and the damage is visible to every visitor, so the
- * order lives here rather than in someone's memory.
+ * spool backfill can say anything true about its parent, a unit can only be written onto a
+ * required attribute the taxonomy and the spool backfill have already put on the category, and
+ * the colour normalisation must not run until the storefront renders `color` — otherwise the
+ * whole shop flips to English colour names. Getting that wrong by hand is easy and the damage is
+ * visible to every visitor, so the order lives here rather than in someone's memory.
  *
  * Each step is idempotent and prints its own plan, so the chain can be re-run after a fix.
  *
@@ -97,6 +98,11 @@ const STEPS = [
 		script: 'backfill-variant-weight.js',
 		what: 'sets weight_g on every variant from «Вага» plus the spool (refills without it)',
 		expect: '301 variants weighed from the attribute; 0 unmatched; the 3 kg reel flagged for a manual check'
+	},
+	{
+		script: 'backfill-attribute-units.js',
+		what: 'gives the category attributes their unit and renames «Вага» → «Вага філаменту»',
+		expect: '1 unit filled (vaha → «кг»); the label rename waits for the ATTR_KEY_OVERRIDES entry and says so'
 	},
 	{
 		script: 'normalize-variant-colors.js',
@@ -257,7 +263,9 @@ async function main() {
 				'  3. Check the new refill product in the admin: it inherited its parent description.\n' +
 				'  4. Review each landing in /admin/landings and publish the ones that list products.\n' +
 				'  5. Work through reports/color-report.json, add synonyms to seed-colors.js, re-run 5 and 8.\n' +
-				'  6. Open a few variants in the admin and check «Вага, г» — the spool weight is an assumption.'
+				'  6. Open a few variants in the admin and check «Вага, г» — the spool weight is an assumption.\n' +
+				'  7. If backfill-attribute-units.js reported the «Вага філаменту» rename as waiting, add\n' +
+				'     the ATTR_KEY_OVERRIDES entry it names, deploy, and re-run that one step.'
 		)
 	}
 }

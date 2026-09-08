@@ -32,23 +32,58 @@ come first; the rest sort by `Intl.Collator('uk-UA', { numeric: true, sensitivit
 which puts Cyrillic before Latin. Counts never affect order — a list that reshuffles on each
 click is unusable. Units are not part of the value (they live on `required_attributes[].unit`).
 
+## Which values are a value
+
+A value is what the sidebar prints beside the checkbox, so it has to be printable. `Attribute.v`
+is `Mixed`, and a required attribute left empty in the admin form is stored as `v: ''` — that
+value reaches neither `facets` nor the deprecated `filter_options`. The `values` branch drops it
+in Mongo (`$match { '_id.v': { $regex: /\S/ } }`, after the `$toString`) and the merge drops it
+again in JS; whitespace-and-nothing-else is the same case. What is **not** dropped is a value
+that merely looks falsy: `$toString` turns a numeric `0` and a boolean `false` into `'0'` and
+`'false'`, and both stay in the list — `spool_included: false` is an answer, not a blank (I-4).
+
+A blank is a data defect, not a filter, and it is treated as narrowly as that: the product keeps
+its place in the listing and keeps counting in its other dimensions — only that one value never
+becomes a checkbox with no name.
+
+## The swatch of a colour family
+
+`color_options[].hex_stops` is the emblem of the **family**, not of one colour inside it, so it
+may not change shape from request to request. The `color_all` branch returns every dictionary
+colour of the family the category actually uses (`$addToSet`), and the representative is chosen
+in JS: the lowest `order` — the field the admin sorts the dictionary with — with `name_en`,
+unique in the dictionary, as the tiebreaker. The rule is total and reads only the dictionary, so
+the same dictionary paints the same swatch whatever order Mongo answers in, whichever narrowing
+is active, and whether or not a variant was archived since. Picking the family's most common
+colour instead would also be meaningful, and was rejected for exactly that last reason: it
+repaints the emblem on every import (I-21). The swatch row is ordered in the same JS pass — by
+the representative's `order`, then by family name.
+
+Colour is a dimension everywhere or nowhere: `ProductVariantRepository.countVariantsForLandings`
+— the «Товарів» column of the landings admin and the guard that refuses to publish a landing
+matching nothing — routes a pinned `color_family` to the variant field, the way `getCatalog`
+routes the query parameter. Otherwise both would read 0 for a landing whose page the storefront
+fills correctly (I-g).
+
 ## How it is computed
 
 One aggregate: `$match {category_id, status}` (indexed) → `$lookup products` → `$project` down to
 `price`, `color_id`, `color_family`, `attributes` → `$facet` with:
 
-- `values` — every `{k, v}` of the facet keys over the whole category;
+- `values` — every `{k, v}` of the facet keys over the whole category, blanks excluded;
 - `count_<i>` — one branch per facet key, positional so a key can never be an invalid field
   name: `$match` (all filters except this key) → `$unwind attributes` → `$match k` →
   `$group {v, variant}` → `$group v, count`. The two-step group makes the count per variant, so a
   product that lists the same `finish` twice is not counted twice;
-- `color_all` — families in the category with the swatch shade (lowest-`order` colour);
+- `color_all` — families in the category, each with every dictionary colour that could paint its
+  swatch; which one does is decided in JS;
 - `color_count` — `color_family` counts under all filters except colour.
 
-JS then merges values with counts (`mergeFacetValues`) and families with counts. The listing
-and `price_range` are separate aggregates and unchanged: the listing still matches colour and
-price before the `$lookup` so `{category_id, status, color_family}` serves it, and the price
-bounds are category-wide so the slider does not jump.
+JS then merges values with counts (`mergeFacetValues`), and families with counts and with the
+swatch their representative gives them. The listing and `price_range` are separate aggregates and
+unchanged: the listing still matches colour and price before the `$lookup` so
+`{category_id, status, color_family}` serves it, and the price bounds are category-wide so the
+slider does not jump.
 
 The `$project` before `$facet` is load-bearing: `$facet` keeps each branch's input in memory
 under a 100 MB stage limit, and product descriptions (HTML) and image lists would be most of

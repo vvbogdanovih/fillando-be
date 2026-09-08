@@ -1,5 +1,5 @@
 import { Types } from 'mongoose'
-import { ProductStatus } from 'src/common/types/enums'
+import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { connectTestDb, dropTestDb } from '../../../../test/integration-db'
 import { Category, CategorySchema } from '../schemas/category.schema'
 import { Product, ProductSchema } from '../schemas/product.schema'
@@ -12,6 +12,10 @@ import { ProductVariantRepository } from './product-variant.repository'
  * cannot vouch for: the branch names are generated, each branch re-reads the same piped input,
  * and the attribute match has to AND across keys while OR-ing within one. All of it only shows
  * up against a real database.
+ *
+ * A landing may also pin `color_family`, which is denormalized onto the variant instead of
+ * living in `product.attributes` — the fixture therefore carries a colour on each variant, so
+ * the count can be checked against the same rule the storefront filters by (I-g).
  */
 type Conn = Awaited<ReturnType<typeof connectTestDb>>
 
@@ -96,15 +100,21 @@ describe('ProductVariantRepository.countVariantsForLandings (MongoDB integration
 
 		await variantModel.create([
 			// PLA + Silk: two active variants, plus one draft that must not be counted.
-			variant(plaSilkId, 'FL-201'),
-			variant(plaSilkId, 'FL-202'),
-			variant(plaSilkId, 'FL-203', ProductStatus.DRAFT),
+			{ ...variant(plaSilkId, 'FL-201'), color_family: ColorFamily.RED },
+			{ ...variant(plaSilkId, 'FL-202'), color_family: ColorFamily.BLACK },
+			{
+				...variant(plaSilkId, 'FL-203', ProductStatus.DRAFT),
+				color_family: ColorFamily.RED
+			},
 			// PLA + Matte: one.
-			variant(plaMatteId, 'FL-204'),
-			// PETG: one.
+			{ ...variant(plaMatteId, 'FL-204'), color_family: ColorFamily.RED },
+			// PETG: one, with no colour at all.
 			variant(petgId, 'FL-205'),
 			// Same PLA attribute, different category — must not leak into the count.
-			variant(otherCategoryProductId, 'FL-206', ProductStatus.ACTIVE, otherCategoryId)
+			{
+				...variant(otherCategoryProductId, 'FL-206', ProductStatus.ACTIVE, otherCategoryId),
+				color_family: ColorFamily.RED
+			}
 		])
 
 		repo = new ProductVariantRepository(variantModel)
@@ -170,6 +180,34 @@ describe('ProductVariantRepository.countVariantsForLandings (MongoDB integration
 			['c', 2],
 			['d', 0]
 		])
+	})
+
+	it('counts a pinned colour on the variant, the way the storefront filters by it', async () => {
+		const counts = await repo.countVariantsForLandings([
+			landing('red', { color_family: ['red'] })
+		])
+
+		// FL-201 and FL-204 — the draft FL-203 and the other category's FL-206 are out, and a
+		// colourless FL-205 is not a red one.
+		expect(counts.get('red')).toBe(2)
+	})
+
+	it('ORs the colours of one landing and ANDs them with its attributes', async () => {
+		const counts = await repo.countVariantsForLandings([
+			landing('red-or-black', { color_family: ['red', 'black'] }),
+			landing('red-silk', { finish: ['Silk'], color_family: ['red'] })
+		])
+
+		expect(counts.get('red-or-black')).toBe(3)
+		expect(counts.get('red-silk')).toBe(1)
+	})
+
+	it('answers 0 for a colour no variant of the category carries', async () => {
+		const counts = await repo.countVariantsForLandings([
+			landing('gold', { color_family: ['gold'] })
+		])
+
+		expect(counts.get('gold')).toBe(0)
 	})
 
 	it('is a no-op with no landings, without touching the database', async () => {

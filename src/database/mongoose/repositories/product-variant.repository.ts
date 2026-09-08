@@ -150,8 +150,13 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	 *
 	 * Counted exactly the way the landing page is filled: ACTIVE variants of the landing's
 	 * category whose product carries every pinned attribute — one `$elemMatch` per key, AND
-	 * across keys — which is what {@link findCatalogItems} does for the same input. The
-	 * landing's `price_min`/`price_max` are deliberately ignored: the storefront builds the
+	 * across keys, OR within one — which is what {@link findCatalogItems} does for the same
+	 * input. A pinned `color_family` is matched on the variant instead, exactly as
+	 * `ProductService.getCatalog` routes it: colour is denormalized onto the variant and never
+	 * stored in `product.attributes`, so an `$elemMatch` there would answer 0 for a landing the
+	 * storefront fills correctly — and the guard below would refuse to publish it (I-g).
+	 *
+	 * The landing's `price_min`/`price_max` are deliberately ignored: the storefront builds the
 	 * landing's catalogue query from `filters` alone, so applying them here would make the
 	 * column disagree with the page it describes.
 	 *
@@ -171,11 +176,14 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		for (const landing of landings) {
 			const conditions: Record<string, unknown>[] = [{ category_id: landing.category_id }]
 			for (const [key, values] of Object.entries(landing.filters ?? {})) {
-				if (values.length > 0) {
-					conditions.push({
-						'product.attributes': { $elemMatch: { k: key, v: { $in: values } } }
-					})
+				if (values.length === 0) continue
+				if (key === COLOR_FAMILY_FILTER_KEY) {
+					conditions.push({ color_family: { $in: values } })
+					continue
 				}
+				conditions.push({
+					'product.attributes': { $elemMatch: { k: key, v: { $in: values } } }
+				})
 			}
 			facet[facetKey(landing.id)] = [{ $match: { $and: conditions } }, { $count: 'n' }]
 		}
@@ -879,10 +887,20 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			values: [
 				{ $unwind: '$attributes' },
 				{ $match: { 'attributes.k': { $in: facetKeys } } },
-				{ $group: { _id: { k: '$attributes.k', v: { $toString: '$attributes.v' } } } }
+				{ $group: { _id: { k: '$attributes.k', v: { $toString: '$attributes.v' } } } },
+				// A required attribute saved blank in the admin form is stored as `v: ''`, and
+				// that is not a value of the dimension — the sidebar would draw a checkbox with
+				// no name next to a count (I-4). `$toString` has already turned a legal `0` or
+				// `false` into '0'/'false', which `\S` keeps; only a value that is whitespace
+				// and nothing else — or absent, hence null — fails it.
+				{ $match: { '_id.v': { $regex: /\S/ } } }
 			],
-			// Colour families present in the category, with the shade that paints the swatch:
-			// the lowest-`order` colour of the family, so the admin controls it.
+			// Colour families present in the category, each with every dictionary colour that
+			// could paint its swatch. Which one does is decided by {@link pickFamilySwatch},
+			// not by the order documents happen to reach `$group`: the swatch is the emblem of
+			// the FAMILY, so it may not change shape because the dictionary was re-sorted or
+			// Mongo answered in another order (I-21). `$addToSet` bounds the branch by the
+			// dictionary — one entry per distinct colour used in the category, not per variant.
 			color_all: [
 				{ $match: { color_id: { $ne: null } } },
 				{
@@ -894,15 +912,18 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					}
 				},
 				{ $unwind: '$color' },
-				{ $sort: { 'color.order': 1, 'color.name_en': 1 } },
 				{
 					$group: {
 						_id: '$color.family',
-						hex_stops: { $first: '$color.hex_stops' },
-						order: { $min: '$color.order' }
+						candidates: {
+							$addToSet: {
+								order: { $ifNull: ['$color.order', 0] },
+								name_en: { $ifNull: ['$color.name_en', ''] },
+								hex_stops: { $ifNull: ['$color.hex_stops', []] }
+							}
+						}
 					}
-				},
-				{ $sort: { order: 1, _id: 1 } }
+				}
 			],
 			// Same `color_id` gate as `color_all`, so a variant whose denormalised family has
 			// drifted from the dictionary cannot surface as a family of its own.
@@ -959,6 +980,9 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 		const valuesByKey = new Map<string, string[]>()
 		for (const row of facetRows.values ?? []) {
+			// Belt and braces with the `$match` in the `values` branch: a blank value must not
+			// reach `facets` — nor, through it, the deprecated `filter_options` (I-4).
+			if (!isNamedFacetValue(row._id.v)) continue
 			const list = valuesByKey.get(row._id.k) ?? []
 			list.push(row._id.v)
 			valuesByKey.set(row._id.k, list)
@@ -973,11 +997,18 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		})
 
 		const colorCounts = toCounts(facetRows.color_count)
-		const colorOptions: CatalogColorOption[] = (facetRows.color_all ?? []).map(row => ({
-			family: row._id,
-			count: colorCounts.get(row._id) ?? 0,
-			hex_stops: row.hex_stops
-		}))
+		// The swatch row is ordered here rather than by the `color_all` branch, so the payload
+		// depends on the dictionary alone and not on the order Mongo answered in (I-21): by the
+		// representative's `order` — the same number the old `$sort` used, since the
+		// representative is the family's lowest — then by family name.
+		const colorOptions: CatalogColorOption[] = (facetRows.color_all ?? [])
+			.map(row => ({ family: row._id, swatch: pickFamilySwatch(row.candidates) }))
+			.sort((a, b) => a.swatch.order - b.swatch.order || compareStrings(a.family, b.family))
+			.map(({ family, swatch }) => ({
+				family,
+				count: colorCounts.get(family) ?? 0,
+				hex_stops: swatch.hex_stops
+			}))
 
 		/**
 		 * @deprecated Derived from `facets` for one release (TD-0008 §5.3): the two services
@@ -1006,6 +1037,14 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
  */
 const COLOR_DIMENSION = Symbol('color')
 
+/**
+ * The colour dimension as a landing pins it in `filters`. `Landing.filters` is a free
+ * `attrKey -> values[]` map, and this key is the one `ProductService.getCatalog` takes out of the
+ * query string for `colorFamilies` instead of the attribute filters — the count has to take it
+ * out of the same place, or the admin column would contradict the page (I-g).
+ */
+const COLOR_FAMILY_FILTER_KEY = 'color_family'
+
 /** `{ _id: value, count }` as a `$group … { $sum: 1 }` branch emits it. */
 interface CountRow {
 	_id: string
@@ -1015,9 +1054,49 @@ interface CountRow {
 /** The single document the facet `$facet` returns: one array per branch. */
 interface FacetRows {
 	values: { _id: { k: string; v: string } }[]
-	color_all: { _id: string; hex_stops: string[]; order: number }[]
+	color_all: { _id: string; candidates: ColorSwatchCandidate[] }[]
 	color_count: CountRow[]
 	[countBranch: `count_${number}`]: CountRow[]
+}
+
+/** One dictionary colour a family's swatch could be painted from. */
+interface ColorSwatchCandidate {
+	order: number
+	name_en: string
+	hex_stops: string[]
+}
+
+/**
+ * The one dictionary colour that paints a family's swatch: the lowest `order` — the field the
+ * admin sorts the dictionary with — with `name_en` as the tiebreaker. Both belong to the
+ * dictionary alone, and `name_en` is unique in it, so the rule is total: the same dictionary
+ * always yields the same emblem, whatever order the candidates arrive in and whichever narrowing
+ * the shopper has applied. The family's most popular colour would read as "meaningful" too, but
+ * it repaints the emblem whenever a variant is archived or a new one is imported (I-21).
+ */
+function pickFamilySwatch(candidates: ColorSwatchCandidate[] = []): ColorSwatchCandidate {
+	let best: ColorSwatchCandidate | null = null
+	for (const candidate of candidates) {
+		if (!best || compareSwatchCandidates(candidate, best) < 0) best = candidate
+	}
+	return best ?? { order: 0, name_en: '', hex_stops: [] }
+}
+
+function compareSwatchCandidates(a: ColorSwatchCandidate, b: ColorSwatchCandidate): number {
+	return (a.order ?? 0) - (b.order ?? 0) || compareStrings(a.name_en, b.name_en)
+}
+
+function compareStrings(a: string, b: string): number {
+	return a < b ? -1 : a > b ? 1 : 0
+}
+
+/**
+ * Is this a value the sidebar can label? The aggregation stringifies the stored value, so a
+ * legal `0` or `false` arrives as '0'/'false' and passes; a required attribute left blank in the
+ * admin form arrives as '' (or as spaces) and is not a value of the dimension at all (I-4).
+ */
+function isNamedFacetValue(value: unknown): value is string {
+	return typeof value === 'string' && value.trim() !== ''
 }
 
 /**

@@ -4,7 +4,7 @@ import { PaymentProvider } from 'src/common/types/enums'
 
 @Schema({ collection: 'payment_providers', timestamps: true })
 export class PaymentProviderCredentials {
-	@Prop({ required: true, enum: PaymentProvider, index: true })
+	@Prop({ required: true, type: String, enum: PaymentProvider, index: true })
 	provider: PaymentProvider
 
 	@Prop({ required: true })

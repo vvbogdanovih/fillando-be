@@ -253,6 +253,12 @@ no database, they run with plain `yarn test`:
 | `AuthModule`             | `auth.controller.throttle.spec.ts`            | `ThrottlerGuard` + `@Throttle` on login (10/min), register (10/min), refresh (30/min); failed logins count; the limits are per handler                |
 | `DiscountCouponModule`   | `discount-coupon.controller.throttle.spec.ts` | the 20/min limit on `POST /discount-coupons/validate` and the internal-token bypass                                                                   |
 | `ProductModule`          | `product.controller.throttle.spec.ts`         | the 120/min limit on `GET /products/catalog` and the internal-token bypass                                                                            |
+| `PaymentProvidersModule` | `payment-providers.controller.rbac.spec.ts`   | 6 credential endpoints admin-only, reads included; `GET /active/:provider` public for checkout and not swallowed by `/:id`                           |
+| `DiscountCouponModule`   | `discount-coupon.controller.rbac.spec.ts`     | 5 endpoints admin-only — a USER reading `GET /discount-coupons` makes every code public; `POST /validate` public by design                           |
+| `CartModule`             | `cart.controller.rbac.spec.ts`                | class-level `JwtAuthGuard`, **no** `RolesGuard`: USER must PASS on all 6; the caller's own id reaches the service, a spoofed one does not            |
+| `LiqpayModule`           | `liqpay.controller.rbac.spec.ts`              | both endpoints public **by design** (guest checkout, LiqPay's servers), the callback's `@HttpCode(200)` + `{ status: 'ok' }`, the 10/min limit       |
+| `NovaPostModule`         | `nova-post.controller.rbac.spec.ts`           | the SSE `/sync` admin-only, `/cities` and `/warehouses` public for the guest address picker, and each handler's empty-argument short-circuit         |
+| `PromModule`             | `prom.controller.rbac.spec.ts`                | the SSE `/sync-availability` admin-only — an anonymous trigger is a mass price rewrite, not a read — and no other path answering                     |
 
 Every one of these specs also lists its **public** endpoints explicitly, not just the guarded
 ones. A guard added to a public route breaks the shop as thoroughly as a missing guard exposes
@@ -261,7 +267,7 @@ form), `GET /categories` (the header menu) or the `/orders/lookup/:orderNumber` 
 confirmation email would simply start answering 401, with nothing in the logs to say why. The
 public rows are therefore assertions, not documentation.
 
-Three details of the harness worth knowing before writing the next spec:
+Four details of the harness worth knowing before writing the next spec:
 
 - **Guard order is proved by two assertions, not by reading the decorator.** `RolesGuard` reads
   `req.user.role`, so `@UseGuards(RolesGuard, JwtAuthGuard)` answers before the token is
@@ -275,6 +281,15 @@ Three details of the harness worth knowing before writing the next spec:
   registered, or the request dies at "Unknown authentication strategy". `order.controller.rbac.spec.ts`
   registers a header-reading stand-in strategy (same `x-test-role` convention as the harness)
   and keeps the real guard, which is what makes its guest-checkout assertions meaningful.
+- **An `@Sse` handler will hang supertest** unless the observable it returns completes. Mock the
+  service method to return a finite `of(...)`; a stream that never closes turns a "2xx for ADMIN"
+  row into a test that passes by timing out and leaves an open handle. `nova-post` and `prom`
+  are the two specs that deal with this.
+- **A schema whose enum `@Prop` omits `type: String` cannot be imported under ts-jest at all.**
+  The jest transform runs with `isolatedModules`, where the reflected `design:type` degrades to
+  `Object` and `SchemaFactory.createForClass` throws at module load — so the whole module is
+  untestable while `dist` (built by full `tsc`) works fine. This is how `payment-providers` sat
+  without a spec; the fix was one word in `payment-provider.schema.ts`, not a mock.
 
 ### Rule for a new controller
 
@@ -286,15 +301,24 @@ the same treatment: `@UseGuards(ThrottlerGuard)` + `@Throttle(...)` comes with a
 `*.controller.throttle.spec.ts` (or, where the module already has one, in its RBAC spec — see
 `OrderModule`) plus a row in `API_AND_SWAGGER.md` §4a.
 
-Still without an RBAC spec: `PaymentProvidersModule`, `DiscountCouponModule` (throttling is
-covered, the role guards are not), `CartModule`, `LiqpayModule`, `NovaPostModule`, `PromModule`.
-Writing one is ~30 lines with `createRbacApp`.
+**All eighteen controllers now carry a spec.** `AuthModule`'s is a throttle spec rather than an
+RBAC one, and that is the correct shape: no handler in `auth.controller.ts` carries `@Roles`, so
+there is no role decision to pin — its guards are `ThrottlerGuard`, `AuthGuard('google')` and
+`OptionalJwtAuthGuard`, and that spec covers them. A new controller adds a row to the table
+above rather than starting a backlog.
 
-**Known gap, not covered by a passing test:** `POST /wholesale-inquiries` is the only
-unauthenticated write in the backend with no `ThrottlerGuard` — `POST /orders` is capped at
-10/min, `POST /discount-coupons/validate` at 20/min, `POST /auth/login` at 10/min. A skipped
-test in `wholesale-inquiry.controller.rbac.spec.ts` holds the behaviour it should have
-(10/min, 429 with `Retry-After`); enable it together with the decorator and the §4a row.
+The previous version of this section named a known gap — `POST /wholesale-inquiries`
+unauthenticated and unlimited, with a *skipped* test holding the behaviour it should have.
+**That is closed:** the handler carries `@UseGuards(ThrottlerGuard)` +
+`@Throttle({ default: { limit: 10, ttl: 60_000 } })` (`wholesale-inquiry.controller.ts:27-28`)
+and the test asserting 429 with `Retry-After` is live.
+
+Two gaps that these specs do NOT cover, recorded so they are not mistaken for covered:
+`LiqpayService.handleCallback` — the signature check, the base64/JSON guards, the status
+classification and the amount/currency check of `LIQPAY_FLOW.md` §4 — has no test anywhere in
+the repository (`liqpay.service.spec.ts` never mentions it); and the three throttle assertions in
+`auth.controller.throttle.spec.ts` check only that `Retry-After` is *defined*, so shortening a
+`ttl` from `60_000` to `60` stays green there.
 
 Integration specs (`*.int-spec.ts`, run with `yarn test:db:up && yarn test:integration`) use the
 disposable MongoDB from `docker-compose.test.yml` via `test/integration-db.ts`; the RBAC specs do

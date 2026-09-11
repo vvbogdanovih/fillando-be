@@ -26,7 +26,10 @@
 		"migrate:rehearse": "bash scripts/fillando_v_2/rehearse-on-dump.sh",
 		"shipping:rates": "node scripts/shipping-rates.js",
 		"spec:export": "ts-node -r tsconfig-paths/register --compiler-options '{\"module\":\"CommonJS\"}' scripts/export-spec.ts",
-		"scrape": "node scripts/scraper.js"
+		"scrape": "node scripts/scraper.js",
+		"db:up": "docker compose --env-file /dev/null -p fillando-local -f docker-compose.local.yml up -d --wait",
+		"db:down": "docker compose --env-file /dev/null -p fillando-local -f docker-compose.local.yml down",
+		"db:logs": "docker compose --env-file /dev/null -p fillando-local -f docker-compose.local.yml logs -f mongo"
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.1006.0",

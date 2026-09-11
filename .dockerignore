@@ -11,3 +11,6 @@ coverage
 scripts/fillando_v_2/reports
 **/*.bson
 **/*.archive
+
+# Persistent local development database
+.local/

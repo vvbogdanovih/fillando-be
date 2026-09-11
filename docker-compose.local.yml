@@ -1,0 +1,16 @@
+# Local development only. Data survives container recreation.
+services:
+    mongo:
+        image: mongo:8.0
+        restart: unless-stopped
+        ports:
+            - '127.0.0.1:27019:27017'
+        volumes:
+            - ./.local/mongo-8:/data/db
+            - ./.local/mongo-8-config:/data/configdb
+        healthcheck:
+            test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+            start_period: 10s

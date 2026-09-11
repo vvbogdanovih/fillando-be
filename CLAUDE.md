@@ -28,8 +28,10 @@ yarn test:db:down        # Stop and remove it (data lives on tmpfs, discarded au
 
 Integration specs connect via `test/integration-db.ts` (`connectTestDb` / `dropTestDb`,
 `TEST_DATABASE_URL`, default `mongodb://127.0.0.1:27018/fillando-test`) — never to
-`DATABASE_URL`. There is no dev `docker-compose.yml`; local development uses the remote
-`DATABASE_URL` from `.env`, and `docker-compose.test.yml` exists only for the test database.
+`DATABASE_URL`. Local development uses `docker-compose.local.yml` (`yarn db:up` / `yarn db:down`)
+and `DATABASE_URL=mongodb://127.0.0.1:27019/fillando`. Data persists in `.local/mongo-8/`
+(bind mount, excluded from Git and Docker build context). `docker-compose.test.yml`
+remains separate and disposable. See README for local setup.
 
 To run a single test file: `yarn test -- path/to/file.spec.ts`
 

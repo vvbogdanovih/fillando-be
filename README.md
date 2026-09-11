@@ -11,7 +11,7 @@ NestJS REST API for the Fillando e-commerce platform. MongoDB via Mongoose. JWT 
 
 - Node.js 18+
 - Yarn
-- Docker (only for the disposable test MongoDB — local dev uses the remote `DATABASE_URL`)
+- Docker with Compose (Docker Desktop on macOS)
 
 ---
 
@@ -24,8 +24,35 @@ yarn install
 # 2. Copy and fill environment variables
 cp .env.example .env
 
-# 3. Start the dev server (connects to DATABASE_URL from .env)
+# 3. Start local MongoDB and wait for readiness
+yarn db:up
+
+# 4. Start the dev server
 yarn start:dev
+```
+
+### Local MongoDB
+
+Step-by-step operations: [Local MongoDB runbook](../../docs/runbooks/local-mongodb.md) (meta-repository).
+
+`.env.example` defaults to `DATABASE_URL=mongodb://127.0.0.1:27019/fillando`.
+For an existing `.env`, replace `DATABASE_URL` with this value and restart the backend.
+If you use the meta-repo's env sync, set the same URL in its master `.env` too.
+
+The `db:*` commands skip the application `.env` when invoking Compose; MongoDB needs no app secrets.
+`docker-compose.local.yml` runs MongoDB 8.0 on localhost only, without authentication.
+Port 27019 avoids the system MongoDB (27017) and disposable integration database (27018).
+The database starts empty; restore a dump if you need existing users and catalogue data.
+
+Data is bind-mounted into **`.local/mongo-8/` inside this repository**, excluded from Git
+and the Docker build context. MongoDB config data is also local in `.local/mongo-8-config/`.
+`yarn db:down` removes the container but keeps these files;
+`yarn db:up` reuses them. Do not delete `.local/mongo-8/` unless you intend to erase the database.
+
+```bash
+yarn db:up    # Start and wait until healthy
+yarn db:logs  # Follow MongoDB logs
+yarn db:down  # Stop; preserve local data
 ```
 
 ---
@@ -49,11 +76,6 @@ yarn start:dev
 | `GOOGLE_CLIENT_SECRET`    | Google OAuth client secret                     |
 | `GOOGLE_CALLBACK_URL`     | Google OAuth redirect URI                      |
 | `FRONTEND_URL`            | Allowed CORS origin + post-OAuth redirect base |
-| `DOCKER_MONGO_USER`       | MongoDB username (docker-compose)              |
-| `DOCKER_MONGO_PASSWORD`   | MongoDB password (docker-compose)              |
-| `DOCKER_MONGO_DB`         | MongoDB database name (docker-compose)         |
-| `DOCKER_DB_PORT_EXTERNAL` | Host port for MongoDB container                |
-| `DOCKER_DB_LOCAL_PATH`    | Host path for MongoDB data volume              |
 
 All variables are validated at startup via a Zod schema (`src/common/constants/env.constant.ts`).
 The server will refuse to start if any required variable is missing or invalid.

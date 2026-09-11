@@ -54,8 +54,20 @@ describe('ProductVariantRepository.findCatalogItems — facet hygiene (MongoDB i
 			name: 'Філамент',
 			slug: 'filament',
 			required_attributes: [
-				{ key: 'polymer', label: 'Тип пластику', filter_type: 'multi-select', unit: null },
-				{ key: 'diameter', label: 'Діаметр', filter_type: 'multi-select', unit: 'мм' }
+				{
+					key: 'polymer',
+					label: 'Тип пластику',
+					filter_type: 'multi-select',
+					is_required: true,
+					unit: null
+				},
+				{
+					key: 'diameter',
+					label: 'Діаметр',
+					filter_type: 'multi-select',
+					is_required: true,
+					unit: 'мм'
+				}
 			]
 		})
 

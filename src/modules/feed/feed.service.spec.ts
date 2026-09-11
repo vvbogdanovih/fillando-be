@@ -136,7 +136,7 @@ describe('FeedService', () => {
 	})
 
 	it('warns about a required attribute left empty and names it by its label', async () => {
-		const required = [{ key: 'diameter', label: 'Діаметр' }]
+		const required = [{ key: 'diameter', label: 'Діаметр', is_required: true }]
 		const blank = row({
 			sku: 'FL-BLANK',
 			product: {
@@ -253,5 +253,21 @@ describe('FeedService', () => {
 		expect(service.getXml()).toEqual(before)
 		expect(service.getStatus().last_error).toBe('boom')
 		expect(service.isRunning).toBe(false)
+	})
+})
+
+it('retains the last good XML and summary when a category was not fully migrated', async () => {
+	const { service, productVariantRepository } = build([row()])
+	await service.generate()
+	const cached = service.getXml()
+	const broken = row()
+	broken.category!.required_attributes = [{ key: 'finish', label: 'Ефект' } as never]
+	productVariantRepository.findActiveForFeed.mockResolvedValue([broken])
+	await expect(service.generate()).rejects.toThrow('is_required')
+	expect(service.getXml()).toEqual(cached)
+	expect(service.getStatus().last_error).toContain('is_required')
+	expect(service.getStatus()).toMatchObject({
+		generating: false,
+		xml_ready: true
 	})
 })

@@ -2,6 +2,8 @@ import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
 	IsArray,
+	IsBoolean,
+	IsDefined,
 	IsEnum,
 	IsInt,
 	IsOptional,
@@ -15,6 +17,14 @@ import { API_PROPERTY } from 'src/common/constants/docs'
 export type FilterType = 'multi-select' | 'range'
 
 export class RequiredAttributeDto {
+	@ApiProperty({
+		type: Boolean,
+		description: 'Whether an empty product value raises a catalogue completeness warning'
+	})
+	@IsDefined()
+	@IsBoolean()
+	is_required: boolean
+
 	@ApiProperty({ example: 'Виробник', description: 'Attribute label (human-readable)' })
 	@IsString()
 	label: string

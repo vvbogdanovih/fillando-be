@@ -79,7 +79,15 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 			_id: categoryId,
 			name: 'Filaments',
 			slug: 'filaments',
-			required_attributes: [],
+			required_attributes: [
+				{
+					key: 'finish',
+					label: 'Ефект поверхні',
+					filter_type: 'multi-select',
+					unit: null,
+					is_required: false
+				}
+			],
 			image: null,
 			order: 0
 		})
@@ -305,7 +313,10 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 			expect(row.category).toMatchObject({
 				id: categoryId.toString(),
 				name: 'Filaments',
-				google_product_category: null
+				google_product_category: null,
+				required_attributes: [
+					{ key: 'finish', label: 'Ефект поверхні', is_required: false }
+				]
 			})
 			expect(row.color).toBeNull()
 			expect(row.weight_g).toBe(1220)

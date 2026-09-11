@@ -129,6 +129,19 @@ const tag = (name: string, value: string | number) =>
  * far better than a feed with 5% invented values.
  */
 export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => {
+	// Validate even rows later excluded for price/images: corrupt category data must never
+	// silently publish a partial replacement feed. The service retains its previous XML.
+	if (row.category) {
+		const fields = row.category.required_attributes
+		if (
+			!Array.isArray(fields) ||
+			fields.some(field => !field || typeof field.is_required !== 'boolean')
+		) {
+			throw new Error(
+				`Категорія ${row.category.id}: некоректний is_required. Виконайте міграцію характеристик; фід не оновлено.`
+			)
+		}
+	}
 	if (!row.product) return { ok: false, reason: 'dangling_product' }
 	if (!row.category) return { ok: false, reason: 'dangling_category' }
 	if (!(row.price > 0)) return { ok: false, reason: 'no_price' }
@@ -150,7 +163,8 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 
 	if (row.weight_g === null || row.weight_g === undefined) warnings.push('no_weight')
 
-	const missingRequired = (row.category.required_attributes ?? [])
+	const missingRequired = row.category.required_attributes
+		.filter(r => r.is_required)
 		.map(r => ({ required: r, attr: attributes.find(a => a?.k === r.key) }))
 		.filter(({ attr }) => !attr || isAttrValueEmpty(attr.v))
 		.map(

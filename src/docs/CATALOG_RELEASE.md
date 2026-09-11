@@ -1,5 +1,17 @@
 # Catalogue release — deploy and migration order
 
+> **New hosting / fresh database (2026-09-10):** follow
+> [`scripts/fillando_v_2/README.md`, “Fresh database on the new hosting”](../../../scripts/fillando_v_2/README.md).
+> Restore the dump, explicitly select the new database, then `yarn migrate --include-colors --yes`
+> and `yarn migrate:verify` before switching traffic. The runner executes all 12 steps twice and
+> performs complete verification. Run these commands locally from the updated backend checkout,
+> with DATABASE_URL pointing to the new database; no production image change is needed. The LXC/main
+> deployment commands below are historical; the owner's new release branch is `production`.
+> Save migration reports on persistent storage. Rollback of names uses `rename-journal.json`;
+> first-pass reports survive under `history/<run>/pass-1`. Initial dry-run may stop at an empty
+> colour dictionary because earlier seed steps are simulated; rehearse the dump before apply.
+
+
 How to take Plan-0003 and Plan-0004 from `dev` to production. Written because the ordering
 rules were spread across two `CLAUDE.md` files, a plan document and several commit messages,
 and getting one of them wrong is visible to every visitor.
@@ -545,14 +557,14 @@ have nothing to do with it:
 | 1, 2  | Redeploy the previous image. No data changed.                                                                                                                                                                                                                                 |
 | 3a    | The previous values were an empty `material` and a string `category_id`; restoring them serves no purpose.                                                                                                                                                                    |
 | 3b–3c | No automatic undo. The derived attributes are rebuilt from `material` on every run, so a corrected mapping table is simply re-applied; removing them entirely means a one-off script.                                                                                         |
-| 3d    | Move the variant back with `$set: { product_id, v_value, name, slug }` from `reports/refill-split-report.json`, then delete the product it created. Nothing else referenced it.                                                                                               |
+| 3d    | Move the variant back with `$set: { product_id, v_value, name, slug }` from the first-pass archived `history/<run>/pass-1/refill-split-report.json`, then delete the product it created. Nothing else referenced it.                                                                                               |
 | 3e    | No automatic undo; re-running rebuilds the attribute from the same rule.                                                                                                                                                                                                      |
 | 3f    | Delete the inserted colours — the API refuses while variants reference them, which is the safety you want.                                                                                                                                                                    |
 | 3g    | Delete the landings; they are drafts and invisible until published.                                                                                                                                                                                                           |
 | 3h    | Clear `intro_html` / `bottom_html` / `faq` on the landings; they are still drafts, so nothing was public.                                                                                                                                                                     |
 | 3j    | `reports/attribute-units-report.json` names every unit written and every label renamed. To undo a unit, `$set` that entry's `unit` back to `null`; to undo the label, `$set` it back to «Вага». The key was never touched, so nothing else has to move, and re-running rebuilds both from the same table. |
 | 3k    | `v_value_legacy` holds the original spelling on every migrated variant, and `slug-map.json` holds every address change. Keep both for **one release**, then a follow-up can drop `v_value_legacy`.                                                                            |
-| 3l    | `node scripts/fillando_v_2/rename-products-short.js --rollback scripts/fillando_v_2/reports/rename-report.json` replays the report backwards — every product and variant back to its old name and slug, in the same three pinned phases. Keep the report for **one release**. |
+| 3l    | `node scripts/fillando_v_2/rename-products-short.js --rollback scripts/fillando_v_2/reports/rename-journal.json` replays the report backwards — every product and variant back to its old name and slug, in the same three pinned phases. Keep the report for **one release**. |
 
 A migration that fails verification exits non-zero and prints which check failed. None of them
 writes partially on purpose: the two riskiest pin the array they read in the update filter, so a

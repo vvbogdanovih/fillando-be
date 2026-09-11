@@ -1,6 +1,7 @@
 # Stage 1: Build
 FROM node:24-alpine AS builder
 WORKDIR /app
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY . .
@@ -19,7 +20,8 @@ RUN apk add --no-cache \
 	ca-certificates \
 	ttf-freefont
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV NODE_ENV=production
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY --from=builder /app/package.json /app/yarn.lock ./

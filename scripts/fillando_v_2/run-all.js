@@ -41,6 +41,17 @@
 const { spawnSync } = require('node:child_process')
 const path = require('node:path')
 const readline = require('node:readline')
+const fs = require('node:fs')
+const mongoose = require('mongoose')
+
+const FLAGS = new Set(['--dry-run', '--include-colors', '--colors-only', '--single-pass', '--yes'])
+function validateArgs(args) {
+	const unknown = args.filter(arg => !FLAGS.has(arg))
+	if (unknown.length) throw new Error(`Unknown argument(s): ${unknown.join(', ')}`)
+	if (args.includes('--include-colors') && args.includes('--colors-only')) {
+		throw new Error('Choose --include-colors OR --colors-only, not both')
+	}
+}
 
 const DRY_RUN = process.argv.includes('--dry-run')
 const INCLUDE_COLORS = process.argv.includes('--include-colors')
@@ -49,6 +60,18 @@ const SINGLE_PASS = process.argv.includes('--single-pass')
 const ASSUME_YES = process.argv.includes('--yes')
 /** Applying settles on the second pass; a dry run reads one state and shows one plan. */
 const PASSES = DRY_RUN || SINGLE_PASS ? 1 : 2
+const RUN_ID = `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`
+
+function archiveReports(pass) {
+	if (DRY_RUN) return
+	const root = process.env.MIGRATION_REPORT_DIR
+	const archive = path.join(root, 'history', RUN_ID, `pass-${pass}`)
+	fs.mkdirSync(archive, { recursive: true })
+	for (const file of fs.readdirSync(root, { withFileTypes: true })) {
+		if (file.isFile() && file.name.endsWith('.json'))
+			fs.copyFileSync(path.join(root, file.name), path.join(archive, file.name))
+	}
+}
 
 /**
  * The chain. `holdBack` marks a step that needs a deploy in production before it may run.
@@ -67,7 +90,7 @@ const STEPS = [
 	{
 		script: 'derive-material-taxonomy.js',
 		what: 'writes polymer / finish / reinforcement / series from `material`',
-		expect: '42 products changed, 1 category, 1 unmatched (Kingroon PETG 3 кг, empty material)'
+		expect: 'derived dimensions from supported materials; unresolved materials are listed in the report'
 	},
 	{
 		script: 'split-refill-products.js',
@@ -92,7 +115,7 @@ const STEPS = [
 	{
 		script: 'fill-landing-copy.js',
 		what: 'writes the reviewed landing copy, leaving every landing a draft',
-		expect: '14 filled; refill flagged as matching nothing until its product is published'
+		expect: 'fills missing copy; existing editor content is preserved, statuses remain drafts'
 	},
 	{
 		script: 'backfill-variant-weight.js',
@@ -102,7 +125,7 @@ const STEPS = [
 	{
 		script: 'backfill-attribute-units.js',
 		what: 'gives the category attributes their unit and renames «Вага» → «Вага філаменту»',
-		expect: '1 unit filled (vaha → «кг»); the label rename waits for the ATTR_KEY_OVERRIDES entry and says so'
+		expect: 'fills missing units; «Вага філаменту» keeps the existing vaha key'
 	},
 	{
 		script: 'normalize-variant-colors.js',
@@ -134,12 +157,59 @@ function target() {
 	const url = process.env.DATABASE_URL
 	if (!url) return null
 	try {
-		const parsed = new URL(url)
-		const db = parsed.pathname.replace(/^\//, '') || '(default)'
-		return { host: parsed.host, db }
+		const client = new mongoose.mongo.MongoClient(url)
+		if (!/^mongodb(?:\+srv)?:\/\/[^/]+\/[^?]+/.test(url)) {
+			throw new Error('Database name is required')
+		}
+		return {
+			host: client.options.srvHost || client.options.hosts.map(String).join(','),
+			db: client.options.dbName
+		}
 	} catch {
-		return { host: '(unparsed)', db: '(unparsed)' }
+		throw new Error('DATABASE_URL must be a valid MongoDB URI with an explicit database name')
 	}
+}
+
+async function preflight(where) {
+	await mongoose.connect(process.env.DATABASE_URL, { serverSelectionTimeoutMS: 10000 })
+	try {
+		const db = mongoose.connection.db
+		if (!(await db.collection('categories').findOne({ slug: 'filament' }))) {
+			throw new Error('Restored database has no filament category; no migration was started')
+		}
+		for (const collection of ['products', 'product_variants']) {
+			if (!(await db.collection(collection).findOne({})))
+				throw new Error(`Restored ${collection} is empty; no migration was started`)
+		}
+	} finally {
+		await mongoose.disconnect()
+	}
+	// A dry run has its own reports: never overwrite a real run's rollback evidence.
+	const root = process.env.MIGRATION_REPORT_DIR || path.join(__dirname, 'reports')
+	if (DRY_RUN)
+		process.env.MIGRATION_REPORT_DIR = fs.mkdtempSync(
+			path.join(require('node:os').tmpdir(), 'fillando-dry-run-')
+		)
+	else {
+		fs.mkdirSync(root, { recursive: true })
+		const marker = path.join(root, 'migration-target.json')
+		if (!fs.existsSync(marker) && fs.readdirSync(root).some(file => file.endsWith('.json'))) {
+			throw new Error(
+				'Existing reports have no target marker; preserve them and choose a new MIGRATION_REPORT_DIR'
+			)
+		}
+		if (
+			fs.existsSync(marker) &&
+			JSON.stringify(JSON.parse(fs.readFileSync(marker, 'utf8'))) !== JSON.stringify(where)
+		) {
+			throw new Error(
+				'Reports belong to another database; set MIGRATION_REPORT_DIR to a separate directory'
+			)
+		}
+		fs.writeFileSync(marker, JSON.stringify(where))
+		process.env.MIGRATION_REPORT_DIR = root
+	}
+	console.log(`Reports: ${process.env.MIGRATION_REPORT_DIR}`)
 }
 
 /** y/N on a terminal; non-interactive callers pass `--yes` and are never asked. */
@@ -174,6 +244,10 @@ function banner(index, total, step) {
 }
 
 async function main() {
+	validateArgs(process.argv.slice(2))
+	if (!DRY_RUN && !ASSUME_YES && !process.stdin.isTTY) {
+		throw new Error('Non-interactive apply requires --yes; use --dry-run to inspect first')
+	}
 	const held = STEPS.filter(s => s.holdBack)
 	let chain
 	if (COLORS_ONLY) chain = held
@@ -204,6 +278,7 @@ async function main() {
 			process.exit(0)
 		}
 	}
+	await preflight(where)
 	if (!DRY_RUN) {
 		console.log(
 			'\nRun the dry run first if you have not: --dry-run prints every plan and writes nothing.'
@@ -229,7 +304,9 @@ async function main() {
 		done = []
 		for (const [i, step] of chain.entries()) {
 			banner(i + 1, chain.length, step)
-			if (!run(step)) {
+			const succeeded = run(step)
+			archiveReports(pass)
+			if (!succeeded) {
 				console.error(`\n✗ ${step.script} failed on pass ${pass}. Stopped here.`)
 				console.error(`  Completed before it: ${done.length ? done.join(', ') : 'none'}`)
 				console.error(
@@ -257,12 +334,27 @@ async function main() {
 
 	if (!DRY_RUN) {
 		console.log(
+			`Apply report history: ${path.join(process.env.MIGRATION_REPORT_DIR, 'history', RUN_ID)}`
+		)
+		const verification = spawnSync(
+			process.execPath,
+			[
+				path.join(__dirname, 'verify-catalog-state.js'),
+				...(INCLUDE_COLORS || COLORS_ONLY ? ['--complete'] : [])
+			],
+			{ stdio: 'inherit' }
+		)
+		if (verification.error || verification.status !== 0)
+			throw new Error(
+				'Final catalogue verification failed; inspect reports before switching traffic'
+			)
+		console.log(
 			'\nAfter the chain:\n' +
 				'  1. Read scripts/fillando_v_2/reports/ — taxonomy, colour, refill split and landing copy.\n' +
-				'  2. Set "Матеріал = PETG" on the product the taxonomy report lists as unmatched, re-run step 2.\n' +
+				'  2. Resolve any unmatched materials listed in the taxonomy report.\n' +
 				'  3. Check the new refill product in the admin: it inherited its parent description.\n' +
 				'  4. Review each landing in /admin/landings and publish the ones that list products.\n' +
-				'  5. Work through reports/color-report.json, add synonyms to seed-colors.js, re-run 5 and 8.\n' +
+				'  5. Resolve unmatched colours in color-report.json, then re-run the chain.\n' +
 				'  6. Open a few variants in the admin and check «Вага, г» — the spool weight is an assumption.\n' +
 				'  7. If backfill-attribute-units.js reported the «Вага філаменту» rename as waiting, add\n' +
 				'     the ATTR_KEY_OVERRIDES entry it names, deploy, and re-run that one step.'
@@ -270,7 +362,7 @@ async function main() {
 	}
 }
 
-module.exports = { STEPS }
+module.exports = { STEPS, validateArgs, target }
 
 if (require.main === module) {
 	main().catch(err => {

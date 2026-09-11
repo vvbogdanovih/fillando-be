@@ -44,6 +44,7 @@ const ROLLBACK_FILE = ROLLBACK_INDEX >= 0 ? process.argv[ROLLBACK_INDEX + 1] : n
 
 const REPORT_DIR = process.env.MIGRATION_REPORT_DIR || path.join(__dirname, 'reports')
 const REPORT_PATH = path.join(REPORT_DIR, 'rename-report.json')
+const JOURNAL_PATH = path.join(REPORT_DIR, 'rename-journal.json')
 const SLUG_MAP = path.join(REPORT_DIR, 'slug-map.json')
 
 /** The SEO prefix every long name starts with. A name without it is already short. */
@@ -137,16 +138,20 @@ function planProducts(products, variants, colorById, shortNames) {
 	const plannedSlugs = new Map() // new slug → { product, sku }
 
 	for (const product of products) {
-		if (!isLongName(product.name)) {
+		const own = variantsByProduct.get(String(product._id)) ?? []
+		// A crash can happen AFTER the product name was saved but BEFORE the variants were
+		// unparked. The name alone is not a completion marker.
+		const recovering =
+			!isLongName(product.name) && own.some(v => isParked(v) || isLongName(v.name))
+		if (!isLongName(product.name) && !recovering) {
 			plan.already_done.push({ product_id: String(product._id), name: product.name })
 			continue
 		}
-		const shortName = shortNames[product.name]
+		const shortName = recovering ? product.name : shortNames[product.name]
 		if (!shortName) {
 			plan.unmapped.push({ product_id: String(product._id), name: product.name })
 			continue
 		}
-		const own = variantsByProduct.get(String(product._id)) ?? []
 		const planned = own.map(v =>
 			plannedVariant(v, product.name, shortName, colorById.get(String(v.color_id)))
 		)
@@ -213,8 +218,27 @@ function planProducts(products, variants, colorById, shortNames) {
 
 function writeJson(file, data) {
 	fs.mkdirSync(REPORT_DIR, { recursive: true })
-	fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
+	fs.writeFileSync(`${file}.tmp`, `${JSON.stringify(data, null, 2)}\n`)
+	fs.renameSync(`${file}.tmp`, file)
 	console.log(`  ${file}`)
+}
+
+/** Persist original addresses BEFORE any write; never erase them on pass 2 or dry-run. */
+function mergeJournal(previous, report) {
+	if (previous && previous.generated_for !== report.generated_for)
+		throw new Error('Rename journal belongs to another database')
+	const entries = new Map((previous?.renamed ?? []).map(e => [e.product_id, e]))
+	for (const entry of report.renamed) {
+		const original = entries.get(entry.product_id)
+		if (!original) entries.set(entry.product_id, entry)
+		else {
+			const variants = new Map(original.variants.map(v => [String(v._id), v]))
+			for (const variant of entry.variants)
+				if (!variants.has(String(variant._id))) variants.set(String(variant._id), variant)
+			entries.set(entry.product_id, { ...original, variants: [...variants.values()] })
+		}
+	}
+	return { generated_for: report.generated_for, dry_run: false, renamed: [...entries.values()] }
 }
 
 function loadShortNames() {
@@ -262,6 +286,11 @@ async function propose(db) {
 
 async function applyRename(variants, products, entry, moved, skipped) {
 	const productId = new mongoose.Types.ObjectId(entry.product_id)
+	const currentProduct = await products.findOne({ _id: productId })
+	if (!currentProduct || currentProduct.name !== entry.old_name) {
+		skipped.push(`product ${entry.product_id}`)
+		return
+	}
 	const movers = entry.variants.filter(p => p.new_slug !== p.old_slug && !p.parked)
 
 	// Phase 1: park every mover, so two variants can swap addresses within the product.
@@ -286,6 +315,7 @@ async function applyRename(variants, products, entry, moved, skipped) {
 		if (!fresh || fresh.name !== entry.new_name) {
 			skipped.push(`product ${entry.product_id}`)
 			console.warn(`  ! product "${entry.old_name}" changed while this ran — skipped`)
+			return
 		}
 	}
 
@@ -441,6 +471,11 @@ async function migrate(db) {
 	}
 
 	// ---------- apply ----------
+	const previous = fs.existsSync(JOURNAL_PATH)
+		? JSON.parse(fs.readFileSync(JOURNAL_PATH, 'utf8'))
+		: null
+	const journal = mergeJournal(previous, report)
+	writeJson(JOURNAL_PATH, journal)
 	const moved = []
 	const skipped = []
 	for (const entry of plan.renamed) {
@@ -451,7 +486,13 @@ async function migrate(db) {
 
 	console.log('\nReports:')
 	writeJson(REPORT_PATH, report)
-	writeJson(SLUG_MAP, mergeSlugMap(moved))
+	// The journal retains pre-crash addresses even when a re-run starts on a parked slug.
+	const journalMoves = journal.renamed.flatMap(e =>
+		e.variants
+			.filter(v => v.old_slug !== v.new_slug)
+			.map(v => ({ from: v.old_slug, to: v.new_slug }))
+	)
+	writeJson(SLUG_MAP, mergeSlugMap(journalMoves))
 
 	const ok = await verify(db, plan)
 	if (skipped.length) {
@@ -470,9 +511,17 @@ async function migrate(db) {
 /** Replays a report backwards: every variant and product back to its old name and slug. */
 async function rollback(db, file) {
 	const report = JSON.parse(fs.readFileSync(file, 'utf8'))
+	if (report.generated_for !== db.databaseName || report.dry_run || !report.renamed?.length) {
+		throw new Error('Rollback requires a non-empty apply journal for this database')
+	}
+	if (DRY_RUN) {
+		console.log(`Would restore ${report.renamed.length} product(s); nothing was written.`)
+		return true
+	}
 	const variants = db.collection('product_variants')
 	const products = db.collection('products')
 	let restored = 0
+	let failed = false
 	for (const entry of report.renamed ?? []) {
 		const reverse = {
 			product_id: entry.product_id,
@@ -492,10 +541,11 @@ async function rollback(db, file) {
 		const moved = []
 		const skipped = []
 		await applyRename(variants, products, reverse, moved, skipped)
+		if (skipped.length) failed = true
 		restored += moved.length
 	}
 	console.log(`\nRestored ${restored} variant address(es).`)
-	return true
+	return !failed
 }
 
 async function main() {
@@ -540,7 +590,10 @@ module.exports = {
 	colorLabel,
 	plannedVariant,
 	planProducts,
-	parkedSlug
+	parkedSlug,
+	mergeJournal,
+	applyRename,
+	rollback
 }
 
 if (require.main === module) {

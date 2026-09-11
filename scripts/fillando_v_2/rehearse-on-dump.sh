@@ -1,108 +1,82 @@
 #!/usr/bin/env bash
-#
-# Rehearses the catalogue migration chain against a production dump, in the disposable
-# MongoDB from docker-compose.test.yml. Nothing here can touch the real database: the URI is
-# hard-coded to the test container on 127.0.0.1:27018, and `DATABASE_URL` is passed to every
-# script explicitly, which `dotenv` does not override.
-#
-# Only the catalogue collections are restored. The dump also holds users, orders, carts and
-# refresh tokens; none of them matter to these migrations, and not restoring them keeps real
-# customer data out of the rehearsal entirely.
-#
-# Usage:
-#   scripts/fillando_v_2/rehearse-on-dump.sh [path-to-dump-root] [--keep]
-#
-#   path-to-dump-root  directory holding the mongodump database folder
-#                      (default: ~/Desktop/db_backup_for_test)
-#   --keep             leave the container running afterwards so the result can be inspected
-#
-# Exit code is non-zero if any step of the chain fails.
-
+# Restore only catalogue data into a NEW disposable container. Never reuse the test DB.
 set -euo pipefail
-
 cd "$(dirname "$0")/../.."
-
-DUMP_ROOT="${1:-$HOME/Desktop/db_backup_for_test}"
-[[ "${1:-}" == --* ]] && DUMP_ROOT="$HOME/Desktop/db_backup_for_test"
+DUMP_ROOT=""
 KEEP=false
-for arg in "$@"; do [[ "$arg" == "--keep" ]] && KEEP=true; done
-
-TEST_URI="mongodb://127.0.0.1:27018"
-TARGET_DB="rehearsal"
-COLLECTIONS=(categories vendors products product_variants colors landings)
-
-if [[ ! -d "$DUMP_ROOT" ]]; then
-	echo "Dump not found: $DUMP_ROOT" >&2
-	exit 1
-fi
-
-# The dump root holds one directory named after the source database.
-SOURCE_DB="$(find "$DUMP_ROOT" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | head -1)"
-if [[ -z "$SOURCE_DB" ]]; then
-	echo "No database directory inside $DUMP_ROOT" >&2
-	exit 1
-fi
-
-command -v mongorestore >/dev/null || { echo "mongorestore is not installed" >&2; exit 1; }
-
-echo "══════════════════════════════════════════════════════════════════════════════"
-echo "Rehearsal: $SOURCE_DB → $TEST_URI/$TARGET_DB"
-echo "Restoring only: ${COLLECTIONS[*]}"
-echo "══════════════════════════════════════════════════════════════════════════════"
-
-docker compose -f docker-compose.test.yml up -d --wait >/dev/null
-echo "Test MongoDB is up."
-
-NS_ARGS=()
-for c in "${COLLECTIONS[@]}"; do NS_ARGS+=(--nsInclude="$SOURCE_DB.$c"); done
-
-mongorestore \
-	--uri="$TEST_URI" \
-	--drop \
-	--quiet \
-	--nsFrom="$SOURCE_DB.*" \
-	--nsTo="$TARGET_DB.*" \
-	"${NS_ARGS[@]}" \
-	"$DUMP_ROOT" 2>&1 | grep -vE '^$' || true
-
-echo "Restored."
-echo
-
-# Reports from a rehearsal must never be mistaken for a real run, so they are written into a
-# throwaway directory instead of scripts/fillando_v_2/reports/.
-REPORTS="$(mktemp -d)/reports"
-mkdir -p "$REPORTS"
-
-export DATABASE_URL="$TEST_URI/$TARGET_DB"
-export MIGRATION_REPORT_DIR="$REPORTS"
-
-echo "──────────────────────────── state before ────────────────────────────"
-node scripts/fillando_v_2/verify-catalog-state.js || true
-
-echo
-echo "──────────────────────────── running the chain ────────────────────────────"
-STATUS=0
-node scripts/fillando_v_2/run-all.js --include-colors --yes || STATUS=$?
-
-echo
-echo "──────────────────────────── state after ────────────────────────────"
-node scripts/fillando_v_2/verify-catalog-state.js || STATUS=$?
-
-echo
-echo "──────────────────────────── convergence check ────────────────────────────"
-echo "Every step below must report that it has nothing to do."
-node scripts/fillando_v_2/run-all.js --dry-run --include-colors 2>&1 |
-	grep -E '^\[[0-9]|Nothing to do|Plan:|Would' | grep -v 'expect:' || true
-
-echo
-echo "Rehearsal reports: $REPORTS"
-
-if [[ "$KEEP" == true ]]; then
-	echo "Container left running. Inspect with DATABASE_URL=$DATABASE_URL, then:"
-	echo "  yarn test:db:down"
+for arg in "$@"; do
+ case "$arg" in
+  --keep) KEEP=true ;;
+  --*) echo "Unknown option: $arg" >&2; exit 1 ;;
+  *) if [[ -n "$DUMP_ROOT" ]]; then echo 'Expected one dump directory' >&2; exit 1; fi
+     DUMP_ROOT="$arg" ;;
+ esac
+done
+DUMP_ROOT="${DUMP_ROOT:-$HOME/Desktop/db_backup_for_test}"
+[[ -d "$DUMP_ROOT" ]] || { echo "Dump not found: $DUMP_ROOT" >&2; exit 1; }
+for tool in docker mongorestore node; do
+ command -v "$tool" >/dev/null || { echo "$tool is not installed" >&2; exit 1; }
+done
+# Accept the database directory itself or an unambiguous mongodump root.
+if [[ -f "$DUMP_ROOT/products.bson" ]]; then
+ SOURCE_DIR="$DUMP_ROOT"
 else
-	docker compose -f docker-compose.test.yml down -v >/dev/null 2>&1
-	echo "Container removed."
+ SOURCES=()
+ for dir in "$DUMP_ROOT"/*; do
+  [[ -d "$dir" && -f "$dir/products.bson" ]] && SOURCES+=("$dir")
+ done
+ [[ ${#SOURCES[@]} -eq 1 ]] || { echo 'Expected exactly one database containing products.bson' >&2; exit 1; }
+ SOURCE_DIR="${SOURCES[0]}"
 fi
-
-exit $STATUS
+for c in categories products product_variants; do
+ [[ -s "$SOURCE_DIR/$c.bson" ]] || { echo "Missing or empty $c.bson" >&2; exit 1; }
+done
+SOURCE_DB="$(basename "$SOURCE_DIR")"
+REPORT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/fillando-rehearsal.XXXXXX")"
+CONTAINER=""
+cleanup() {
+ local status=$?
+ if [[ -n "$CONTAINER" ]]; then
+  if [[ "$KEEP" == true ]]; then
+   echo "Container retained: $CONTAINER. Remove after inspection: docker rm -f $CONTAINER"
+  else
+   docker rm -f "$CONTAINER" >/dev/null || true
+  fi
+ fi
+ echo "Rehearsal reports: $REPORT_ROOT (exit $status)"
+}
+trap cleanup EXIT
+CONTAINER="$(docker run -d --publish 127.0.0.1::27017 --tmpfs /data/db mongo:7)"
+READY=false
+for attempt in {1..30}; do
+ if docker exec "$CONTAINER" mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)' >/dev/null 2>&1; then READY=true; break; fi
+ sleep 1
+done
+[[ "$READY" == true ]] || { echo 'Test MongoDB did not start' >&2; exit 1; }
+PORT="$(docker port "$CONTAINER" 27017/tcp)"
+export DATABASE_URL="mongodb://$PORT/rehearsal"
+export MIGRATION_REPORT_DIR="$REPORT_ROOT/reports"
+mkdir -p "$MIGRATION_REPORT_DIR"
+echo "Rehearsal: $SOURCE_DB → $DATABASE_URL (new isolated container)"
+# Never migrate a partial restore. Metadata beside each BSON restores its indexes as well.
+for c in categories vendors products product_variants colors landings; do
+ if [[ -f "$SOURCE_DIR/$c.bson" ]]; then
+  mongorestore --uri="$DATABASE_URL" --db=rehearsal --collection="$c" --stopOnError --quiet "$SOURCE_DIR/$c.bson"
+ fi
+done
+node scripts/fillando_v_2/catalog-snapshot.js "$REPORT_ROOT/before.json"
+# Late dry-run steps can refuse dependencies absent before the first apply (e.g. colours).
+DRY_STATUS=0
+node scripts/fillando_v_2/run-all.js --dry-run --include-colors > "$REPORT_ROOT/dry-run.log" 2>&1 || DRY_STATUS=$?
+node scripts/fillando_v_2/catalog-snapshot.js "$REPORT_ROOT/after-dry-run.json"
+cmp "$REPORT_ROOT/before.json" "$REPORT_ROOT/after-dry-run.json"
+echo "Dry run did not modify data (exit $DRY_STATUS; see dry-run.log)."
+node scripts/fillando_v_2/run-all.js --include-colors --yes
+node scripts/fillando_v_2/verify-catalog-state.js --complete
+node scripts/fillando_v_2/catalog-snapshot.js "$REPORT_ROOT/after.json"
+# Compare actual writes on a third pass, not grepped console messages.
+node scripts/fillando_v_2/run-all.js --include-colors --single-pass --yes
+node scripts/fillando_v_2/catalog-snapshot.js "$REPORT_ROOT/repeated.json"
+cmp "$REPORT_ROOT/after.json" "$REPORT_ROOT/repeated.json"
+node scripts/fillando_v_2/run-all.js --dry-run --include-colors
+echo 'PASS: restore, complete migration, verification, dry-run immutability and repeat-run convergence.'

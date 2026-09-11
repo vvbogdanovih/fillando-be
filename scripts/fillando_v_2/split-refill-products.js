@@ -172,8 +172,14 @@ async function migrate(db) {
 	for (const [productId, refills] of byProduct) {
 		const parent = parentById.get(productId)
 		if (!parent) {
-			console.warn(`  ! variants ${refills.map(r => r.sku).join(', ')} point at a missing product`)
-			report.products.push({ product_id: productId, action: 'skip', reason: 'product missing' })
+			console.warn(
+				`  ! variants ${refills.map(r => r.sku).join(', ')} point at a missing product`
+			)
+			report.products.push({
+				product_id: productId,
+				action: 'skip',
+				reason: 'product missing'
+			})
 			continue
 		}
 
@@ -185,7 +191,9 @@ async function migrate(db) {
 			alreadySeparate.push({ parent, needsAttribute: current !== REFILL_VALUE })
 			console.log(
 				`  = "${parent.name}" — every variant is a refill, no split needed` +
-					(current === REFILL_VALUE ? '' : `; will set "${SPOOL_LABEL}" = "${REFILL_VALUE}"`)
+					(current === REFILL_VALUE
+						? ''
+						: `; will set "${SPOOL_LABEL}" = "${REFILL_VALUE}"`)
 			)
 			report.products.push({
 				product_id: productId,
@@ -198,6 +206,12 @@ async function migrate(db) {
 
 		const newName = refillProductName(parent.name)
 		const existing = await products.findOne({ name: newName, category_id: parent.category_id })
+		if (existing && String(existing.spooled_product_id) !== String(parent._id)) {
+			console.error(
+				`Refusing to reuse unrelated product "${newName}"; inspect its spooled_product_id first.`
+			)
+			return false
+		}
 		const planned = refills.map(v => plannedVariant(v, newName))
 
 		plans.push({ parent, refills, planned, newName, existingProductId: existing?._id ?? null })
@@ -205,7 +219,10 @@ async function migrate(db) {
 			`  + "${parent.name}"\n` +
 				`      → new product "${newName}"${existing ? ' (already exists, reused)' : ''}\n` +
 				`      → moves ${refills.length} variant(s): ${planned
-					.map(p => `${p.sku} ${JSON.stringify(p.old_v_value)} → ${JSON.stringify(p.v_value)}`)
+					.map(
+						p =>
+							`${p.sku} ${JSON.stringify(p.old_v_value)} → ${JSON.stringify(p.v_value)}`
+					)
 					.join(', ')}\n` +
 				`      → parent keeps ${spooledCount} spooled variant(s)`
 		)
@@ -249,9 +266,11 @@ async function migrate(db) {
 	}
 
 	if (DRY_RUN) {
-		console.log(`\nWould create ${plans.filter(p => !p.existingProductId).length} product(s), ` +
-			`move ${plans.reduce((n, p) => n + p.planned.length, 0)} variant(s), ` +
-			`and set "${SPOOL_LABEL}" on ${plans.length + marks.length} product(s).`)
+		console.log(
+			`\nWould create ${plans.filter(p => !p.existingProductId).length} product(s), ` +
+				`move ${plans.reduce((n, p) => n + p.planned.length, 0)} variant(s), ` +
+				`and set "${SPOOL_LABEL}" on ${plans.length + marks.length} product(s).`
+		)
 		console.log('Dry run complete — nothing was changed.')
 		writeJson(REPORT_PATH, report)
 		return true
@@ -288,15 +307,18 @@ async function migrate(db) {
 			created += 1
 			console.log(`\nCreated product "${newName}" (${targetId}).`)
 		} else {
-			await products.updateOne(
-				{ _id: targetId },
+			const current = await products.findOne({ _id: targetId })
+			if (!current) return false
+			const updated = await products.updateOne(
+				{ _id: targetId, attributes: current.attributes, spooled_product_id: parent._id },
 				{
 					$set: {
-						attributes: withSpoolValue(parent.attributes, REFILL_VALUE),
+						attributes: withSpoolValue(current.attributes, REFILL_VALUE),
 						spooled_product_id: parent._id
 					}
 				}
 			)
+			if (updated.matchedCount !== 1) return false
 			console.log(`\nReusing product "${newName}" (${targetId}).`)
 		}
 
@@ -374,8 +396,12 @@ async function migrate(db) {
 
 	console.log('\nVerify:')
 	const ok = skipped.length === 0 && stillMixed.length === 0
-	console.log(`  ${skipped.length === 0 ? 'OK ' : 'FAIL'} variants moved: ${movedCount}, skipped: ${skipped.length}`)
-	console.log(`  ${stillMixed.length === 0 ? 'OK ' : 'FAIL'} parents left with a refill variant: ${stillMixed.length ? stillMixed.join(', ') : 'none'}`)
+	console.log(
+		`  ${skipped.length === 0 ? 'OK ' : 'FAIL'} variants moved: ${movedCount}, skipped: ${skipped.length}`
+	)
+	console.log(
+		`  ${stillMixed.length === 0 ? 'OK ' : 'FAIL'} parents left with a refill variant: ${stillMixed.length ? stillMixed.join(', ') : 'none'}`
+	)
 	console.log(`  products created: ${created}`)
 	if (ok) {
 		console.log(

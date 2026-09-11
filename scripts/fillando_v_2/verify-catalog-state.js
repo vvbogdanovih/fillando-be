@@ -14,10 +14,16 @@
 
 const mongoose = require('mongoose')
 
-const { CATEGORY_SLUG, filterConditions } = require('./seed-landings.js')
-const { isRefillVariant } = require('./normalize-variant-colors.js')
+const { CATEGORY_SLUG, LANDINGS, filterConditions } = require('./seed-landings.js')
+const { isRefillVariant, isColorAxis } = require('./normalize-variant-colors.js')
 
 const DIMENSIONS = ['polymer', 'finish', 'reinforcement', 'series', 'spool_included']
+const hasText = value =>
+	typeof value === 'string' &&
+	value
+		.replace(/<[^>]*>/g, '')
+		.replace(/&nbsp;|&#160;/gi, ' ')
+		.trim().length > 0
 
 function pct(n, total) {
 	return total === 0 ? '—' : `${Math.round((100 * n) / total)}%`
@@ -57,18 +63,24 @@ async function landingCounts(db, category) {
 			slug: landing.slug,
 			status: landing.status,
 			matches,
-			hasCopy: Boolean(landing.bottom_html && landing.bottom_html.trim()),
-			faq: (landing.faq ?? []).length
+			hasCopy: [
+				landing.h1,
+				landing.title,
+				landing.meta_description,
+				landing.intro_html,
+				landing.bottom_html
+			].every(hasText),
+			faq: (landing.faq ?? []).filter(item => hasText(item.q) && hasText(item.a)).length
 		})
 	}
 	return rows
 }
 
-async function report(db) {
+async function report(db, { complete = false } = {}) {
 	const category = await db.collection('categories').findOne({ slug: CATEGORY_SLUG })
 	if (!category) {
-		console.log(`No "${CATEGORY_SLUG}" category — nothing to report.`)
-		return true
+		console.error(`FAIL: No "${CATEGORY_SLUG}" category — check the restored database.`)
+		return false
 	}
 
 	// Compared as a string on purpose: at least one product in production stores `category_id`
@@ -151,9 +163,7 @@ async function report(db) {
 	// ---- colour axis ----
 	const onColorAxis = active.filter(v => {
 		const p = products.find(x => String(x._id) === String(v.product_id))
-		const key = p?.variant_type?.key?.toLowerCase() ?? ''
-		const label = p?.variant_type?.label?.toLowerCase() ?? ''
-		return key === 'color' || key === 'kolir' || label.includes('колір')
+		return isColorAxis(p?.variant_type)
 	})
 	const withColor = onColorAxis.filter(v => v.color_id)
 	console.log(
@@ -244,7 +254,76 @@ async function report(db) {
 	)
 	for (const p of noVariants) console.log(`      ${p.name}`)
 
-	return orphans.length === 0 && dupSlugs.length === 0 && parked.length === 0
+	let ok =
+		products.length > 0 &&
+		variants.length > 0 &&
+		orphans.length === 0 &&
+		dupSlugs.length === 0 &&
+		parked.length === 0
+	if (!products.length || !variants.length)
+		console.error('FAIL: restored catalogue is empty or incomplete')
+	if (complete) {
+		const colors = await db.collection('colors').find({}).toArray()
+		const colorById = new Map(colors.map(c => [String(c._id), c]))
+		const allProducts = await db.collection('products').find({}).toArray()
+		const allVariants = await db.collection('product_variants').find({}).toArray()
+		const categories = await db.collection('categories').find({}).toArray()
+		const categoryIds = new Set(categories.map(c => String(c._id)))
+		const productById = new Map(allProducts.map(p => [String(p._id), p]))
+		const allSlugs = allVariants.map(v => v.slug)
+		const badColors = onColorAxis.filter(v => {
+			const color = colorById.get(String(v.color_id))
+			return !color || color.family !== v.color_family || color.name_en !== v.v_value
+		})
+		const checks = {
+			'products referencing absent categories': allProducts.filter(
+				p => !categoryIds.has(String(p.category_id))
+			).length,
+			'variants with absent product/category or mismatched category': allVariants.filter(
+				v => {
+					const product = productById.get(String(v.product_id))
+					return (
+						!product ||
+						!categoryIds.has(String(v.category_id)) ||
+						String(product.category_id) !== String(v.category_id)
+					)
+				}
+			).length,
+			'global duplicate variant slugs': allSlugs.length - new Set(allSlugs).size,
+			'variants without a usable slug': allVariants.filter(
+				v => typeof v.slug !== 'string' || !v.slug.trim() || v.slug.includes('-moving-')
+			).length,
+			'missing filter dimensions': missing.length,
+			'legacy material filter still offered': Number(required.includes('material')),
+			'products without material': noMaterial.length,
+			'products without derived polymer': products.filter(
+				p => !(p.attributes ?? []).some(a => a?.k === 'polymer' && a.v)
+			).length,
+			'products without spool flag': products.filter(
+				p => !(p.attributes ?? []).some(a => a?.k === 'spool_included' && a.v)
+			).length,
+			'mixed refill products': mixed.size,
+			'missing or inconsistent colour assignments': badColors.length,
+			'active variants without positive integer shipping weight': active.filter(
+				v => !Number.isInteger(v.weight_g) || v.weight_g <= 0
+			).length,
+			'missing seeded landings': LANDINGS.filter(l => !rows.some(r => r.slug === l.slug))
+				.length,
+			'seeded landings without copy or FAQ': rows.filter(
+				r => LANDINGS.some(l => l.slug === r.slug) && (!r.hasCopy || !r.faq)
+			).length,
+			'published empty landings': rows.filter(r => r.status === 'active' && !r.matches)
+				.length,
+			'long product names': longNames.length,
+			'string category references': stringCategoryId.length
+		}
+		console.log('\nComplete migration checks (draft landings are allowed):')
+		for (const [label, count] of Object.entries(checks)) {
+			console.log(`  ${count ? 'FAIL' : 'OK  '} ${label}: ${count}`)
+			if (count) ok = false
+		}
+	}
+	return ok
 }
 
 async function main() {
@@ -260,13 +339,14 @@ async function main() {
 	try {
 		const db = mongoose.connection.db
 		console.log(`Database "${db.databaseName}" on ${mongoose.connection.host}.\n`)
-		ok = await report(db)
+		ok = await report(db, { complete: process.argv.includes('--complete') })
 	} finally {
 		await mongoose.disconnect()
 	}
 	if (!ok) process.exit(1)
 }
 
+module.exports = { report, landingCounts }
 if (require.main === module) {
 	main().catch(err => {
 		console.error('Fatal:', err.message || err)

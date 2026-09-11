@@ -158,7 +158,8 @@ function matchColor(index, vValue) {
 
 function writeJson(file, data) {
 	fs.mkdirSync(REPORT_DIR, { recursive: true })
-	fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
+	fs.writeFileSync(`${file}.tmp`, `${JSON.stringify(data, null, 2)}\n`)
+	fs.renameSync(`${file}.tmp`, file)
 	console.log(`  ${file}`)
 }
 
@@ -173,9 +174,10 @@ function mergeSlugMap(entries) {
 	if (fs.existsSync(SLUG_MAP)) {
 		try {
 			const parsed = JSON.parse(fs.readFileSync(SLUG_MAP, 'utf8'))
-			if (Array.isArray(parsed)) previous = parsed
+			if (!Array.isArray(parsed)) throw new Error('Expected an array')
+			previous = parsed
 		} catch {
-			console.warn(`  (existing ${SLUG_MAP} is not readable JSON — starting a new map)`)
+			throw new Error(`Existing ${SLUG_MAP} is invalid; recover it before running migrations`)
 		}
 	}
 	const byFrom = new Map(previous.map(e => [e.from, e]))
@@ -307,6 +309,18 @@ async function migrate(db) {
 
 		changes.push({
 			_id: variant._id,
+			filter: Object.fromEntries(
+				[
+					'_id',
+					'product_id',
+					'slug',
+					'name',
+					'v_value',
+					'color_id',
+					'color_family',
+					'v_value_legacy'
+				].map(key => [key, variant[key] === undefined ? { $exists: false } : variant[key]])
+			),
 			old_slug: variant.slug,
 			new_slug: newSlug,
 			set: {
@@ -322,6 +336,20 @@ async function migrate(db) {
 				})
 			}
 		})
+	}
+
+	// Include occupied addresses outside the colour axis as well. The unique index would
+	// catch these only after earlier bulk writes had already modified other variants.
+	for (const change of changes) {
+		const holder = variantDocs.find(
+			v => v.slug === change.new_slug && String(v._id) !== String(change._id)
+		)
+		if (holder)
+			collisions.push({
+				slug: change.new_slug,
+				product: `held by ${holder.sku}`,
+				color: change.set.v_value
+			})
 	}
 
 	// ---------- plan ----------
@@ -389,7 +417,7 @@ async function migrate(db) {
 		console.log(
 			'Review color-report.json before applying, and confirm tasks 12 and 32 are in production.'
 		)
-		return true
+		return collisions.length === 0
 	}
 
 	// A collision means two spellings the dictionary considers one colour sit on the same
@@ -405,7 +433,7 @@ async function migrate(db) {
 
 	// ---------- apply ----------
 	const res = await variants.bulkWrite(
-		changes.map(c => ({ updateOne: { filter: { _id: c._id }, update: { $set: c.set } } }))
+		changes.map(c => ({ updateOne: { filter: c.filter, update: { $set: c.set } } }))
 	)
 	console.log(`\nVariants modified: ${res.modifiedCount} (matched ${res.matchedCount}).`)
 
@@ -417,6 +445,7 @@ async function migrate(db) {
 	const colorById = new Map(colorDocs.map(c => [String(c._id), c]))
 
 	const checks = {
+		'variants changed during migration (skipped)': changes.length - res.matchedCount,
 		'variants whose color_family disagrees with the dictionary': after.filter(v => {
 			const color = colorById.get(String(v.color_id))
 			return !color || color.family !== v.color_family

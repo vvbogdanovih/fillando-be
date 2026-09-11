@@ -139,7 +139,7 @@ An apply makes **two passes**: steps after the taxonomy append attributes, the t
 9. `backfill-variant-weight.js` — writes `ProductVariant.weight_g` from the filament weight attribute plus the spool and packaging allowance; a refill carries no spool, so its allowance is different. This is the number the delivery estimate and `g:shipping_weight` both read.
 10. `backfill-attribute-units.js` — fills `required_attributes[].unit` where the unit follows unambiguously from the label («Вага» → `кг`, «Діаметр» → `мм`, «Температура друку» → `°C`) and renames the weight label to «Вага філаменту». Without a unit the specification table drops the row rather than print «Вага | 1»; the rename is safe only because `ATTR_KEY_OVERRIDES` pins both labels to `vaha`, and the step refuses to rename if that entry is missing.
 11. `normalize-variant-colors.js` — points variants at the dictionary, still **skipping any variant that carries the refill marker**; after step 4 the real refill no longer does, so its colour resolves like any other. **Do not run this on production until Plan-0004 tasks 12 and 32 are both live**: it rewrites `v_value` to the English name, and until the storefront renders `color` instead, the whole shop flips to English colour names. Variant slugs change with no 301 (the owner's decision); `reports/slug-map.json` records every move and is merged, never truncated, across runs. Unidentifiable spellings are left untouched and listed in `reports/color-report.json` for a human. A slug collision aborts the run — `--force` applies the rest.
-12. `rename-products-short.js` — the short product names of the mock, from the reviewed dictionary in `short-names.js`. Held back with the colour step: it regenerates every variant slug with no 301 (the owner's decision), and `reports/rename-report.json` is what `--rollback` reads.
+12. `rename-products-short.js` — the short product names of the mock, from the reviewed dictionary in `short-names.js`. Held back with the colour step: it regenerates every variant slug with no 301 (the owner's decision), and `reports/rename-journal.json` is what `--rollback` reads; it is persisted before writes and survives retries.
 
 Reports land in `scripts/fillando_v_2/reports/` and are gitignored.
 
@@ -184,3 +184,11 @@ This updates `openapi.json` in the project root which the frontend agent relies 
 ## Prettier Config
 
 Tabs, no semicolons, single quotes, no trailing comma, print width 100, arrow parens avoided.
+
+**Fresh-dump migrations (2026-09-10):** `yarn migrate --include-colors --yes` is the full chain
+for a new offline database, and `yarn migrate:verify` performs complete readiness checks.
+Noninteractive applies require `--yes`; the runner refuses unknown flags and a missing restored
+catalogue. Dry-run reports are isolated; apply reports are archived per pass. Rehearsal uses a
+new MongoDB container with a random localhost port, validates restore exit status and compares
+full snapshots for dry-run immutability and third-pass convergence. It does not reuse the
+integration-test container. See `scripts/fillando_v_2/README.md` before changing the runner.

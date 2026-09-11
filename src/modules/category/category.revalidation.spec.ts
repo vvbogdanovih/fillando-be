@@ -23,7 +23,9 @@ const buildService = () => {
 const dto = {
 	name: 'Філамент',
 	slug: 'filament',
-	required_attributes: [{ label: 'Тип пластику', filter_type: 'multi-select' as const }]
+	required_attributes: [
+		{ label: 'Тип пластику', filter_type: 'multi-select' as const, is_required: true }
+	]
 }
 
 describe('every category write purges the storefront exactly once', () => {
@@ -60,4 +62,39 @@ describe('a category write that did not happen purges nothing', () => {
 		await expect(service.delete(CATEGORY_ID)).rejects.toBeInstanceOf(NotFoundException)
 		expect(revalidation.revalidate).not.toHaveBeenCalled()
 	})
+})
+
+it('persists false through create/update/replace without dropping the filter', async () => {
+	const { service, categoryRepository } = buildService()
+	const input = {
+		name: 'Філамент',
+		slug: 'filament',
+		required_attributes: [
+			{
+				label: 'Армування',
+				filter_type: 'multi-select' as const,
+				unit: null,
+				is_required: false
+			}
+		]
+	}
+	await service.create(input)
+	expect(categoryRepository.create).toHaveBeenCalledWith(
+		expect.objectContaining({
+			required_attributes: [
+				{
+					key: 'reinforcement',
+					label: 'Армування',
+					filter_type: 'multi-select',
+					unit: null,
+					is_required: false
+				}
+			]
+		})
+	)
+	await service.update(CATEGORY_ID, input)
+	await service.replace(CATEGORY_ID, input)
+	for (const call of categoryRepository.update.mock.calls) {
+		expect(JSON.stringify(call)).toContain('"is_required":false')
+	}
 })

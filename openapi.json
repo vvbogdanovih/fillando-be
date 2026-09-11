@@ -3237,6 +3237,10 @@
       "RequiredAttributeDto": {
         "type": "object",
         "properties": {
+          "is_required": {
+            "type": "boolean",
+            "description": "Whether an empty product value raises a catalogue completeness warning"
+          },
           "label": {
             "type": "string",
             "example": "Виробник",
@@ -3259,6 +3263,7 @@
           }
         },
         "required": [
+          "is_required",
           "label",
           "filter_type",
           "unit"

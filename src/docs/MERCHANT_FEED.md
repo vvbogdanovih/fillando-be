@@ -92,7 +92,14 @@ Merchant survives a stock-out.
 | `no_google_product_category` | the category has no `google_product_category`                | `category` |
 | `no_description`             | `product.description.html` is empty — the title stands in    | `item`     |
 | `no_weight`                  | `variant.weight_g` is null                                   | `item`     |
-| `missing_required_attribute` | a `required_attributes` entry of the category is unfulfilled | `item`     |
+| `missing_required_attribute` | a category entry with `is_required: true` is unfulfilled | `item`     |
+
+Every category attribute has an explicitly stored boolean `is_required`. Entries with `false`
+remain catalogue filters but do not produce completeness warnings. A missing/non-boolean flag
+(or malformed attribute list) aborts regeneration and retains the previous in-memory XML.
+There is no fallback for unmigrated records. Run the [full migration and verification](../../scripts/migrations/category-attribute-requiredness.md)
+before deploying the strict backend/frontend contract; the migration covers all categories and
+makes only `filament.finish` and `filament.reinforcement` optional initially.
 
 This is where the category's `required_attributes` get visibility without enforcement on write
 (TD-0006 §2).

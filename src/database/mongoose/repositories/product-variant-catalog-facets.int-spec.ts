@@ -54,6 +54,7 @@ describe('ProductVariantRepository.findCatalogItems — facets (MongoDB integrat
 			key,
 			label,
 			filter_type: 'multi-select' as const,
+			is_required: true,
 			unit
 		})
 		await categoryModel.create({

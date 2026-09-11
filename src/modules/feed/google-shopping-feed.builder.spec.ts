@@ -43,8 +43,8 @@ const row = (): FeedRawRow => ({
 			path: 'Electronics > Print, Copy, Scan & Fax > 3D Printer Accessories'
 		},
 		required_attributes: [
-			{ key: 'polymer', label: 'Тип пластику' },
-			{ key: 'spool_included', label: 'Котушка в комплекті' }
+			{ key: 'polymer', label: 'Тип пластику', is_required: true },
+			{ key: 'spool_included', label: 'Котушка в комплекті', is_required: true }
 		]
 	},
 	color: { name_uk: 'Золотий', name_en: 'Gold' }
@@ -222,7 +222,7 @@ describe('buildItem', () => {
 
 	it('labels the gap from the product attribute when the category has no label', () => {
 		const r = row()
-		r.category!.required_attributes = [{ key: 'diameter', label: '' }]
+		r.category!.required_attributes = [{ key: 'diameter', label: '', is_required: true }]
 		r.product!.attributes.push({ k: 'diameter', l: 'Діаметр', v: '' })
 
 		const built = buildItem(r, CTX)
@@ -231,7 +231,7 @@ describe('buildItem', () => {
 
 	it('keeps a non-string attribute value fulfilled — a number is a value', () => {
 		const r = row()
-		r.category!.required_attributes = [{ key: 'diameter', label: 'Діаметр' }]
+		r.category!.required_attributes = [{ key: 'diameter', label: 'Діаметр', is_required: true }]
 		r.product!.attributes.push({ k: 'diameter', l: 'Діаметр', v: 0 })
 
 		const built = buildItem(r, CTX)
@@ -292,4 +292,27 @@ describe('buildFeedXml', () => {
 		expect(xml).toContain('<g:id>x</g:id>')
 		expect(xml.trimEnd().endsWith('</rss>')).toBe(true)
 	})
+})
+
+describe('explicit category attribute requiredness', () => {
+	it('keeps optional fields but warns only about empty required fields', () => {
+		const r = row()
+		r.category!.required_attributes = [
+			{ key: 'finish', label: 'Ефект поверхні', is_required: false },
+			{ key: 'reinforcement', label: 'Армування', is_required: false },
+			{ key: 'diameter', label: 'Діаметр', is_required: true }
+		]
+		const built = buildItem(r, CTX)
+		expect(built.ok && built.missing_required).toEqual([{ key: 'diameter', label: 'Діаметр' }])
+		expect(r.category!.required_attributes).toHaveLength(3)
+	})
+	it.each([undefined, null, 'false', 'true', 0, 1])(
+		'rejects invalid stored flag %p, even on an excluded row',
+		flag => {
+			const r = row()
+			r.price = 0
+			r.category!.required_attributes[0].is_required = flag as never
+			expect(() => buildItem(r, CTX)).toThrow('is_required')
+		}
+	)
 })

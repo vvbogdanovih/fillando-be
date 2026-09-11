@@ -47,6 +47,7 @@ describe('ProductVariantRepository.findCatalogItems — category isolation (Mong
 			key: 'polymer',
 			label: 'Тип пластику',
 			filter_type: 'multi-select' as const,
+			is_required: false,
 			unit: null
 		}
 		await categoryModel.create([

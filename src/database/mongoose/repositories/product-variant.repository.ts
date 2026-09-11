@@ -72,7 +72,7 @@ export interface FeedVariantRow {
 		id: string
 		name: string
 		google_product_category: { id: number; path: string } | null
-		required_attributes: { key: string; label: string }[]
+		required_attributes: { key: string; label: string; is_required: boolean }[]
 	} | null
 	color: { name_uk: string; name_en: string } | null
 }
@@ -742,7 +742,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 									google_product_category: {
 										$ifNull: ['$google_product_category', null]
 									},
-									required_attributes: { $ifNull: ['$required_attributes', []] }
+									required_attributes: '$required_attributes'
 								}
 							}
 						]

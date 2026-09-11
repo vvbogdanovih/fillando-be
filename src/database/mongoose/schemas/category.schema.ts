@@ -3,6 +3,10 @@ import { HydratedDocument } from 'mongoose'
 
 @Schema({ _id: false })
 export class RequiredAttribute {
+	/** Explicitly migrated; never infer requiredness from a missing flag. */
+	@Prop({ type: Boolean, required: true })
+	is_required: boolean
+
 	@Prop({ required: true })
 	key: string
 

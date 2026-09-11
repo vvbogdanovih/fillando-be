@@ -44,6 +44,7 @@ export class CategoryService {
 			key: generateAttrKey(attr.label),
 			label: attr.label,
 			filter_type: attr.filter_type,
+			is_required: attr.is_required,
 			unit: attr.unit ?? null
 		}))
 	}

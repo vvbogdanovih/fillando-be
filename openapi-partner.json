@@ -217,7 +217,7 @@
     },
     "/partner/v1/products/lookup": {
       "post": {
-        "description": "До 100 артикулів; лише активні доступні товари. Повтори об’єднуються, порядок першої появи зберігається. Формат {items, not_found}, завжди 200 для валідного запиту. Ціни не входять у контракт.",
+        "description": "До 100 артикулів; лише активні доступні товари. Повтори об’єднуються, порядок першої появи зберігається. Формат {items, not_found}, завжди 200 для валідного запиту. Повертає поточну роздрібну ціну price у гривнях і currency=UAH.",
         "operationId": "PartnerCatalogController_lookup",
         "parameters": [],
         "requestBody": {
@@ -528,6 +528,18 @@
       "PartnerProductDto": {
         "type": "object",
         "properties": {
+          "price": {
+            "type": "number",
+            "example": 599.5,
+            "description": "Поточна роздрібна ціна одиниці товару у гривнях. Довідкова; не фіксується до оформлення замовлення."
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "UAH"
+            ],
+            "example": "UAH"
+          },
           "sku": {
             "type": "string"
           },
@@ -579,6 +591,8 @@
           }
         },
         "required": [
+          "price",
+          "currency",
           "sku",
           "name",
           "description_html",

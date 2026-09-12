@@ -75,6 +75,8 @@ export class PartnerCatalogService {
 		return {
 			sku: row.sku,
 			name: row.name,
+			price: row.price,
+			currency: 'UAH',
 			description_html: row.product.description?.html || null,
 			category: {
 				id: row.category._id.toString(),

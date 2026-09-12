@@ -71,6 +71,15 @@ export class PartnerVariantDto {
 	@ApiProperty() value: string
 }
 export class PartnerProductDto {
+	@ApiProperty({
+		example: 599.5,
+		description:
+			'Поточна роздрібна ціна одиниці товару у гривнях. Довідкова; не фіксується до оформлення замовлення.'
+	})
+	price: number
+	@ApiProperty({ enum: ['UAH'], example: 'UAH' })
+	currency: 'UAH'
+
 	@ApiProperty() sku: string
 	@ApiProperty() name: string
 	@ApiProperty({

@@ -1,3 +1,4 @@
+import { createPartnerDocument } from './modules/partner-api/partner-api.swagger'
 import { NestFactory } from '@nestjs/core'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
@@ -29,12 +30,20 @@ async function bootstrap() {
 		exposedHeaders: ['Content-Disposition', 'Retry-After']
 	})
 	const config = new DocumentBuilder()
-		.setTitle('Urban Tab API')
+		.setTitle('Fillando API')
 		.setDescription('API документація')
 		.setVersion('1.0')
+		.addBearerAuth(
+			{ type: 'http', scheme: 'bearer', bearerFormat: 'API token' },
+			'partner-token'
+		)
 		.build()
 	const document = SwaggerModule.createDocument(app, config)
 	SwaggerModule.setup('swagger', app, document)
+	SwaggerModule.setup('partner-docs', app, createPartnerDocument(app), {
+		jsonDocumentUrl: 'partner-openapi.json',
+		swaggerOptions: { persistAuthorization: false }
+	})
 
 	await app.listen(ENV.PORT)
 }

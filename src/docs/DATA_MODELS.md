@@ -200,7 +200,7 @@ Schema: `src/database/mongoose/schemas/category.schema.ts`
 | `createdAt` / `updatedAt` | Date                            | auto-managed (timestamps)                                                                                                                                                                                                                                                                                                  |
 
 Categories are a single flat level. The former two-level structure (category → embedded
-subcategories) was flattened by `scripts/migrations/flatten-categories.js`: each subcategory
+subcategories) was flattened by the completed category migration (historical source: `scripts/README.md`): each subcategory
 was promoted to a top-level category keeping its `_id`, so existing product references
 survived the migration.
 

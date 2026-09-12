@@ -1,4 +1,10 @@
 export const ENDPOINTS = {
+	PARTNER_API: {
+		BASE: '/partner/v1',
+		AVAILABILITY: '/products/:sku/availability',
+		BULK_AVAILABILITY: '/products/availability'
+	},
+	PARTNER_TOKENS: { BASE: '/admin/api-tokens', REVOKE: '/:id' },
 	AUTH: {
 		BASE: '/auth',
 		ME: '/me',

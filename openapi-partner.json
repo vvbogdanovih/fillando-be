@@ -1,0 +1,204 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/partner/v1/products/availability": {
+      "post": {
+        "description": "Від 1 до 100 артикулів. Повтори об’єднуються; порядок у кожному списку відповідає першій появі у запиті. Невідомі та неактивні товари — у not_found. Завжди 200 для валідного запиту, навіть якщо жодного товару не знайдено.",
+        "operationId": "PartnerApiController_bulkAvailability",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkPartnerAvailabilityRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPartnerAvailabilityResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Потрібен масив від 1 до 100 артикулів, кожен — рядок від 1 до 100 символів."
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "429": {
+            "description": "Спільний ліміт партнерських запитів перевищено. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Отримати наявність за списком артикулів",
+        "tags": [
+          "Наявність товарів"
+        ]
+      }
+    },
+    "/partner/v1/products/{sku}/availability": {
+      "get": {
+        "operationId": "PartnerApiController_availability",
+        "parameters": [
+          {
+            "name": "sku",
+            "required": true,
+            "in": "path",
+            "description": "Внутрішній артикул Fillando. Точний, чутливий до регістру збіг.",
+            "schema": {
+              "maxLength": 100,
+              "example": "FL-000123",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerAvailabilityDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некоректний артикул"
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "404": {
+            "description": "Товар не знайдений або неактивний"
+          },
+          "429": {
+            "description": "Ліміт запитів перевищено. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Отримати наявність товару за артикулом",
+        "tags": [
+          "Наявність товарів"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Fillando Partner API",
+    "description": "Наявність товарів за артикулом. У Authorize вставте API-токен, виданий Fillando. Одинична та пакетна перевірка (до 100 артикулів). Спільний ліміт обох ендпойнтів: 60 запитів за хвилину на токен, 300 на IP. Залишки довідкові, без резервування. stock_updated_at — останнє оновлення, а не гарантія актуальності. Авторизація через Authorization: Bearer <token>.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [
+    {
+      "url": "http://82.137.66.115:9001"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "partner-token": {
+        "scheme": "bearer",
+        "bearerFormat": "API token",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "BulkPartnerAvailabilityRequestDto": {
+        "type": "object",
+        "properties": {
+          "skus": {
+            "minItems": 1,
+            "maxItems": 100,
+            "example": [
+              "FL-000123",
+              "FL-000124"
+            ],
+            "description": "Точні внутрішні артикули Fillando, кожен від 1 до 100 символів. Регістр має значення.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "skus"
+        ]
+      },
+      "PartnerAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "example": "FL-000123"
+          },
+          "in_stock": {
+            "type": "boolean",
+            "example": true
+          },
+          "quantity": {
+            "type": "number",
+            "example": 12,
+            "minimum": 0,
+            "description": "Довідкова кількість одиниць, без резервування."
+          },
+          "stock_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Останнє оновлення залишку; null, якщо дата невідома."
+          }
+        },
+        "required": [
+          "sku",
+          "in_stock",
+          "quantity",
+          "stock_updated_at"
+        ]
+      },
+      "BulkPartnerAvailabilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Знайдені активні товари, включно з нульовими залишками.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartnerAvailabilityDto"
+            }
+          },
+          "not_found": {
+            "example": [
+              "FL-000124"
+            ],
+            "description": "Невідомі або неактивні артикули.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "not_found"
+        ]
+      }
+    }
+  }
+}

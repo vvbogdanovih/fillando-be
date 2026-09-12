@@ -7,10 +7,9 @@ Admin-triggered synchronization of product **stock and price** from the Prom mar
 the backend fetches the product from Prom, writes the current quantity into `stock`, and
 recalculates `price` from the vendor price plus a tiered markup — in stock and out of it alike.
 
-This replaces the older HTML-scraping approach (`scripts/AvailabilityCheck/...`) with the official
-API; the price algorithm is ported verbatim from
-`scripts/AvailabilityCheck/prod/UpdatePriceNicePrice.js`. The scraper scripts remain available but
-are independent of this flow.
+This replaces the older HTML-scraping approach with the official API. The legacy
+availability/price scripts were retired on 2026-09-11; the active price algorithm lives in
+`src/modules/prom/prom-pricing.ts`. Set missing `prom_id` values in the admin variant form.
 
 ---
 

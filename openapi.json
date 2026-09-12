@@ -1,6 +1,183 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/partner/v1/products/availability": {
+      "post": {
+        "description": "Від 1 до 100 артикулів. Повтори об’єднуються; порядок у кожному списку відповідає першій появі у запиті. Невідомі та неактивні товари — у not_found. Завжди 200 для валідного запиту, навіть якщо жодного товару не знайдено.",
+        "operationId": "PartnerApiController_bulkAvailability",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkPartnerAvailabilityRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPartnerAvailabilityResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Потрібен масив від 1 до 100 артикулів, кожен — рядок від 1 до 100 символів."
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "429": {
+            "description": "Спільний ліміт партнерських запитів перевищено. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Отримати наявність за списком артикулів",
+        "tags": [
+          "Наявність товарів"
+        ]
+      }
+    },
+    "/partner/v1/products/{sku}/availability": {
+      "get": {
+        "operationId": "PartnerApiController_availability",
+        "parameters": [
+          {
+            "name": "sku",
+            "required": true,
+            "in": "path",
+            "description": "Внутрішній артикул Fillando. Точний, чутливий до регістру збіг.",
+            "schema": {
+              "maxLength": 100,
+              "example": "FL-000123",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerAvailabilityDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некоректний артикул"
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "404": {
+            "description": "Товар не знайдений або неактивний"
+          },
+          "429": {
+            "description": "Ліміт запитів перевищено. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Отримати наявність товару за артикулом",
+        "tags": [
+          "Наявність товарів"
+        ]
+      }
+    },
+    "/admin/api-tokens": {
+      "get": {
+        "operationId": "PartnerTokenController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PartnerTokenDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Список API-токенів",
+        "tags": [
+          "Partner API tokens (admin)"
+        ]
+      },
+      "post": {
+        "operationId": "PartnerTokenController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePartnerTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedPartnerTokenDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Створити API-токен",
+        "tags": [
+          "Partner API tokens (admin)"
+        ]
+      }
+    },
+    "/admin/api-tokens/{id}": {
+      "delete": {
+        "operationId": "PartnerTokenController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Відкликати API-токен",
+        "tags": [
+          "Partner API tokens (admin)"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "description": "Login user",
@@ -135,7 +312,7 @@
     },
     "/vendors": {
       "get": {
-        "description": "Get all vendors",
+        "description": "Admin-only; a vendor is a supplier, so the list never leaves through a public route.",
         "operationId": "VendorController_findAll",
         "parameters": [],
         "responses": {
@@ -143,7 +320,7 @@
             "description": ""
           }
         },
-        "summary": "Get all vendors",
+        "summary": "Get all vendors (admin)",
         "tags": [
           "/vendors"
         ]
@@ -175,7 +352,7 @@
     },
     "/vendors/check-availability": {
       "get": {
-        "description": "Check if a vendor name or slug is available (not taken)",
+        "description": "Admin-only; checks if a vendor name or slug is available (not taken). Used by the admin vendor form — answering it publicly would confirm which suppliers exist.",
         "operationId": "VendorController_checkAvailability",
         "parameters": [
           {
@@ -194,7 +371,7 @@
             "description": ""
           }
         },
-        "summary": "Check vendor availability",
+        "summary": "Check vendor availability (admin)",
         "tags": [
           "/vendors"
         ]
@@ -202,7 +379,7 @@
     },
     "/vendors/{id}": {
       "get": {
-        "description": "Get a single vendor by id",
+        "description": "Admin-only; returns a single supplier record.",
         "operationId": "VendorController_findById",
         "parameters": [
           {
@@ -219,7 +396,7 @@
             "description": ""
           }
         },
-        "summary": "Get vendor by id",
+        "summary": "Get vendor by id (admin)",
         "tags": [
           "/vendors"
         ]
@@ -675,7 +852,7 @@
     },
     "/products/by-slug/{slug}": {
       "get": {
-        "description": "Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product (with `manufacturer` read from the «Виробник» attribute) and category. Draft variants respond 404; archived ones respond 200 with `status: archived` so the storefront can render a discontinued page.",
+        "description": "Public product page payload: the variant and its ACTIVE siblings in the public projection (PUBLIC_VARIANT_FIELDS — no supplier identifiers), the parent product (with `manufacturer` read from the «Виробник» attribute, and every attribute carrying the `unit` its category defines for that key, `null` when there is none) and category. Draft variants respond 404; archived ones respond 200 with `status: archived` so the storefront can render a discontinued page.",
         "operationId": "ProductController_getVariantBySlug",
         "parameters": [
           {
@@ -700,7 +877,7 @@
     },
     "/products/{id}": {
       "get": {
-        "description": "Get a single product by id",
+        "description": "Admin-only; returns the raw product document including `vendor_id` — which supplier the product is bought from. The storefront uses /products/by-slug/:slug.",
         "operationId": "ProductController_findById",
         "parameters": [
           {
@@ -717,7 +894,7 @@
             "description": ""
           }
         },
-        "summary": "Get product by id",
+        "summary": "Get product by id (admin)",
         "tags": [
           "/products"
         ]
@@ -3138,7 +3315,7 @@
     }
   },
   "info": {
-    "title": "Urban Tab API",
+    "title": "Fillando API",
     "description": "API документація",
     "version": "1.0",
     "contact": {}
@@ -3146,7 +3323,183 @@
   "tags": [],
   "servers": [],
   "components": {
+    "securitySchemes": {
+      "partner-token": {
+        "scheme": "bearer",
+        "bearerFormat": "API token",
+        "type": "http"
+      }
+    },
     "schemas": {
+      "BulkPartnerAvailabilityRequestDto": {
+        "type": "object",
+        "properties": {
+          "skus": {
+            "minItems": 1,
+            "maxItems": 100,
+            "example": [
+              "FL-000123",
+              "FL-000124"
+            ],
+            "description": "Точні внутрішні артикули Fillando, кожен від 1 до 100 символів. Регістр має значення.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "skus"
+        ]
+      },
+      "PartnerAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "example": "FL-000123"
+          },
+          "in_stock": {
+            "type": "boolean",
+            "example": true
+          },
+          "quantity": {
+            "type": "number",
+            "example": 12,
+            "minimum": 0,
+            "description": "Довідкова кількість одиниць, без резервування."
+          },
+          "stock_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Останнє оновлення залишку; null, якщо дата невідома."
+          }
+        },
+        "required": [
+          "sku",
+          "in_stock",
+          "quantity",
+          "stock_updated_at"
+        ]
+      },
+      "BulkPartnerAvailabilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Знайдені активні товари, включно з нульовими залишками.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartnerAvailabilityDto"
+            }
+          },
+          "not_found": {
+            "example": [
+              "FL-000124"
+            ],
+            "description": "Невідомі або неактивні артикули.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "not_found"
+        ]
+      },
+      "PartnerTokenDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "created_at",
+          "revoked_at",
+          "last_used_at"
+        ]
+      },
+      "CreatePartnerTokenDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Назва партнера або інтеграції",
+            "maxLength": 100,
+            "example": "Партнер — CRM"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreatedPartnerTokenDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "token": {
+            "type": "string",
+            "description": "Показується лише один раз. Збережіть у захищеному місці."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "created_at",
+          "revoked_at",
+          "last_used_at",
+          "token"
+        ]
+      },
       "LoginDto": {
         "type": "object",
         "properties": {

@@ -133,7 +133,7 @@ different numbers and summing `count` across kinds is neither of them:
 
 ## Where the numbers come from
 
-- **Weight** — `ProductVariant.weight_g`, backfilled by `scripts/fillando_v_2/backfill-variant-weight.js`:
+- **Weight** — `ProductVariant.weight_g`, initially populated by the now-retired catalogue migration:
   the «Вага» attribute (kilograms) plus a **220 g spool** unless the variant is a refill. The spool
   figure is an assumption in the 200–250 g range; the report flags heavier reels and the admin can
   correct any variant in the product form.

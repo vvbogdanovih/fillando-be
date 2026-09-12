@@ -332,3 +332,9 @@ Non-exhaustive — see `app.module.ts` for the full list (18 feature modules) an
 - **Constants** — `API_OPERATION` and `API_PROPERTY` keep doc texts in one place so you don’t duplicate them in every controller/DTO.
 
 Running the app and opening `http://localhost:3000/swagger` (with your base URL and port) shows the live Swagger UI generated from this setup.
+
+## Партнерський API
+
+Публічний окремий Swagger `/partner-docs`, JSON `/partner-openapi.json`.
+Контракт, авторизація й ліміти: [PARTNER_API.md](PARTNER_API.md).
+`yarn spec:export` генерує обидві специфікації в preview mode без MongoDB.

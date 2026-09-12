@@ -137,3 +137,8 @@ src/
 - [Nova Post cache & lookup API](src/docs/NOVA_POST.md) (cities / warehouses, including `q` search)
 - [Authentication Flow](src/docs/AUTH_FLOW.md)
 - [Documentation TODO](src/docs/TODO.md)
+
+## Maintenance scripts
+
+See [scripts/README.md](scripts/README.md) for retained tools and migration recovery.
+The completed catalogue transition scripts and `yarn migrate*` commands have been retired.

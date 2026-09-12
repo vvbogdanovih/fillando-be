@@ -1,6 +1,9 @@
 export const ENDPOINTS = {
 	PARTNER_API: {
 		BASE: '/partner/v1',
+		CATEGORIES: '/categories',
+		SKUS: '/products/skus',
+		LOOKUP: '/products/lookup',
 		AVAILABILITY: '/products/:sku/availability',
 		BULK_AVAILABILITY: '/products/availability'
 	},

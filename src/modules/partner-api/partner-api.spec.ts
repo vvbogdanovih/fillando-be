@@ -278,6 +278,8 @@ describe('Public Swagger isolation', () => {
 			imports: [PartnerApiModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }])],
 			controllers: [PartnerTokenController]
 		})
+			.overrideProvider(getModelToken('Category'))
+			.useValue({})
 			.overrideProvider(getModelToken('PartnerApiToken'))
 			.useValue({})
 			.overrideProvider(getModelToken('ProductVariant'))
@@ -286,9 +288,21 @@ describe('Public Swagger isolation', () => {
 		const app = mod.createNestApplication({ logger: false })
 		try {
 			const doc = createPartnerDocument(app)
+			expect(doc.paths['/partner/v1/products/skus'].get).toBeUndefined()
+			expect(doc.paths['/partner/v1/categories'].get).toBeUndefined()
+			expect(doc.paths['/partner/v1/categories'].post?.requestBody).toBeDefined()
+			expect(doc.paths['/partner/v1/categories'].post?.responses).toHaveProperty('200')
+			const postSkus = doc.paths['/partner/v1/products/skus'].post
+			expect(postSkus?.security).toEqual([{ 'partner-token': [] }])
+			expect(postSkus?.requestBody).toBeDefined()
+			expect(postSkus?.parameters).toEqual([])
+			expect(postSkus?.responses).toHaveProperty('200')
 			expect(Object.keys(doc.paths).sort()).toEqual(
 				[
 					'/partner/v1/products/availability',
+					'/partner/v1/categories',
+					'/partner/v1/products/skus',
+					'/partner/v1/products/lookup',
 					'/partner/v1/products/{sku}/availability'
 				].sort()
 			)

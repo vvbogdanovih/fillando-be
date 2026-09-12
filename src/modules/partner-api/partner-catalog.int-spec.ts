@@ -54,7 +54,8 @@ describe('Partner catalogue MongoDB', () => {
 				name: 'Variant',
 				slug: f.sku,
 				stock: 0,
-				price: 500,
+				price: 500.25,
+				prom_base_price: 10,
 				prom_id: 'secret',
 				vendor_product_sku: 'secret',
 				v_value: 'Black',
@@ -120,6 +121,8 @@ describe('Partner catalogue MongoDB', () => {
 		expect(result.items[1]).toEqual({
 			sku: 'A003',
 			name: 'Variant',
+			price: 500.25,
+			currency: 'UAH',
 			description_html: '<p>PLA</p>',
 			category: { id: catA.toString(), name: 'A', slug: 'a' },
 			attributes: [{ key: 'spool', label: 'Котушка', value: false }],
@@ -134,6 +137,6 @@ describe('Partner catalogue MongoDB', () => {
 		expect(result.items[0].variant).toBeNull()
 		expect(JSON.stringify(result)).not.toContain('secret')
 		expect(JSON.stringify(result)).not.toContain('vendor_id')
-		expect(JSON.stringify(result)).not.toContain('price')
+		expect(JSON.stringify(result)).not.toContain('prom_base_price')
 	})
 })

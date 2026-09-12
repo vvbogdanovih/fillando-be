@@ -16,6 +16,7 @@ import { PartnerApiController } from './partner-api.controller'
 const categoryId = new Types.ObjectId().toString()
 const row: PartnerCatalogRow = {
 	sku: 'A',
+	price: 500,
 	name: 'PLA Black',
 	slug: 'pla-black',
 	stock: 0,
@@ -157,7 +158,8 @@ describe('Partner catalogue HTTP', () => {
 		repository.lookup.mockResolvedValue([
 			{
 				...row,
-				price: 123,
+				price: 123.45,
+				prom_base_price: 10,
 				vendor_id: 'secret',
 				prom_id: 'secret',
 				product: { ...row.product, vendor_id: 'secret' }
@@ -171,6 +173,8 @@ describe('Partner catalogue HTTP', () => {
 				{
 					sku: 'A',
 					name: 'PLA Black',
+					price: 123.45,
+					currency: 'UAH',
 					description_html: '<p>PLA</p>',
 					category: { id: categoryId, name: 'Filament', slug: 'filament' },
 					attributes: [{ key: 'spool', label: 'Котушка', value: false }],
@@ -185,6 +189,12 @@ describe('Partner catalogue HTTP', () => {
 		})
 		expect(repository.lookup).toHaveBeenCalledTimes(1)
 		expect(repository.lookup).toHaveBeenCalledWith(['missing', 'A'])
+	})
+	it.each([0, 599.5])('preserves retail price %s in UAH', async price => {
+		repository.lookup.mockResolvedValue([{ ...row, price }])
+		const res = await lookup({ skus: ['A'] })
+		expect(res.status).toBe(200)
+		expect(res.body).toMatchObject({ items: [{ sku: 'A', price, currency: 'UAH' }] })
 	})
 	it('accepts 100 SKUs and returns 200 when all are missing', async () => {
 		repository.lookup.mockResolvedValue([])

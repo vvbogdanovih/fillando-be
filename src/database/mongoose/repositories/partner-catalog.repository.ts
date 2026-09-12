@@ -9,6 +9,7 @@ export type PartnerCatalogRow = {
 	sku: string
 	name: string
 	slug: string
+	price: number
 	stock: number
 	stock_updated_at: Date | null
 	images?: string[]
@@ -123,6 +124,7 @@ export class PartnerCatalogRepository {
 						sku: 1,
 						name: 1,
 						slug: 1,
+						price: 1,
 						stock: 1,
 						stock_updated_at: 1,
 						images: 1,

@@ -1,8 +1,8 @@
 import { PromDiscount, PromProduct } from './prom.service'
 
 /**
- * Fixed tiered markup (₴) applied on top of the vendor price, ported verbatim from
- * `scripts/AvailabilityCheck/prod/UpdatePriceNicePrice.js`.
+ * Fixed tiered markup (₴) applied on top of the vendor price. This is the active
+ * pricing implementation; the historical HTML price scrapers have been retired.
  */
 const MARKUP_TIERS: ReadonlyArray<{ upTo: number; markup: number }> = [
 	{ upTo: 200, markup: 30 },

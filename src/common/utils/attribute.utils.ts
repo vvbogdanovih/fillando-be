@@ -45,8 +45,8 @@ const CYRILLIC_MAP: Record<string, string> = {
  * covers all of them.
  *
  * The frontend must keep an identical copy in `fillando-fe/src/common/utils/slug.utils.ts`
- * (`toAttrKey`), and `scripts/migrations/normalize-attr-keys.js` duplicates it to rename
- * keys already stored in the database — change all three together.
+ * (`toAttrKey`). Renaming keys already stored in the database needs a dedicated
+ * migration; changing these tables only affects subsequent saves.
  */
 export const ATTR_KEY_OVERRIDES: Readonly<Record<string, string>> = {
 	'тип пластику': 'polymer',

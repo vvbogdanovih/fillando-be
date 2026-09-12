@@ -3,6 +3,31 @@
  * Used with @ApiOperation() in controllers to keep docs in one place.
  */
 export const API_OPERATION = {
+	PARTNER_API: {
+		SKUS_BODY: {
+			summary: 'Артикули категорії або всього каталогу (JSON body)',
+			description:
+				'Передайте category_id, cursor та limit у JSON-тілі. Для першої сторінки cursor не потрібен. Порожній об’єкт {} повертає перші 100 артикулів усього каталогу. Сортування за SKU; next_cursor=null означає кінець. Курсор прив’язаний до категорії.'
+		},
+		CATEGORIES: {
+			summary: 'Категорії з кількістю активних артикулів',
+			description: 'Плоский список, parent_id завжди null; порожні категорії включено.'
+		},
+		LOOKUP: {
+			summary: 'Картки товарів за артикулами',
+			description:
+				'До 100 артикулів; лише активні доступні товари. Повтори об’єднуються, порядок першої появи зберігається. Формат {items, not_found}, завжди 200 для валідного запиту. Ціни не входять у контракт.'
+		},
+		BULK_AVAILABILITY: {
+			summary: 'Отримати наявність за списком артикулів',
+			description:
+				'Від 1 до 100 артикулів. Повтори об’єднуються; порядок у кожному списку відповідає першій появі у запиті. Невідомі та неактивні товари — у not_found. Завжди 200 для валідного запиту, навіть якщо жодного товару не знайдено.'
+		},
+		AVAILABILITY: { summary: 'Отримати наявність товару за артикулом' },
+		LIST_TOKENS: { summary: 'Список API-токенів' },
+		CREATE_TOKEN: { summary: 'Створити API-токен' },
+		REVOKE_TOKEN: { summary: 'Відкликати API-токен' }
+	},
 	AUTH: {
 		ME: {
 			summary: 'Get me',

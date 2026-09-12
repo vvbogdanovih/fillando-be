@@ -1,3 +1,4 @@
+import { PartnerApiModule, PartnerTokenAdminModule } from './modules/partner-api/partner-api.module'
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { ScheduleModule } from '@nestjs/schedule'
@@ -31,6 +32,8 @@ import { ENV } from './common/constants'
 
 @Module({
 	imports: [
+		PartnerApiModule,
+		PartnerTokenAdminModule,
 		LoggerModule.forRoot({
 			pinoHttp: {
 				level: ENV.LOG_LEVEL,

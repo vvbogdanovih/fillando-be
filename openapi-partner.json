@@ -1,0 +1,618 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/partner/v1/products/availability": {
+      "post": {
+        "description": "Від 1 до 100 артикулів. Повтори об’єднуються; порядок у кожному списку відповідає першій появі у запиті. Невідомі та неактивні товари — у not_found. Завжди 200 для валідного запиту, навіть якщо жодного товару не знайдено.",
+        "operationId": "PartnerApiController_bulkAvailability",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkPartnerAvailabilityRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPartnerAvailabilityResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Потрібен масив від 1 до 100 артикулів, кожен — рядок від 1 до 100 символів."
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "429": {
+            "description": "Спільний ліміт партнерських запитів перевищено. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Отримати наявність за списком артикулів",
+        "tags": [
+          "Наявність товарів"
+        ]
+      }
+    },
+    "/partner/v1/products/{sku}/availability": {
+      "get": {
+        "operationId": "PartnerApiController_availability",
+        "parameters": [
+          {
+            "name": "sku",
+            "required": true,
+            "in": "path",
+            "description": "Внутрішній артикул Fillando. Точний, чутливий до регістру збіг.",
+            "schema": {
+              "maxLength": 100,
+              "example": "FL-000123",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerAvailabilityDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некоректний артикул"
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "404": {
+            "description": "Товар не знайдений або неактивний"
+          },
+          "429": {
+            "description": "Ліміт запитів перевищено. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Отримати наявність товару за артикулом",
+        "tags": [
+          "Наявність товарів"
+        ]
+      }
+    },
+    "/partner/v1/categories": {
+      "post": {
+        "description": "Плоский список, parent_id завжди null; порожні категорії включено.",
+        "operationId": "PartnerCatalogController_categories",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Порожній JSON-об’єкт {} — усі категорії.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "example": {}
+              },
+              "examples": {
+                "all": {
+                  "summary": "Готовий запит — усі категорії",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PartnerCategoryDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "429": {
+            "description": "Спільний ліміт партнерського API. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Категорії з кількістю активних артикулів",
+        "tags": [
+          "Каталог"
+        ]
+      }
+    },
+    "/partner/v1/products/skus": {
+      "post": {
+        "description": "Передайте category_id, cursor та limit у JSON-тілі. Для першої сторінки cursor не потрібен. Порожній об’єкт {} повертає перші 100 артикулів усього каталогу. Сортування за SKU; next_cursor=null означає кінець. Курсор прив’язаний до категорії.",
+        "operationId": "PartnerCatalogController_skusFromBody",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Готовий запит першої сторінки: category_id=null — усі категорії, cursor=null — початок списку. Для фільтрації замініть category_id на id із POST /partner/v1/categories; для наступної сторінки замініть cursor на отриманий next_cursor.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerSkuRequestDto"
+              },
+              "examples": {
+                "first_page": {
+                  "summary": "Готовий запит — перша сторінка всього каталогу",
+                  "value": {
+                    "category_id": null,
+                    "cursor": null,
+                    "limit": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerSkuPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некоректні category_id, cursor або limit у JSON-тілі"
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "404": {
+            "description": "Категорія не існує"
+          },
+          "429": {
+            "description": "Спільний ліміт партнерського API. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Артикули категорії або всього каталогу (JSON body)",
+        "tags": [
+          "Каталог"
+        ]
+      }
+    },
+    "/partner/v1/products/lookup": {
+      "post": {
+        "description": "До 100 артикулів; лише активні доступні товари. Повтори об’єднуються, порядок першої появи зберігається. Формат {items, not_found}, завжди 200 для валідного запиту. Ціни не входять у контракт.",
+        "operationId": "PartnerCatalogController_lookup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerProductLookupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerProductLookupResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Потрібен масив від 1 до 100 артикулів, кожен від 1 до 100 символів"
+          },
+          "401": {
+            "description": "Токен відсутній, невірний або відкликаний"
+          },
+          "429": {
+            "description": "Спільний ліміт партнерського API. Повторіть через Retry-After секунд."
+          }
+        },
+        "security": [
+          {
+            "partner-token": []
+          }
+        ],
+        "summary": "Картки товарів за артикулами",
+        "tags": [
+          "Каталог"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Fillando Partner API",
+    "description": "Категорії, артикули з пагінацією, картки товарів і наявність за артикулом. У Authorize вставте API-токен, виданий Fillando. Одинична та пакетна перевірка (до 100 артикулів). Спільний ліміт усіх партнерських ендпойнтів: 60 запитів за хвилину на токен, 300 на IP. Залишки довідкові, без резервування. stock_updated_at — останнє оновлення, а не гарантія актуальності. Авторизація через Authorization: Bearer <token>.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [
+    {
+      "url": "http://82.137.66.115:9001"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "partner-token": {
+        "scheme": "bearer",
+        "bearerFormat": "API token",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "BulkPartnerAvailabilityRequestDto": {
+        "type": "object",
+        "properties": {
+          "skus": {
+            "minItems": 1,
+            "maxItems": 100,
+            "example": [
+              "FL-000123",
+              "FL-000124"
+            ],
+            "description": "Точні внутрішні артикули Fillando, кожен від 1 до 100 символів. Регістр має значення.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "skus"
+        ]
+      },
+      "PartnerAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "example": "FL-000123"
+          },
+          "in_stock": {
+            "type": "boolean",
+            "example": true
+          },
+          "quantity": {
+            "type": "number",
+            "example": 12,
+            "minimum": 0,
+            "description": "Довідкова кількість одиниць, без резервування."
+          },
+          "stock_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Останнє оновлення залишку; null, якщо дата невідома."
+          }
+        },
+        "required": [
+          "sku",
+          "in_stock",
+          "quantity",
+          "stock_updated_at"
+        ]
+      },
+      "BulkPartnerAvailabilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Знайдені активні товари, включно з нульовими залишками.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartnerAvailabilityDto"
+            }
+          },
+          "not_found": {
+            "example": [
+              "FL-000124"
+            ],
+            "description": "Невідомі або неактивні артикули.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "not_found"
+        ]
+      },
+      "PartnerCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Категорії плоскі; наразі завжди null."
+          },
+          "sku_count": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Кількість активних артикулів, доступних для вивантаження."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "parent_id",
+          "sku_count"
+        ]
+      },
+      "PartnerSkuRequestDto": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "ID категорії. null або відсутність поля — весь каталог."
+          },
+          "cursor": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "next_cursor попередньої сторінки; null або відсутність поля — перша сторінка.",
+            "maxLength": 1024
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "PartnerSkuPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "null означає кінець списку."
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ]
+      },
+      "PartnerProductLookupDto": {
+        "type": "object",
+        "properties": {
+          "skus": {
+            "minItems": 1,
+            "maxItems": 100,
+            "example": [
+              "FL-000123",
+              "FL-000124"
+            ],
+            "description": "Точні внутрішні артикули Fillando, кожен від 1 до 100 символів. Регістр має значення.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "skus"
+        ]
+      },
+      "PartnerProductCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "PartnerAttributeDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value"
+        ]
+      },
+      "PartnerVariantDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value"
+        ]
+      },
+      "PartnerProductDto": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description_html": {
+            "type": "string",
+            "nullable": true,
+            "description": "HTML-опис товару, null якщо відсутній."
+          },
+          "category": {
+            "$ref": "#/components/schemas/PartnerProductCategoryDto"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartnerAttributeDto"
+            }
+          },
+          "variant": {
+            "nullable": true,
+            "description": "Ознака конкретного варіанта, наприклад колір.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PartnerVariantDto"
+              }
+            ]
+          },
+          "images": {
+            "description": "URL зображень у порядку відображення.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "weight_g": {
+            "type": "number",
+            "nullable": true,
+            "description": "Вага для доставки в грамах; null якщо невідома."
+          },
+          "availability": {
+            "$ref": "#/components/schemas/PartnerAvailabilityDto"
+          }
+        },
+        "required": [
+          "sku",
+          "name",
+          "description_html",
+          "category",
+          "attributes",
+          "variant",
+          "images",
+          "url",
+          "weight_g",
+          "availability"
+        ]
+      },
+      "PartnerProductLookupResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartnerProductDto"
+            }
+          },
+          "not_found": {
+            "description": "Невідомі, неактивні або недоступні для вивантаження артикули.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "not_found"
+        ]
+      }
+    }
+  }
+}

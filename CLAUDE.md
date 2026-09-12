@@ -97,7 +97,7 @@ any landing pinning it. Both labels therefore resolve to `vaha` (Plan-0005 I-27)
 Rules:
 
 - Keys are never supplied by the client — they are always derived from the label server-side.
-- Adding a catalogue filter dimension means adding the pair in three places: `ATTR_KEY_OVERRIDES` here, the frontend mirror `toAttrKey` in `fillando-fe/src/common/utils/slug.utils.ts`, and `scripts/fillando_v_2/normalize-attr-keys.js` (a unit test enforces BE↔migration sync). Then deploy and run the migration (`node scripts/fillando_v_2/normalize-attr-keys.js --dry-run`, then without the flag) to rename keys already stored — the override applies on the next save, not retroactively.
+- Adding a catalogue filter dimension requires matching entries in `ATTR_KEY_OVERRIDES` here and frontend `toAttrKey` in `fillando-fe/src/common/utils/slug.utils.ts`. If existing stored keys must change, create a dedicated migration with a dry-run and verification; changing the override only affects subsequent saves.
 - `Product.variant_type.key` is the exception to "derived server-side": `VariantTypeDto.key` is a plain `@IsString()` that `ProductService.create`/`update` store verbatim, so the frontend is its only author. A later save does not repair it, which is why the migration renames it too — otherwise it stops matching the `attributes[].k` it points at.
 - Attribute values must not contain commas: the catalogue query splits multi-value filters (`?polymer=PLA,PETG`) on `,`.
 
@@ -111,47 +111,11 @@ Rules:
 - A product rename regenerates every variant slug, and `slug` is unique. Only an **actual** change of name triggers it (the admin form posts `name` on every save). `planVariantRename` computes the whole batch and `assertSlugsAvailable` refuses a clash with a 409 naming the SKUs **before the first write** — there is no transaction to fall back on here (standalone MongoDB), so a duplicate found mid-batch used to leave the product renamed and its variants half-rewritten. Slugs can also **rotate** within a product, where the address one variant is moving to is still held by a sibling that is moving too; that is a race rather than a clash, so `applyVariantRename` writes in two passes, parking every mover on a temporary `…-moving-<id>` address before any of them claims its target.
 - `target: ES2023` gives every declared DTO field an own property, so `'field' in dto` is **always true** even when the client never sent it. Compare against `undefined` instead (`dto.v_value !== undefined`); the old `in` check made a stock-only PATCH rewrite the variant's name and slug, and stamped `price_updated_at` / `stock_updated_at` — both public, the latter as the price sheet's "synced" column — on edits that touched neither.
 
-**Catalogue migrations run in one order** (`scripts/fillando_v_2/`, TD-0002), and `run-all.js` is that order in executable form — prefer it over invoking the scripts by hand:
-
-```bash
-yarn migrate:rehearse ~/Desktop/db_backup_for_test   # rehearse on a prod dump first
-yarn migrate --dry-run                               # read every plan
-yarn migrate                                         # apply, holds back the colour step
-yarn migrate --colors-only                           # after the frontend is live
-yarn migrate:verify                                  # read-only report, safe on production
-```
-
-Everything that migrates catalogue data lives in **`scripts/fillando_v_2/`** with its own [README](scripts/fillando_v_2/README.md); older one-off migrations stay in `scripts/migrations/`. `yarn migrate` is the single entry point and runs the twelve scripts in order.
-
-`rehearse-on-dump.sh` restores a `mongodump` into the disposable MongoDB from
-`docker-compose.test.yml` and runs the whole chain against it. It restores only the catalogue
-collections, so customer data stays in the dump, and points `MIGRATION_REPORT_DIR` at a
-temporary directory so a rehearsal can never overwrite the reports of a real run.
-
-An apply makes **two passes**: steps after the taxonomy append attributes, the taxonomy rebuilds its derived entries into a canonical order, so the first pass leaves a few products merely ordered differently and the second settles it. A third pass reports nothing to do. The full release procedure — which deploy has to land before which migration, what each run should print on the current data, and how to undo it — is `src/docs/CATALOG_RELEASE.md`; the summary below is the ordering only. Each takes `--dry-run`, is idempotent, writes its plan before it writes data, and pins the array it read in the update filter so a concurrent admin save is skipped and reported rather than overwritten:
-
-1. `fix-known-data-defects.js` — repairs the individually known broken documents by `_id`, asserting what it expects to find first. The catalogue is frozen while this work lands, so the broken set is closed: on current data, an empty `material` and a string `category_id` on Kingroon PETG (CoPET) 3 кг. It also reports the two "Candy" variants, which need a person rather than a script.
-2. `normalize-attr-keys.js` — renames keys stored before `ATTR_KEY_OVERRIDES` existed.
-3. `derive-material-taxonomy.js` — writes `polymer`/`finish`/`reinforcement`/`series` from `material` (which stays), and swaps `material` for those four in the category's `required_attributes`.
-4. `split-refill-products.js` — moves each refill variant onto a product of its own, named `<parent> (без котушки)` and marked `spool_included = Ні (рефіл)`. It also strips the refill marker from `v_value`, because the distinction now lives on the product: while the marker sat in the colour value, step 8 had to skip the variant to avoid erasing it. The suffix deliberately avoids the words `Refill`/`рефіл` — `isRefillVariant` reads the variant name too, and the variant name is built from the product name.
-5. `backfill-spool-included.js` — gives every product `spool_included = Так`, then adds the filter. Products first: a category offering a filter no product carries returns an empty catalogue, whereas the reverse is invisible. **A product whose variants disagree is skipped and reported** — after step 3 there should be none left.
-6. `seed-colors.js` — the colour dictionary, 103 entries. 47 of them were added on 2026-09-05 to cover the spellings this catalogue actually stores (Dual-Silk and Tri-Silk gradients, the numbered Sunlu rainbows, thermochromic pairs); `colour-dictionary-coverage.spec.ts` asserts every one still resolves. `synonyms` live here, not in the database, and the normalizer reads them from this file.
-7. `seed-landings.js` — the 14 landings as drafts; runs after 3 and 5 because its filters key off the dimensions they create. A landing whose dry run lists 0 products stays unpublished.
-8. `fill-landing-copy.js` — writes the reviewed copy from `landing-copy.js` into those landings, leaving them **draft**. Only landings whose copy is still empty are touched, so text edited in the admin is never overwritten, and the copy is validated against the `sanitizeRichText` allowlist before the write because this path bypasses the API sanitizer.
-9. `backfill-variant-weight.js` — writes `ProductVariant.weight_g` from the filament weight attribute plus the spool and packaging allowance; a refill carries no spool, so its allowance is different. This is the number the delivery estimate and `g:shipping_weight` both read.
-10. `backfill-attribute-units.js` — fills `required_attributes[].unit` where the unit follows unambiguously from the label («Вага» → `кг`, «Діаметр» → `мм`, «Температура друку» → `°C`) and renames the weight label to «Вага філаменту». Without a unit the specification table drops the row rather than print «Вага | 1»; the rename is safe only because `ATTR_KEY_OVERRIDES` pins both labels to `vaha`, and the step refuses to rename if that entry is missing.
-11. `normalize-variant-colors.js` — points variants at the dictionary, still **skipping any variant that carries the refill marker**; after step 4 the real refill no longer does, so its colour resolves like any other. **Do not run this on production until Plan-0004 tasks 12 and 32 are both live**: it rewrites `v_value` to the English name, and until the storefront renders `color` instead, the whole shop flips to English colour names. Variant slugs change with no 301 (the owner's decision); `reports/slug-map.json` records every move and is merged, never truncated, across runs. Unidentifiable spellings are left untouched and listed in `reports/color-report.json` for a human. A slug collision aborts the run — `--force` applies the rest.
-12. `rename-products-short.js` — the short product names of the mock, from the reviewed dictionary in `short-names.js`. Held back with the colour step: it regenerates every variant slug with no 301 (the owner's decision), and `reports/rename-journal.json` is what `--rollback` reads; it is persisted before writes and survives retries.
-
-Reports land in `scripts/fillando_v_2/reports/` and are gitignored.
-
-**Admin-authored HTML** is sanitized on write by `sanitizeRichText` / `sanitizePlainText` (`src/common/utils/html.utils.ts`): landing copy, FAQ entries and product descriptions. The storefront renders these with `dangerouslySetInnerHTML`, so an allowlist is the only thing between an admin account and stored XSS for every visitor. `sanitize-html` is pinned to **2.17.0** on purpose — 2.17.7 moved to an ESM-only `htmlparser2`, which Jest's CommonJS runtime cannot load, so every suite importing it fails to parse.
-
-**Repository pattern** — services never use `@InjectModel` directly; all DB access goes through a repository that extends `BaseRepository<T>` (`src/database/mongoose/repositories/base.repository.ts`). Register the repository in the module's `providers` array alongside the `MongooseModule.forFeature` schema. See `src/docs/REPOSITORY_PATTERN.md` for the full pattern and a step-by-step example.
-
-**New feature modules** go in `src/modules/`. The nest-cli is configured with `generate.options.baseDir = "modules"`, so `nest g module foo` places it there automatically.
-
-**Logging** uses `nestjs-pino`. Inject `PinoLogger` from `nestjs-pino` in controllers (with `setContext`), and `Logger` from `@nestjs/common` in services.
+**Catalogue transition completed.** The one-off scripts and their migration-only tests were
+retired on 2026-09-11. Do not recommend `yarn migrate*` or recreate old seed dictionaries.
+For a new environment restore a current dump. See `scripts/README.md` for retained tools,
+historical Git recovery and the archive location, and `src/docs/CATALOG_RELEASE.md` for
+current release checks. Attribute requiredness has its own strict migration and rollback.
 
 ## Endpoint & Swagger Conventions
 
@@ -186,11 +150,3 @@ This updates `openapi.json` in the project root which the frontend agent relies 
 ## Prettier Config
 
 Tabs, no semicolons, single quotes, no trailing comma, print width 100, arrow parens avoided.
-
-**Fresh-dump migrations (2026-09-10):** `yarn migrate --include-colors --yes` is the full chain
-for a new offline database, and `yarn migrate:verify` performs complete readiness checks.
-Noninteractive applies require `--yes`; the runner refuses unknown flags and a missing restored
-catalogue. Dry-run reports are isolated; apply reports are archived per pass. Rehearsal uses a
-new MongoDB container with a random localhost port, validates restore exit status and compares
-full snapshots for dry-run immutability and third-pass convergence. It does not reuse the
-integration-test container. See `scripts/fillando_v_2/README.md` before changing the runner.

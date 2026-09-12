@@ -8,7 +8,7 @@ dist
 coverage
 *.log
 .DS_Store
-scripts/fillando_v_2/reports
+scripts/scraper/report.json
 **/*.bson
 **/*.archive
 

@@ -30,6 +30,8 @@ import {
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { ReportProvider } from './report/report.provider'
+import { buildSalesReport, type ReportSourceOrder } from './report/report.builder'
+import { storeDayEnd, storeDayStart } from './report/report.period'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto'
@@ -1117,14 +1119,21 @@ export class OrderService {
 		this.logger.log(`Vendor email sent to ${vendorEmail} for order ${order.order_number}`)
 	}
 
+	/**
+	 * The sales report the finance department works from: goods sold over the period, the orders
+	 * they came from, and the reconciliation figures — not a stack of per-order invoices, which
+	 * answer «what does this one buyer owe» rather than «what did the period bring in».
+	 */
 	async generateReport(dto: GenerateReportDto): Promise<{ buffer: Buffer; filename: string }> {
 		const filter: Record<string, unknown> = {}
 		if (dto.order_status) filter.order_status = dto.order_status
 		if (dto.payment_status) filter.payment_status = dto.payment_status
 
-		const dateFrom = new Date(dto.date_from)
-		const dateTo = new Date(dto.date_to)
-		dateTo.setHours(23, 59, 59, 999)
+		// The picker hands over plain calendar days, and finance reads them as Kyiv days.
+		const dayFrom = dto.date_from.slice(0, 10)
+		const dayTo = dto.date_to.slice(0, 10)
+		const dateFrom = storeDayStart(dayFrom)
+		const dateTo = storeDayEnd(dayTo)
 
 		const orders = await this.orderRepository.findAllByDateRange(filter, dateFrom, dateTo)
 
@@ -1132,13 +1141,17 @@ export class OrderService {
 			throw new BadRequestException('Немає замовлень за обраний період')
 		}
 
-		const mappedOrders = orders.map(order => this.mapOrderResponse(order))
-		const invoices = mappedOrders.map(order => this.buildInvoiceData(order))
-		const buffer = await this.reportProvider.generateBatchPdf(invoices)
+		// Lean docs: `Order` does not declare the `timestamps: true` fields, so the cast goes
+		// through `unknown`. `ReportSourceOrder` is the narrow shape the report actually reads.
+		const report = buildSalesReport(orders as unknown as ReportSourceOrder[], {
+			dateFrom: dayFrom,
+			dateTo: dayTo,
+			orderStatus: dto.order_status ?? null,
+			paymentStatus: dto.payment_status ?? null
+		})
 
-		const dateFromStr = dto.date_from.replace(/-/g, '')
-		const dateToStr = dto.date_to.replace(/-/g, '')
-		const filename = `report_${dateFromStr}_${dateToStr}.pdf`
+		const buffer = await this.reportProvider.generateSalesReportPdf(report)
+		const filename = `sales-report_${dayFrom.replace(/-/g, '')}_${dayTo.replace(/-/g, '')}.pdf`
 
 		return { buffer, filename }
 	}

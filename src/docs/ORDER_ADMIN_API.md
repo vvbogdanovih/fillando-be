@@ -25,6 +25,8 @@ list of codes.
 | `PATCH` | `/orders/:id/status`         | Update fulfillment status                                                 |
 | `PATCH` | `/orders/:id/payment-status` | Update payment status and optional transaction id                         |
 | `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN                                                         |
+| `POST`  | `/orders/:id/invoice`        | One order's invoice as PDF                                                |
+| `POST`  | `/orders/report`             | Sales report for a period — see _The sales report_ below                  |
 
 ### Public endpoints
 
@@ -33,6 +35,49 @@ list of codes.
 | `GET`   | `/orders/lookup/:orderNumber?token=…`                | public, HMAC token        | Payment state of an order (`order_number`, `payment_method`, `payment_status`, `total_price`, `order_status`, `delivery_method`, `can_change_payment_method`) for the checkout success page — see `LIQPAY_FLOW.md` |
 | `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order `NEW`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
 | `PATCH` | `/orders/me/:id/payment-method`                      | `JwtAuthGuard`, owner     | The same change for a signed-in buyer's own order; returns the customer order shape                                                                                                                                |
+
+---
+
+## The sales report — `POST /orders/report`
+
+The report goes to the finance department, so it answers «what was sold over this period, when,
+and for how much» — not «what does each buyer owe». It used to be the invoice of every order in
+the range concatenated into one PDF, which is the same question asked N times and no answer to
+this one.
+
+Body: `date_from`, `date_to` (`YYYY-MM-DD`), optional `order_status`, `payment_status`. Returns a
+landscape A4 PDF with a running footer and page numbers, in three sections:
+
+1. **Продані товари** — every SKU sold in the period, summed across orders: quantity, the number
+   of orders it appeared in, average price and line value, largest first. Line values are
+   pre-coupon; the note under the table says so.
+2. **Реєстр замовлень** — one row per order: number, sale date, customer, positions/units,
+   statuses, payment and delivery method, subtotal, discount (with the coupon code) and payable.
+3. **Підсумки за період** — payable against paid and awaited, breakdowns by payment status,
+   payment method, order status and delivery method, and sales per day.
+
+Two figures are deliberately called out rather than buried:
+
+- **Non-revenue orders.** `CANCELLED`, `RETURNED` or `REFUNDED` orders inside the selection are
+  counted in the totals like any other, so their number and amount are printed under the summary
+  with a line saying to subtract them if the report feeds revenue.
+- **Subtotal drift.** If the stored `subtotal_price` of the selection disagrees with the line
+  values the product table sums from, the gap is printed instead of leaving two totals that
+  quietly fail to reconcile.
+
+### Dates are Kyiv days
+
+`date_from` / `date_to` are calendar days in `Europe/Kyiv`, resolved by `report.period.ts`.
+`new Date('2026-09-01')` is UTC midnight — 03:00 in Kyiv under EEST — so a naive range drops the
+first three hours of the opening day and borrows three hours of the day after the closing one.
+The per-day grouping in section 3 uses the same zone.
+
+### Sale date
+
+The report dates a sale by `createdAt`, the moment the order was placed. There is no `paid_at`
+in the schema, so for a prepaid order the report's date is not the date the money arrived; the
+note under the register says so. Adding `paid_at` (written on the `PAID` transition, backfilled
+from `createdAt`) is what would close that gap.
 
 ---
 

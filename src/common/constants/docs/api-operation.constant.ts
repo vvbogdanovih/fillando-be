@@ -443,9 +443,9 @@ export const API_OPERATION = {
 			description: 'Sends an email to a vendor regarding an order. Admin only.'
 		},
 		GENERATE_REPORT: {
-			summary: 'Generate orders report',
+			summary: 'Generate sales report',
 			description:
-				'Generates a PDF report containing invoices for all orders in the given date range with optional status filters. Each order is rendered as a full invoice page. Admin only.'
+				'Generates the finance sales report for a date range with optional status filters: goods sold over the period aggregated by SKU, the register of the orders they came from, and the reconciliation totals (paid vs awaited, breakdowns by payment and delivery, sales per day). Landscape PDF. The date range is read as Kyiv calendar days. Admin only.'
 		}
 	},
 	PAYMENT_DETAILS: {

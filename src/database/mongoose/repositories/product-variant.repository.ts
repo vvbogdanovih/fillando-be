@@ -72,7 +72,13 @@ export interface FeedVariantRow {
 		id: string
 		name: string
 		google_product_category: { id: number; path: string } | null
-		required_attributes: { key: string; label: string; is_required: boolean }[]
+		/** `unit` rides along for the feed title («1.75» + «мм»); units live here, not on the product. */
+		required_attributes: {
+			key: string
+			label: string
+			is_required: boolean
+			unit?: string | null
+		}[]
 	} | null
 	color: { name_uk: string; name_en: string } | null
 }

@@ -25,7 +25,13 @@ export type FeedWarningUnit = 'item' | 'category'
 /** Why a generation published nothing. `empty_feed`: zero items, so the cache was left alone. */
 export type FeedGenerationFailureReason = 'empty_feed'
 
-export type FeedAttribute = { k?: string; l?: string; v?: string | number | boolean }
+export type FeedAttribute = {
+	k?: string
+	l?: string
+	v?: string | number | boolean
+	/** Joined in from the category, never stored on the product (`toPublicAttributes`). */
+	unit?: string | null
+}
 
 /** One required attribute of a category, with the label the admin screen prints. */
 export interface FeedRequiredAttributeRef {

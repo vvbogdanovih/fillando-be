@@ -8,11 +8,11 @@ Module: `src/modules/feed/`. Working set: `ProductVariantRepository.findActiveFo
 
 ## Endpoints
 
-| Method | Path                               | Access | What                                                                   |
-| ------ | ---------------------------------- | ------ | ---------------------------------------------------------------------- |
-| `GET`  | `/feeds/google-shopping.xml`       | public | the feed — register this URL in Merchant Center                        |
+| Method | Path                                | Access | What                                                                     |
+| ------ | ----------------------------------- | ------ | ------------------------------------------------------------------------ |
+| `GET`  | `/feeds/google-shopping.xml`        | public | the feed — register this URL in Merchant Center                          |
 | `POST` | `/feeds/google-shopping/regenerate` | ADMIN  | rebuild now, synchronous; returns the generation summary; 409 if running |
-| `GET`  | `/feeds/google-shopping/status`    | ADMIN  | last summary without rebuilding, plus readiness, schedule, last error   |
+| `GET`  | `/feeds/google-shopping/status`     | ADMIN  | last summary without rebuilding, plus readiness, schedule, last error    |
 
 Paths in `ENDPOINTS.FEEDS`, Swagger text in `API_OPERATION.FEEDS`.
 
@@ -46,25 +46,71 @@ generation is running.
 
 ## Item mapping
 
-| Feed field                           | Source                                                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `g:id`                               | `variant.sku`                                                                                                            |
-| `g:item_group_id`                    | `variant.product_id` — groups the colours of one product                                                                 |
-| `title`                              | `variant.name`, capped at 150 chars                                                                                      |
-| `description`                        | `product.description.html` → `sanitizePlainText`, whitespace collapsed, capped at 5000; the title when empty (+ warning) |
-| `link`                               | `${FRONTEND_URL}/products/${slug}` — the page's canonical                                                                |
-| `g:image_link` / `g:additional_image_link` | `images[0]` / `images[1..10]`, **original URLs** — the same ones Product JSON-LD uses, so feed and page agree        |
-| `g:availability`                     | `in_stock` when `stock > 0`, else `out_of_stock` — underscored, as in Google's attribute reference                        |
-| `g:price`                            | `"{price.toFixed(2)} UAH"`; no `sale_price` — `price` is already final                                                   |
-| `g:brand`                            | the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`. **Never `Vendor.name`** — the vendor is the supplier    |
-| `g:google_product_category`          | `category.google_product_category.id`; omitted (+ warning) when null                                                     |
-| `g:product_type`                     | `"{Category.name} > {Landing.h1}"` for the most specific active landing whose pinned filters the product matches, else the category name |
-| `g:condition` / `g:identifier_exists` | constants `new` / `false` — no GTIN/MPN in this catalogue                                                                |
-| `g:color`                            | dictionary `color.name_uk`; `pickColor()` heuristic only where the dictionary has a gap                                  |
-| `g:material`                         | the `polymer` attribute; `pickAttr(MATERIAL_PATTERNS)` until the taxonomy migration has run                              |
-| `g:shipping_weight`                  | `"{weight_g / 1000} kg"`; omitted (+ warning) when null                                                                  |
-| `g:custom_label_0..3`                | category name · manufacturer · stock depth (`deep` >10 / `low` 1–10 / `out` 0) · price band (`budget` <500 / `mid` ≤1500 / `premium`) |
-| `g:custom_label_4`                   | sales velocity from PAID orders of the last 90 days (`OrderRepository.countSoldByVariantSince`): `bestseller` ≥10 units · `popular` ≥3 · `standard` |
+| Feed field                                 | Source                                                                                                                                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `g:id`                                     | `variant.sku`                                                                                                                                                                                                                                    |
+| `g:item_group_id`                          | `variant.product_id` — groups the colours of one product                                                                                                                                                                                         |
+| `title`                                    | composed — see «Title» below; capped at 150 chars                                                                                                                                                                                                |
+| `description`                              | `product.description.html` → `sanitizePlainText`, whitespace collapsed, capped at 5000; the title when empty (+ warning)                                                                                                                         |
+| `link`                                     | `${FRONTEND_URL}/products/${slug}` — the page's canonical                                                                                                                                                                                        |
+| `g:image_link` / `g:additional_image_link` | `images[0]` / `images[1..10]`, **original URLs** — the same ones Product JSON-LD uses, so feed and page agree                                                                                                                                    |
+| `g:availability`                           | `in_stock` when `stock > 0`, else `out_of_stock` — underscored, as in Google's attribute reference                                                                                                                                               |
+| `g:price`                                  | `"{price.toFixed(2)} UAH"`; no `sale_price` — `price` is already final                                                                                                                                                                           |
+| `g:brand`                                  | the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`. **Never `Vendor.name`** — the vendor is the supplier                                                                                                                             |
+| `g:google_product_category`                | `category.google_product_category.id`; omitted (+ warning) when null                                                                                                                                                                             |
+| `g:product_type`                           | `"{Category.name} > {Landing.h1}"` for the most specific active landing whose pinned filters the product matches, else the category name                                                                                                         |
+| `g:condition` / `g:identifier_exists`      | constants `new` / `false` — no GTIN/MPN in this catalogue                                                                                                                                                                                        |
+| `g:color`                                  | dictionary `color.name_uk`; `pickColor()` heuristic only where the dictionary has a gap                                                                                                                                                          |
+| `g:material`                               | the `polymer` attribute; `pickAttr(MATERIAL_PATTERNS)` until the taxonomy migration has run                                                                                                                                                      |
+| `g:shipping_weight`                        | `"{weight_g / 1000} kg"`; omitted (+ warning) when null                                                                                                                                                                                          |
+| `g:product_highlight`                      | one bullet per stored spec dimension, `«{label}: {value} {unit}»` — diameter, weight, `polymer`, `finish`, `reinforcement`, `series`, `spool_included`; brand, colour and the legacy «Матеріал» are left out because each has a field of its own |
+| `g:custom_label_0..3`                      | type family (see below) · manufacturer · stock depth (`deep` >10 / `low` 1–10 / `out` 0) · price band (`budget` <500 / `mid` ≤1500 / `premium`)                                                                                                  |
+| `g:custom_label_4`                         | sales velocity from PAID orders of the last 90 days (`OrderRepository.countSoldByVariantSince`): `bestseller` ≥10 units · `popular` ≥3 · `standard`                                                                                              |
+
+### Title
+
+`{Категорія} {тип} {бренд} {діаметр} {вага} — {колір}` — «Філамент PLA Silk Kingroon 1.75 мм
+1 кг — Золотий». Shopping matches the search query against this string, and the stored variant
+name («Kingroon PLA Silk — Золотий (Gold)») contains none of the words people actually type:
+«філамент», the diameter, the weight, the Ukrainian colour alone. Across the live catalogue it
+spent 43 of the 150 characters Google allows; the composed title spends 54 (Google Ads account
+review, 21.09.2026).
+
+- The **type phrase** is `product.name` minus the brand it starts with — not the `polymer`
+  attribute. The name is the only place «Silk», «High Speed», «(еко-пакування)», «(без котушки)»
+  or «для AMS» is written, and that is both what tells two otherwise identical items apart and
+  what shoppers search for.
+- Every part is skipped when the phrase already says it, compared with commas normalised to
+  dots: «Kingroon PETG (CoPET) 3 кг» is titled «Філамент PETG (CoPET) 3 кг Kingroon 1.75 мм»,
+  never «… 3 кг … 3 кг».
+- Diameter and weight are matched by **label** (`DIAMETER_PATTERNS`, `FILAMENT_WEIGHT_PATTERNS`)
+  and printed with the unit the **category** defines for that key — units live on
+  `Category.required_attributes[].unit`, never on the product, and are joined in through the same
+  `toPublicAttributes` the product page uses.
+- The colour is the dictionary `color.name_uk`, without the English in brackets the variant name
+  carries.
+- A part with no data is dropped, not padded: a product with no colour ends after the weight.
+
+Changing this changes 301 item titles at once, and Merchant re-reviews every one of them (hours
+to ~3 days), so the change belongs with a deliberate fetch, not next to an unrelated release.
+
+### Type family — `custom_label_0`
+
+`basic` · `decorative` · `engineering` · `flex`, read from the TD-0002 dimensions rather than
+from the product name:
+
+| Family        | Rule                                                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `engineering` | `reinforcement` filled (CF/GF), or a legacy «Матеріал» value containing CF/GF, or `polymer` ∈ ABS, ASA, PA, PA6, PA12, PC, PET, PPA, PPS |
+| `flex`        | `polymer` ∈ TPU, TPE                                                                                                                     |
+| `decorative`  | `finish` filled — Silk, Matte, Wood, Glow, Luminous, Gradient, Rainbow, …                                                                |
+| `basic`       | everything else — commodity PLA and PETG                                                                                                 |
+
+Reinforcement is checked first: PLA-CF is engineering filament even though its polymer is the
+commodity one. The label used to carry the category name, which is the same word on every row
+while the shop sells one category — Shopping had nothing to subdivide by. **In Ads:** a product
+group that was subdivided on the old constant value falls into "everything else" after the first
+fetch of the new feed; re-subdivide on the four families.
 
 **There is no margin label and no supplier value anywhere in the feed.** The first design had a
 margin bucket in `custom_label_2`; it was dropped (owner, 2026-09-06) because the shop resells at
@@ -73,13 +119,13 @@ endpoints applies to the feed. Stock depth segments campaigns just as well and i
 
 ### Exclusions (hard Merchant requirements)
 
-| Reason              | When                                        |
-| ------------------- | ------------------------------------------- |
+| Reason              | When                                            |
+| ------------------- | ----------------------------------------------- |
 | `missing_brand`     | no «Виробник» attribute — no shop-name fallback |
-| `no_images`         | no image URL                                |
-| `no_price`          | price missing or ≤ 0                        |
-| `dangling_product`  | the variant's product is gone               |
-| `dangling_category` | the variant's category is gone              |
+| `no_images`         | no image URL                                    |
+| `no_price`          | price missing or ≤ 0                            |
+| `dangling_product`  | the variant's product is gone                   |
+| `dangling_category` | the variant's category is gone                  |
 
 DRAFT and ARCHIVED variants never reach the builder — `findActiveForFeed` matches `ACTIVE` only.
 `stock = 0` is **not** an exclusion: the item stays with `out_of_stock`, so its history in
@@ -87,12 +133,12 @@ Merchant survives a stock-out.
 
 ### Warnings (item stays, Google lists it worse)
 
-| Code                         | Raised when                                                  | `unit`     |
-| ---------------------------- | ------------------------------------------------------------ | ---------- |
-| `no_google_product_category` | the category has no `google_product_category`                | `category` |
-| `no_description`             | `product.description.html` is empty — the title stands in    | `item`     |
-| `no_weight`                  | `variant.weight_g` is null                                   | `item`     |
-| `missing_required_attribute` | a category entry with `is_required: true` is unfulfilled | `item`     |
+| Code                         | Raised when                                               | `unit`     |
+| ---------------------------- | --------------------------------------------------------- | ---------- |
+| `no_google_product_category` | the category has no `google_product_category`             | `category` |
+| `no_description`             | `product.description.html` is empty — the title stands in | `item`     |
+| `no_weight`                  | `variant.weight_g` is null                                | `item`     |
+| `missing_required_attribute` | a category entry with `is_required: true` is unfulfilled  | `item`     |
 
 Every category attribute has an explicitly stored boolean `is_required`. Entries with `false`
 remain catalogue filters but do not produce completeness warnings. A missing/non-boolean flag

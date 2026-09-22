@@ -3,12 +3,16 @@ import {
 	availabilityOf,
 	buildFeedXml,
 	buildItem,
+	buildTitle,
 	cdata,
 	descriptionText,
 	isAttrValueEmpty,
 	priceBandLabel,
+	productHighlights,
 	salesVelocityLabel,
 	stockDepthLabel,
+	stripBrandPrefix,
+	typeFamilyLabel,
 	xmlEscape
 } from './google-shopping-feed.builder'
 
@@ -18,7 +22,7 @@ const row = (): FeedRawRow => ({
 	id: '000000000000000000000002',
 	product_id: '000000000000000000000001',
 	sku: 'FL-000342',
-	name: 'Sunlu PLA Silk 1,75 мм 1 кг — Золотий (Gold)',
+	name: 'Sunlu PLA Silk — Золотий (Gold)',
 	slug: 'sunlu-pla-silk-gold',
 	price: 549,
 	stock: 7,
@@ -26,11 +30,14 @@ const row = (): FeedRawRow => ({
 	v_value: 'Gold',
 	weight_g: 1220,
 	product: {
-		name: 'Sunlu PLA Silk 1,75 мм 1 кг',
+		name: 'Sunlu PLA Silk',
 		description_html: '<p>Шовковий <b>PLA</b> &amp; блиск</p>',
 		attributes: [
 			{ k: 'vyrobnyk', l: 'Виробник', v: 'Sunlu' },
+			{ k: 'diametr', l: 'Діаметр', v: '1.75' },
+			{ k: 'vaha', l: 'Вага філаменту', v: '1' },
 			{ k: 'polymer', l: 'Тип пластику', v: 'PLA' },
+			{ k: 'finish', l: 'Ефект поверхні', v: 'Silk' },
 			{ k: 'spool_included', l: 'Котушка в комплекті', v: 'Так' }
 		],
 		variant_type: { key: 'kolir', label: 'Колір' }
@@ -43,8 +50,10 @@ const row = (): FeedRawRow => ({
 			path: 'Electronics > Print, Copy, Scan & Fax > 3D Printer Accessories'
 		},
 		required_attributes: [
-			{ key: 'polymer', label: 'Тип пластику', is_required: true },
-			{ key: 'spool_included', label: 'Котушка в комплекті', is_required: true }
+			{ key: 'diametr', label: 'Діаметр', is_required: true, unit: 'мм' },
+			{ key: 'vaha', label: 'Вага філаменту', is_required: true, unit: 'кг' },
+			{ key: 'polymer', label: 'Тип пластику', is_required: true, unit: null },
+			{ key: 'spool_included', label: 'Котушка в комплекті', is_required: true, unit: null }
 		]
 	},
 	color: { name_uk: 'Золотий', name_en: 'Gold' }
@@ -125,7 +134,7 @@ describe('buildItem', () => {
 
 		expect(xml).toContain('<g:id>FL-000342</g:id>')
 		expect(xml).toContain('<g:item_group_id>000000000000000000000001</g:item_group_id>')
-		expect(xml).toContain('<title>Sunlu PLA Silk 1,75 мм 1 кг — Золотий (Gold)</title>')
+		expect(xml).toContain('<title>Філамент PLA Silk Sunlu 1.75 мм 1 кг — Золотий</title>')
 		expect(xml).toContain('<description><![CDATA[Шовковий PLA & блиск]]></description>')
 		expect(xml).toContain('<link>https://fillando.com/products/sunlu-pla-silk-gold</link>')
 		expect(xml).toContain('<g:image_link>https://cdn.example.invalid/gold-1.jpg</g:image_link>')
@@ -142,7 +151,10 @@ describe('buildItem', () => {
 		expect(xml).toContain('<g:color>Золотий</g:color>')
 		expect(xml).toContain('<g:material>PLA</g:material>')
 		expect(xml).toContain('<g:shipping_weight>1.22 kg</g:shipping_weight>')
-		expect(xml).toContain('<g:custom_label_0>Філамент</g:custom_label_0>')
+		expect(xml).toContain('<g:product_highlight>Діаметр: 1.75 мм</g:product_highlight>')
+		expect(xml).toContain('<g:product_highlight>Вага філаменту: 1 кг</g:product_highlight>')
+		expect(xml).toContain('<g:product_highlight>Ефект поверхні: Silk</g:product_highlight>')
+		expect(xml).toContain('<g:custom_label_0>decorative</g:custom_label_0>')
 		expect(xml).toContain('<g:custom_label_1>Sunlu</g:custom_label_1>')
 		expect(xml).toContain('<g:custom_label_2>low</g:custom_label_2>')
 		expect(xml).toContain('<g:custom_label_3>mid</g:custom_label_3>')
@@ -191,7 +203,7 @@ describe('buildItem', () => {
 		expect(xml).not.toContain('<g:shipping_weight>')
 		// The title stands in for a missing description — a required field may not be empty.
 		expect(xml).toContain(
-			'<description><![CDATA[Sunlu PLA Silk 1,75 мм 1 кг — Золотий (Gold)]]></description>'
+			'<description><![CDATA[Філамент PLA Silk Sunlu 1.75 мм 1 кг — Золотий]]></description>'
 		)
 		expect(built.ok && built.warnings.sort()).toEqual(
 			[
@@ -269,9 +281,155 @@ describe('buildItem', () => {
 
 	it('escapes metacharacters in titles and links', () => {
 		const r = row()
-		r.name = 'PLA "Rainbow" & <Glow>'
+		r.product!.name = 'Sunlu PLA "Rainbow" & <Glow>'
+		r.color = null
+		r.v_value = null
+		r.product!.attributes = r.product!.attributes.filter(
+			a => a.k !== 'diametr' && a.k !== 'vaha'
+		)
 		const xml = xmlOf(buildItem(r, CTX))
-		expect(xml).toContain('<title>PLA &quot;Rainbow&quot; &amp; &lt;Glow&gt;</title>')
+		expect(xml).toContain(
+			'<title>Філамент PLA &quot;Rainbow&quot; &amp; &lt;Glow&gt; Sunlu</title>'
+		)
+	})
+})
+
+describe('title', () => {
+	const specs = [
+		{ k: 'diametr', l: 'Діаметр', v: '1.75', unit: 'мм' },
+		{ k: 'vaha', l: 'Вага філаменту', v: '1', unit: 'кг' }
+	]
+	const title = (productName: string, over: Partial<Parameters<typeof buildTitle>[0]> = {}) =>
+		buildTitle({
+			categoryName: 'Філамент',
+			productName,
+			brand: 'Kingroon',
+			color: 'Чорний',
+			attributes: specs,
+			...over
+		})
+
+	it('strips the brand prefix only when the name actually starts with it', () => {
+		expect(stripBrandPrefix('Kingroon PLA', 'Kingroon')).toBe('PLA')
+		expect(stripBrandPrefix('PLA Kingroon', 'Kingroon')).toBe('PLA Kingroon')
+		expect(stripBrandPrefix('Kingroon', 'Kingroon')).toBe('Kingroon')
+		expect(stripBrandPrefix('Kingroon PLA', null)).toBe('Kingroon PLA')
+	})
+
+	it('reads «Категорія тип бренд діаметр вага — колір»', () => {
+		expect(title('Kingroon PLA Silk')).toBe('Філамент PLA Silk Kingroon 1.75 мм 1 кг — Чорний')
+	})
+
+	it('keeps what only the product name says — packaging, AMS, high speed', () => {
+		expect(title('Kingroon PETG (CoPET) (еко-пакування)')).toBe(
+			'Філамент PETG (CoPET) (еко-пакування) Kingroon 1.75 мм 1 кг — Чорний'
+		)
+		expect(title('Bambu Lab TPU для AMS', { brand: 'Bambu Lab' })).toBe(
+			'Філамент TPU для AMS Bambu Lab 1.75 мм 1 кг — Чорний'
+		)
+	})
+
+	it('does not repeat a spec the name already carries, decimal comma included', () => {
+		expect(
+			title('Kingroon PETG (CoPET) 3 кг', {
+				attributes: [specs[0], { k: 'vaha', l: 'Вага філаменту', v: '3', unit: 'кг' }]
+			})
+		).toBe('Філамент PETG (CoPET) 3 кг Kingroon 1.75 мм — Чорний')
+		expect(title('Kingroon PLA 1,75 мм')).toBe('Філамент PLA 1,75 мм Kingroon 1 кг — Чорний')
+	})
+
+	it('says the brand and the category noun once', () => {
+		expect(title('Філамент PLA')).toBe('Філамент PLA Kingroon 1.75 мм 1 кг — Чорний')
+		expect(title('PLA від Kingroon')).toBe('Філамент PLA від Kingroon 1.75 мм 1 кг — Чорний')
+		// A name that is nothing but the brand still has to describe something.
+		expect(title('Kingroon')).toBe('Філамент Kingroon 1.75 мм 1 кг — Чорний')
+	})
+
+	it('drops the parts it has no data for instead of leaving punctuation behind', () => {
+		expect(title('Kingroon PA-CF 15%', { color: null })).toBe(
+			'Філамент PA-CF 15% Kingroon 1.75 мм 1 кг'
+		)
+		expect(title('PLA', { brand: null, color: null, attributes: [] })).toBe('Філамент PLA')
+	})
+
+	it('caps the composed title at 150 characters', () => {
+		const xml = xmlOf(
+			buildItem(
+				(() => {
+					const r = row()
+					r.product!.name = `Sunlu ${'Довга назва '.repeat(20)}`
+					return r
+				})(),
+				CTX
+			)
+		)
+		const composed = /<title>(.*)<\/title>/.exec(xml)?.[1] ?? ''
+		expect(composed.length).toBe(150)
+		expect(composed.endsWith('…')).toBe(true)
+	})
+})
+
+describe('productHighlights', () => {
+	it('prints one bullet per stored dimension, in a fixed order', () => {
+		expect(
+			productHighlights([
+				{ k: 'vyrobnyk', l: 'Виробник', v: 'Kingroon' },
+				{ k: 'series', l: 'Серія', v: 'Basic' },
+				{ k: 'diametr', l: 'Діаметр', v: '1.75', unit: 'мм' },
+				{ k: 'reinforcement', l: 'Армування', v: 'CF' },
+				{ k: 'vaha', l: 'Вага філаменту', v: '1', unit: 'кг' },
+				{ k: 'polymer', l: 'Тип пластику', v: 'PLA' },
+				{ k: 'finish', l: 'Ефект поверхні', v: 'Silk' },
+				{ k: 'spool_included', l: 'Котушка в комплекті', v: 'Ні (рефіл)' }
+			])
+		).toEqual([
+			'Діаметр: 1.75 мм',
+			'Вага філаменту: 1 кг',
+			'Тип пластику: PLA',
+			'Ефект поверхні: Silk',
+			'Армування: CF',
+			'Серія: Basic',
+			'Котушка в комплекті: Ні (рефіл)'
+		])
+	})
+
+	it('leaves out brand, colour and the legacy material — each has a field of its own', () => {
+		expect(
+			productHighlights([
+				{ k: 'vyrobnyk', l: 'Виробник', v: 'Sunlu' },
+				{ k: 'kolir', l: 'Колір', v: 'Чорний' },
+				{ k: 'material', l: 'Матеріал', v: 'PLA Silk' }
+			])
+		).toEqual([])
+	})
+
+	it('skips a dimension the admin form stored empty', () => {
+		expect(
+			productHighlights([
+				{ k: 'diametr', l: 'Діаметр', v: '   ', unit: 'мм' },
+				{ k: 'polymer', l: 'Тип пластику', v: 'PLA' }
+			])
+		).toEqual(['Тип пластику: PLA'])
+	})
+})
+
+describe('typeFamilyLabel', () => {
+	const attr = (k: string, v: string) => ({ k, l: k, v })
+
+	it.each([
+		[[attr('polymer', 'PLA')], null, 'basic'],
+		[[attr('polymer', 'PETG')], null, 'basic'],
+		[[attr('polymer', 'PLA'), attr('finish', 'Silk')], null, 'decorative'],
+		[[attr('polymer', 'PLA'), attr('reinforcement', 'CF')], null, 'engineering'],
+		[[attr('polymer', 'PA6')], null, 'engineering'],
+		[[attr('polymer', 'ABS')], null, 'engineering'],
+		[[attr('polymer', 'TPU'), attr('finish', 'Matte')], null, 'flex'],
+		// Products that predate the taxonomy: only the free-text «Матеріал» is there.
+		[[], 'PETG-CF', 'engineering'],
+		[[], 'PLA Silk', 'basic'],
+		[[attr('finish', '  ')], null, 'basic']
+	])('reads %p / %p as %s', (attributes, material, expected) => {
+		expect(typeFamilyLabel(attributes, material)).toBe(expected)
 	})
 })
 

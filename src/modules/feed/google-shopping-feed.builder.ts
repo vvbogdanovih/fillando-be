@@ -1,11 +1,17 @@
 import { sanitizePlainText } from 'src/common/utils/html.utils'
 import {
+	DIAMETER_PATTERNS,
+	FILAMENT_WEIGHT_PATTERNS,
 	MANUFACTURER_PATTERNS,
 	MATERIAL_PATTERNS,
+	matchesAttrLabel,
 	pickAttr,
+	pickAttrEntry,
 	pickColor
 } from 'src/modules/product/product-attribute.helpers'
+import { toPublicAttributes } from 'src/modules/product/product-public.mappers'
 import type {
+	FeedAttribute,
 	FeedExclusionReason,
 	FeedRawRow,
 	FeedRequiredAttributeRef,
@@ -17,6 +23,9 @@ const TITLE_MAX = 150
 const DESCRIPTION_MAX = 5000
 /** `additional_image_link` accepts at most 10 images per item. */
 const ADDITIONAL_IMAGES_MAX = 10
+/** `product_highlight` accepts at most 10 bullets per item, 150 characters each. */
+const HIGHLIGHTS_MAX = 10
+const HIGHLIGHT_MAX = 150
 
 export const GOOGLE_NAMESPACE = 'http://base.google.com/ns/1.0'
 
@@ -36,6 +45,45 @@ export const cdata = (value: string): string =>
 /** Google's availability enum uses underscores; the spaced form is not in the reference. */
 export const availabilityOf = (stock: number): 'in_stock' | 'out_of_stock' =>
 	stock > 0 ? 'in_stock' : 'out_of_stock'
+
+/**
+ * What kind of filament this is — the segmentation axis `custom_label_0` carries.
+ *
+ * It used to hold the category name, which is the same word on every row while the shop sells
+ * one category, so Shopping had nothing to subdivide by (Google Ads plan, 21.09.2026). These
+ * four groups bid differently: commodity PLA/PETG competes on price, decorative and engineering
+ * filament does not.
+ */
+export type TypeFamily = 'basic' | 'decorative' | 'engineering' | 'flex'
+
+/** Polymers bought for a job rather than for looks. Commodity PLA and PETG are deliberately out. */
+const ENGINEERING_POLYMERS = new Set(['ABS', 'ASA', 'PA', 'PA6', 'PA12', 'PC', 'PET', 'PPA', 'PPS'])
+
+/** «PETG-CF», «PLA CF» — carbon or glass fill written into a legacy free-text material value. */
+const REINFORCED_MATERIAL = /(^|[\s\-/])(cf|gf)([\s\-/]|$)/i
+
+/**
+ * Read from the TD-0002 dimensions (`reinforcement`, `polymer`, `finish`), not from the product
+ * name: those are admin-controlled values, a name is prose. `materialFallback` is the legacy
+ * free-text «Матеріал» value, used only where a product predates the taxonomy.
+ */
+export const typeFamilyLabel = (
+	attributes: FeedAttribute[],
+	materialFallback: string | null
+): TypeFamily => {
+	const filled = (key: string) => attributes.find(a => a?.k === key && !isAttrValueEmpty(a.v))
+	// Reinforcement first: PLA-CF is engineering filament even though its polymer is the commodity one.
+	if (filled('reinforcement')) return 'engineering'
+	if (materialFallback && REINFORCED_MATERIAL.test(materialFallback)) return 'engineering'
+	const polymer = String(filled('polymer')?.v ?? materialFallback ?? '')
+		.trim()
+		.split(/[\s\-/]+/)[0]
+		.toUpperCase()
+	if (polymer === 'TPU' || polymer === 'TPE') return 'flex'
+	if (ENGINEERING_POLYMERS.has(polymer)) return 'engineering'
+	if (filled('finish')) return 'decorative'
+	return 'basic'
+}
 
 /** Stock depth for campaign segmentation — what replaced the margin label (TD-0006 §5.3). */
 export const stockDepthLabel = (stock: number): 'deep' | 'low' | 'out' =>
@@ -100,6 +148,107 @@ export const isAttrValueEmpty = (value: unknown): boolean => {
 	return false
 }
 
+/** «1.75» with the category's «мм» → «1.75 мм»; a value whose dimension has no unit stands alone. */
+const formatSpec = (attribute: FeedAttribute | null | undefined): string | null => {
+	if (!attribute || isAttrValueEmpty(attribute.v)) return null
+	const value = String(attribute.v).trim()
+	const unit = attribute.unit?.trim()
+	return unit ? `${value} ${unit}` : value
+}
+
+/** Compared, never printed: «1,75 мм» and «1.75 мм» are the same spec written two ways. */
+const comparable = (value: string) => value.toLowerCase().replace(/,/g, '.').replace(/\s+/g, ' ')
+
+/**
+ * The product name without the brand it starts with, so the title says «Kingroon» once.
+ *
+ * A name that is nothing but the brand keeps it — «Філамент Kingroon 1.75 мм» still describes
+ * something, «Філамент 1.75 мм» does not.
+ */
+export const stripBrandPrefix = (productName: string, brand: string | null): string => {
+	const name = productName.trim()
+	const prefix = brand?.trim()
+	if (!prefix || !comparable(name).startsWith(comparable(prefix))) return name
+	return name.slice(prefix.length).trim() || name
+}
+
+/**
+ * `title` — «Філамент PLA Silk Kingroon 1.75 мм 1 кг — Золотий».
+ *
+ * Shopping matches the query against this string, so the words shoppers type have to be in it:
+ * «філамент», the diameter, the weight, the Ukrainian colour. The stored variant name carries
+ * none of them — it reads «Kingroon PLA Silk — Золотий (Gold)» and spends 43 of the 150
+ * characters Google allows (Google Ads plan, 21.09.2026).
+ *
+ * The type phrase is the product name minus its brand, not the `polymer` attribute: the name is
+ * the only place «Silk», «High Speed», «(еко-пакування)» or «для AMS» is written, and that is
+ * both what distinguishes two otherwise identical items and what people search for.
+ *
+ * Every part is skipped when the phrase already contains it, so a product named «PETG (CoPET)
+ * 3 кг» is not titled «… 3 кг Kingroon 1.75 мм 3 кг».
+ */
+export const buildTitle = (input: {
+	categoryName: string
+	productName: string
+	brand: string | null
+	color: string | null
+	attributes: FeedAttribute[]
+}): string => {
+	const phrase = stripBrandPrefix(input.productName, input.brand)
+	const said = comparable(phrase)
+	const parts: string[] = []
+	// Anything the name already says is not repeated — «Філамент PETG», never «Філамент Філамент PETG».
+	const append = (part: string | null | undefined) => {
+		const value = part?.trim()
+		if (value && !said.includes(comparable(value))) parts.push(value)
+	}
+	append(input.categoryName)
+	parts.push(phrase)
+	append(input.brand)
+	append(formatSpec(pickAttrEntry(input.attributes, DIAMETER_PATTERNS)))
+	append(formatSpec(pickAttrEntry(input.attributes, FILAMENT_WEIGHT_PATTERNS)))
+	const title = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+	return input.color ? `${title} — ${input.color.trim()}` : title
+}
+
+/**
+ * The dimensions a `product_highlight` bullet is worth spending on, in the order Google shows
+ * them. Brand, colour and the legacy «Матеріал» are left out: the first two have fields of their
+ * own and the third repeats `polymer`.
+ */
+const HIGHLIGHT_DIMENSIONS: ReadonlyArray<(attribute: FeedAttribute) => boolean> = [
+	a => matchesAttrLabel(a, DIAMETER_PATTERNS),
+	a => a.k === 'vaha' || matchesAttrLabel(a, FILAMENT_WEIGHT_PATTERNS),
+	a => a.k === 'polymer',
+	a => a.k === 'finish',
+	a => a.k === 'reinforcement',
+	a => a.k === 'series',
+	a => a.k === 'spool_included'
+]
+
+/**
+ * `g:product_highlight` — the bullets Google prints on the product's Shopping page. Built from
+ * stored attributes only, so a highlight can never claim something the specification table does
+ * not (TD-0006 §5.3: degrade, never invent).
+ */
+export const productHighlights = (attributes: FeedAttribute[]): string[] => {
+	const used = new Set<FeedAttribute>()
+	const highlights: string[] = []
+	for (const matches of HIGHLIGHT_DIMENSIONS) {
+		const attribute = attributes.find(
+			a => a && !used.has(a) && !isAttrValueEmpty(a.v) && matches(a)
+		)
+		if (!attribute) continue
+		used.add(attribute)
+		const label = attribute.l?.trim()
+		const value = formatSpec(attribute)
+		if (!label || !value) continue
+		highlights.push(truncate(`${label}: ${value}`, HIGHLIGHT_MAX))
+		if (highlights.length === HIGHLIGHTS_MAX) break
+	}
+	return highlights
+}
+
 export type BuiltItem =
 	| {
 			ok: true
@@ -148,7 +297,12 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	const images = (row.images ?? []).filter(Boolean)
 	if (images.length === 0) return { ok: false, reason: 'no_images' }
 
-	const attributes = Array.isArray(row.product.attributes) ? row.product.attributes : []
+	// Units live on the category, so the attributes are joined through the same allowlist the
+	// product page uses — the title must print «1.75 мм», not a bare «1.75».
+	const attributes: FeedAttribute[] = toPublicAttributes(
+		Array.isArray(row.product.attributes) ? row.product.attributes : [],
+		row.category.required_attributes
+	)
 	// The «Виробник» attribute. Never the vendor — that is the supplier — and never the shop
 	// name: a brand that is not the maker is a typical item-level disapproval without a GTIN.
 	const brand = pickAttr(attributes, MANUFACTURER_PATTERNS)
@@ -184,11 +338,22 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	const polymer = attributes.find(a => a?.k === 'polymer')
 	const material = polymer ? String(polymer.v) : pickAttr(attributes, MATERIAL_PATTERNS)
 
+	const title = truncate(
+		buildTitle({
+			categoryName: row.category.name,
+			productName: row.product.name,
+			brand,
+			color,
+			attributes
+		}),
+		TITLE_MAX
+	)
+
 	const lines: string[] = [
 		tag('g:id', row.sku),
 		tag('g:item_group_id', row.product_id),
-		tag('title', truncate(row.name, TITLE_MAX)),
-		`<description>${cdata(description || truncate(row.name, TITLE_MAX))}</description>`,
+		tag('title', title),
+		`<description>${cdata(description || title)}</description>`,
 		tag('link', `${ctx.frontendUrl}/products/${row.slug}`),
 		tag('g:image_link', images[0]),
 		...images
@@ -204,13 +369,16 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	if (googleCategory) lines.push(tag('g:google_product_category', googleCategory))
 	if (color) lines.push(tag('g:color', color))
 	if (material) lines.push(tag('g:material', material))
+	for (const highlight of productHighlights(attributes)) {
+		lines.push(tag('g:product_highlight', highlight))
+	}
 	if (row.weight_g !== null && row.weight_g !== undefined) {
 		lines.push(
 			tag('g:shipping_weight', `${(row.weight_g / 1000).toFixed(3).replace(/\.?0+$/, '')} kg`)
 		)
 	}
 	lines.push(
-		tag('g:custom_label_0', row.category.name),
+		tag('g:custom_label_0', typeFamilyLabel(attributes, material)),
 		tag('g:custom_label_1', brand),
 		tag('g:custom_label_2', stockDepthLabel(row.stock ?? 0)),
 		tag('g:custom_label_3', priceBandLabel(row.price)),

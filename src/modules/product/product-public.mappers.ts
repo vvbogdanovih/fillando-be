@@ -1,6 +1,5 @@
 import { Types } from 'mongoose'
 import { ColorFamily, ProductStatus } from 'src/common/types/enums'
-import { RequiredAttribute } from 'src/database/mongoose/schemas/category.schema'
 import { Color } from 'src/database/mongoose/schemas/color.schema'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import type { AttrLike } from './product-attribute.helpers'
@@ -126,7 +125,9 @@ export type PublicProductAttribute = {
  */
 export function toPublicAttributes(
 	attributes: AttrLike[] | null | undefined,
-	requiredAttributes?: Pick<RequiredAttribute, 'key' | 'unit'>[] | null
+	// Structural, not `Pick<RequiredAttribute, …>`: the feed reads the same array out of an
+	// aggregation, where a document saved before the field existed simply has no `unit`.
+	requiredAttributes?: { key: string; unit?: string | null }[] | null
 ): PublicProductAttribute[] {
 	const unitByKey = new Map(
 		// Trimmed before the emptiness check: a unit saved as a blank string is truthy and would

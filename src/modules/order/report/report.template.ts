@@ -178,6 +178,8 @@ export function salesReportTemplate(data: SalesReportData): string {
 					<td>${escapeHtml(product.name)}</td>
 					<td class="num">${product.orders}</td>
 					<td class="num">${product.quantity}</td>
+					<td class="num muted">${amount(product.grossAmount)}</td>
+					<td class="num">${product.discount === 0 ? '—' : `-${amount(product.discount)}`}</td>
 					<td class="num">${amount(product.averagePrice)}</td>
 					<td class="num strong">${amount(product.amount)}</td>
 				</tr>`
@@ -373,11 +375,13 @@ export function salesReportTemplate(data: SalesReportData): string {
 			<thead>
 				<tr>
 					<th style="width:3%">№</th>
-					<th style="width:11%">SKU</th>
-					<th style="width:11%">Артикул пост.</th>
+					<th style="width:10%">SKU</th>
+					<th style="width:10%">Артикул пост.</th>
 					<th>Назва товару</th>
-					<th class="num" style="width:8%">Замовлень</th>
-					<th class="num" style="width:7%">К-сть</th>
+					<th class="num" style="width:7%">Замовлень</th>
+					<th class="num" style="width:6%">К-сть</th>
+					<th class="num" style="width:11%">До знижок, ₴</th>
+					<th class="num" style="width:10%">Знижка, ₴</th>
 					<th class="num" style="width:11%">Сер. ціна, ₴</th>
 					<th class="num" style="width:12%">Сума, ₴</th>
 				</tr>
@@ -389,12 +393,14 @@ export function salesReportTemplate(data: SalesReportData): string {
 				<tr>
 					<td colspan="5">Разом найменувань (SKU): ${data.products.length}</td>
 					<td class="num">${totals.units}</td>
-					<td class="num">—</td>
 					<td class="num">${amount(totals.subtotal)}</td>
+					<td class="num">${totals.discount === 0 ? '—' : `-${amount(totals.discount)}`}</td>
+					<td class="num">—</td>
+					<td class="num">${amount(totals.total)}</td>
 				</tr>
 			</tfoot>
 		</table>
-		<p class="note">Суми в цій таблиці — вартість позицій до знижок за промокодами. Знижки рознесені по замовленнях у розділі 2.</p>
+		<p class="note">«Сер. ціна» і «Сума» — з урахуванням знижок за промокодами: знижку замовлення рознесено по його позиціях пропорційно їхній вартості. Тому «Сума» показує, скільки позиція принесла насправді, а її підсумок збігається з «До сплати».</p>
 		${mismatchNote}
 	</div>
 

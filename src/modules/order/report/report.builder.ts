@@ -36,8 +36,14 @@ export interface ProductRow {
 	name: string
 	quantity: number
 	orders: number
-	averagePrice: number
+	/** Line value before coupons: the price list times the units sold. */
+	grossAmount: number
+	/** The coupons' share of this SKU, allocated across the lines they were applied to. */
+	discount: number
+	/** What the SKU actually brought in: `grossAmount` less `discount`. */
 	amount: number
+	/** The price a unit actually sold at on average — `amount / quantity`, discounts included. */
+	averagePrice: number
 }
 
 /** One order, as the finance register lists it. */
@@ -147,14 +153,49 @@ function toBreakdown<Key extends string>(
 		.sort((a, b) => b.amount - a.amount)
 }
 
+/**
+ * The coupon's share of each line of one order, allocated in proportion to line value.
+ *
+ * A coupon is a flat percent off the whole subtotal (`order.service.ts`), so a share proportional
+ * to line value is the very discount the buyer got on that line, not an approximation of it. The
+ * rounding residual goes to the largest line, so the parts add back up to the order's stored
+ * discount exactly and section 1 keeps reconciling with the period totals.
+ */
+function allocateDiscount(order: ReportSourceOrder): number[] {
+	const lineValues = order.items.map(item => item.price * item.quantity)
+	const base = lineValues.reduce((acc, value) => acc + value, 0)
+	const discount = order.applied_discount?.discount_amount ?? 0
+
+	if (discount <= 0 || base <= 0) return lineValues.map(() => 0)
+
+	// A discount larger than the lines it was taken off means the order was edited around its own
+	// recalculation — `subtotalMismatch` reports that. Capping keeps the table from printing a
+	// negative sale while it is being sorted out.
+	const capped = Math.min(discount, base)
+	const shares = lineValues.map(value => round2((capped * value) / base))
+	const residual = round2(capped - shares.reduce((acc, value) => acc + value, 0))
+
+	if (residual !== 0) {
+		const largest = lineValues.reduce(
+			(best, value, index) => (value > lineValues[best] ? index : best),
+			0
+		)
+		shares[largest] = round2(shares[largest] + residual)
+	}
+
+	return shares
+}
+
 function buildProducts(orders: ReportSourceOrder[]): ProductRow[] {
 	const buckets = new Map<
 		string,
-		{ row: Omit<ProductRow, 'averagePrice' | 'orders'>; orders: Set<string> }
+		{ row: Omit<ProductRow, 'averagePrice' | 'orders' | 'amount'>; orders: Set<string> }
 	>()
 
 	for (const order of orders) {
-		for (const item of order.items) {
+		const discountShares = allocateDiscount(order)
+
+		for (const [index, item] of order.items.entries()) {
 			const bucket = buckets.get(item.sku) ?? {
 				// Orders arrive newest first, so the first name seen is the current one.
 				row: {
@@ -162,13 +203,15 @@ function buildProducts(orders: ReportSourceOrder[]): ProductRow[] {
 					vendorSku: item.vendor_sku,
 					name: item.name,
 					quantity: 0,
-					amount: 0
+					grossAmount: 0,
+					discount: 0
 				},
 				orders: new Set<string>()
 			}
 
 			bucket.row.quantity += item.quantity
-			bucket.row.amount += item.price * item.quantity
+			bucket.row.grossAmount += item.price * item.quantity
+			bucket.row.discount += discountShares[index]
 			bucket.row.vendorSku = bucket.row.vendorSku ?? item.vendor_sku
 			bucket.orders.add(order.order_number)
 			buckets.set(item.sku, bucket)
@@ -176,12 +219,20 @@ function buildProducts(orders: ReportSourceOrder[]): ProductRow[] {
 	}
 
 	return [...buckets.values()]
-		.map(({ row, orders: orderNumbers }) => ({
-			...row,
-			amount: round2(row.amount),
-			orders: orderNumbers.size,
-			averagePrice: row.quantity === 0 ? 0 : round2(row.amount / row.quantity)
-		}))
+		.map(({ row, orders: orderNumbers }) => {
+			const grossAmount = round2(row.grossAmount)
+			const discount = round2(row.discount)
+			const amount = round2(grossAmount - discount)
+
+			return {
+				...row,
+				grossAmount,
+				discount,
+				amount,
+				orders: orderNumbers.size,
+				averagePrice: row.quantity === 0 ? 0 : round2(amount / row.quantity)
+			}
+		})
 		.sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'uk'))
 }
 
@@ -232,7 +283,8 @@ export function buildSalesReport(
 	const products = buildProducts(sourceOrders)
 
 	const subtotal = sum(orders.map(order => order.subtotal))
-	const lineValue = sum(products.map(product => product.amount))
+	// Before coupons on both sides: the product table's own discount column is what carries them.
+	const lineValue = sum(products.map(product => product.grossAmount))
 	const nonRevenueOrders = orders.filter(
 		order =>
 			NON_REVENUE_STATUSES.has(order.orderStatus) ||

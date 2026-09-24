@@ -244,3 +244,146 @@ describe('buildSalesReport — розрізи', () => {
 		])
 	})
 })
+
+describe('buildSalesReport — знижки в таблиці товарів', () => {
+	it('allocates an order coupon across its lines in proportion to line value', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					items: [
+						{
+							name: 'PETG 1кг',
+							sku: 'FL-000253',
+							vendor_sku: 'KR-PETG-1',
+							price: 600,
+							quantity: 2
+						},
+						{
+							name: 'Сопло 0.4',
+							sku: 'FL-000010',
+							vendor_sku: null,
+							price: 300,
+							quantity: 1
+						}
+					],
+					subtotal_price: 1500,
+					total_price: 1350,
+					applied_discount: { code: 'AUTUMN10', discount_amount: 150 }
+				})
+			],
+			FILTERS
+		)
+
+		const petg = report.products.find(product => product.sku === 'FL-000253')
+		const nozzle = report.products.find(product => product.sku === 'FL-000010')
+
+		expect(petg).toMatchObject({ grossAmount: 1200, discount: 120, amount: 1080 })
+		expect(nozzle).toMatchObject({ grossAmount: 300, discount: 30, amount: 270 })
+	})
+
+	it('averages a position at what it actually sold for, not at its list price', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					subtotal_price: 1200,
+					total_price: 1080,
+					applied_discount: { code: 'AUTUMN10', discount_amount: 120 }
+				})
+			],
+			FILTERS
+		)
+
+		// 600 ₴ a spool less its 10% share of the coupon, over two units.
+		expect(report.products[0].averagePrice).toBe(540)
+		expect(report.products[0].amount).toBe(1080)
+	})
+
+	it('keeps the allocated parts adding up to the order discount when it does not divide evenly', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					items: [
+						{ name: 'Позиція А', sku: 'A', vendor_sku: null, price: 100, quantity: 1 },
+						{ name: 'Позиція Б', sku: 'B', vendor_sku: null, price: 100, quantity: 1 },
+						{ name: 'Позиція В', sku: 'C', vendor_sku: null, price: 100, quantity: 1 }
+					],
+					subtotal_price: 300,
+					total_price: 290,
+					applied_discount: { code: 'TEN', discount_amount: 10 }
+				})
+			],
+			FILTERS
+		)
+
+		const allocated = report.products.reduce((acc, product) => acc + product.discount, 0)
+		const net = report.products.reduce((acc, product) => acc + product.amount, 0)
+
+		expect(allocated).toBe(10)
+		expect(net).toBe(290)
+	})
+
+	it('leaves an order without a coupon at its line values', () => {
+		const report = buildSalesReport([makeOrder()], FILTERS)
+
+		expect(report.products[0]).toMatchObject({
+			grossAmount: 1200,
+			discount: 0,
+			amount: 1200,
+			averagePrice: 600
+		})
+	})
+
+	it('ranks the table by what the positions brought in, not by their list value', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					order_number: 'FL-1',
+					items: [
+						{
+							name: 'Дорога зі знижкою',
+							sku: 'FL-HEAVY',
+							vendor_sku: null,
+							price: 1000,
+							quantity: 1
+						}
+					],
+					subtotal_price: 1000,
+					total_price: 500,
+					applied_discount: { code: 'HALF', discount_amount: 500 }
+				}),
+				makeOrder({
+					order_number: 'FL-2',
+					items: [
+						{
+							name: 'Дешевша без знижки',
+							sku: 'FL-LIGHT',
+							vendor_sku: null,
+							price: 800,
+							quantity: 1
+						}
+					],
+					subtotal_price: 800,
+					total_price: 800
+				})
+			],
+			FILTERS
+		)
+
+		expect(report.products.map(product => product.sku)).toEqual(['FL-LIGHT', 'FL-HEAVY'])
+	})
+
+	it('does not read a discounted order as a subtotal mismatch', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					subtotal_price: 1200,
+					total_price: 1080,
+					applied_discount: { code: 'AUTUMN10', discount_amount: 120 }
+				})
+			],
+			FILTERS
+		)
+
+		expect(report.subtotalMismatch).toBeNull()
+	})
+})

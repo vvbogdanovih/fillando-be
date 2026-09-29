@@ -387,3 +387,52 @@ describe('buildSalesReport — знижки в таблиці товарів', (
 		expect(report.subtotalMismatch).toBeNull()
 	})
 })
+
+describe('buildSalesReport — реєстр замовлень', () => {
+	it('lists what each order consisted of, at line value before the coupon', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					items: [
+						{
+							name: 'PETG 1кг',
+							sku: 'FL-000253',
+							vendor_sku: null,
+							price: 600,
+							quantity: 2
+						},
+						{
+							name: 'PLA 1кг',
+							sku: 'FL-000100',
+							vendor_sku: null,
+							price: 450.5,
+							quantity: 1
+						}
+					],
+					subtotal_price: 1650.5,
+					total_price: 1485.45,
+					applied_discount: { code: 'AUTUMN10', discount_amount: 165.05 }
+				})
+			],
+			FILTERS
+		)
+
+		expect(report.orders[0].items).toEqual([
+			{ sku: 'FL-000253', name: 'PETG 1кг', quantity: 2, price: 600, amount: 1200 },
+			{ sku: 'FL-000100', name: 'PLA 1кг', quantity: 1, price: 450.5, amount: 450.5 }
+		])
+	})
+
+	it('carries the TTN, and reads a missing or blank one as none', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({ order_number: 'FL-1', nova_post_ttn: '20451234567890' }),
+				makeOrder({ order_number: 'FL-2', nova_post_ttn: '  ' }),
+				makeOrder({ order_number: 'FL-3' })
+			],
+			FILTERS
+		)
+
+		expect(report.orders.map(order => order.ttn)).toEqual(['20451234567890', null, null])
+	})
+})

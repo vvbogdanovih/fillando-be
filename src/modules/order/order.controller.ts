@@ -186,7 +186,8 @@ export class OrderController {
 	) {
 		const { buffer, orderNumber } = await this.orderService.generateInvoice(
 			id,
-			dto.admin_comment
+			dto.admin_comment,
+			dto.audience
 		)
 		res.set({
 			'Content-Type': 'application/pdf',

@@ -1,7 +1,7 @@
 import { SUPPORT } from 'src/common/constants/contacts.constant'
 import { DeliveryMethod, PaymentMethod } from 'src/common/types/enums'
-import { formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
-import type { BreakdownRow, DayRow, SalesReportData } from './report.builder'
+import { escapeHtml, formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
+import type { BreakdownRow, DayRow, OrderRow, SalesReportData } from './report.builder'
 import { STORE_TIME_ZONE } from './report.period'
 
 /**
@@ -23,6 +23,26 @@ const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
 	[DeliveryMethod.PICKUP]: 'Самовивіз'
 }
 
+/**
+ * Pickup has no parcel, so a dash. A shipped order still without a TTN is said out loud: a blank
+ * cell there is exactly what finance must chase, and a dash would read as «nothing expected».
+ */
+function ttnCell(order: OrderRow): string {
+	if (order.deliveryMethod === DeliveryMethod.PICKUP) return '—'
+	return order.ttn ? escapeHtml(order.ttn) : '<span class="muted">немає</span>'
+}
+
+/** What the order consisted of, one line per position, printed under its register row. */
+function orderLines(order: OrderRow): string {
+	return order.items
+		.map(
+			item => `<div class="line">
+						<span class="muted">${escapeHtml(item.sku)}</span> · ${escapeHtml(item.name)} · ${item.quantity} × ${amount(item.price)} = <strong>${amount(item.amount)}</strong>
+					</div>`
+		)
+		.join('\n\t\t\t\t\t')
+}
+
 /** Days are laid out across this many side-by-side tables rather than one long column. */
 const DAY_COLUMNS = 3
 
@@ -34,14 +54,6 @@ const dateTimeFormat = new Intl.DateTimeFormat('uk-UA', {
 	hour: '2-digit',
 	minute: '2-digit'
 })
-
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-}
 
 /** Money without a currency mark — the column header carries the ₴. */
 function amount(value: number): string {
@@ -186,9 +198,11 @@ export function salesReportTemplate(data: SalesReportData): string {
 		)
 		.join('\n\t\t\t\t')
 
+	// One <tbody> per order keeps its row and its lines on the same page.
 	const orderRows = data.orders
 		.map(
-			(order, index) => `<tr>
+			(order, index) => `<tbody class="order">
+				<tr>
 					<td class="num muted">${index + 1}</td>
 					<td class="mono">${escapeHtml(order.orderNumber)}</td>
 					<td class="nowrap">${dateTime(order.createdAt)}</td>
@@ -198,12 +212,20 @@ export function salesReportTemplate(data: SalesReportData): string {
 					<td class="nowrap">${escapeHtml(PAYMENT_METHOD_LABELS[order.paymentMethod])}</td>
 					<td class="nowrap">${escapeHtml(formatPaymentStatus(order.paymentStatus))}</td>
 					<td class="nowrap">${escapeHtml(DELIVERY_METHOD_LABELS[order.deliveryMethod])}</td>
+					<td class="mono">${ttnCell(order)}</td>
 					<td class="num">${amount(order.subtotal)}</td>
 					<td class="num">${order.discount === 0 ? '—' : `-${amount(order.discount)}${order.discountCode ? `<br /><span class="muted tiny">${escapeHtml(order.discountCode)}</span>` : ''}`}</td>
 					<td class="num strong">${amount(order.total)}</td>
-				</tr>`
+				</tr>
+				<tr class="lines">
+					<td></td>
+					<td colspan="12">
+					${orderLines(order)}
+					</td>
+				</tr>
+			</tbody>`
 		)
-		.join('\n\t\t\t\t')
+		.join('\n\t\t\t')
 
 	const nonRevenueNote =
 		data.nonRevenue.orders === 0
@@ -272,6 +294,9 @@ export function salesReportTemplate(data: SalesReportData): string {
 		}
 		table.grid thead { display: table-header-group; }
 		table.grid tr { page-break-inside: avoid; }
+		table.grid tbody.order { page-break-inside: avoid; }
+		table.grid tr.lines td { font-size: 10px; padding-top: 2px; padding-bottom: 4px; background: #fafafa; }
+		table.grid tr.lines .line { padding: 1px 0; }
 		/*
 		 * A repeating footer group would print the grand total at the bottom of every page of a
 		 * long register, where it reads as that page's subtotal. It belongs at the end, once.
@@ -411,33 +436,32 @@ export function salesReportTemplate(data: SalesReportData): string {
 				<tr>
 					<th style="width:2.5%">№</th>
 					<th style="width:8%">Замовлення</th>
-					<th style="width:11%">Дата продажу</th>
-					<th style="width:14.5%">Замовник</th>
+					<th style="width:10%">Дата продажу</th>
+					<th style="width:11%">Замовник</th>
 					<th class="num" style="width:5%">Поз. / од.</th>
-					<th style="width:8.5%">Статус</th>
-					<th style="width:9%">Метод оплати</th>
-					<th style="width:10%">Оплата</th>
-					<th style="width:8%">Доставка</th>
-					<th class="num" style="width:8%">Сума, ₴</th>
-					<th class="num" style="width:7%">Знижка, ₴</th>
-					<th class="num" style="width:8.5%">До сплати, ₴</th>
+					<th style="width:8%">Статус</th>
+					<th style="width:8%">Метод оплати</th>
+					<th style="width:9%">Оплата</th>
+					<th style="width:7.5%">Доставка</th>
+					<th style="width:10%">ТТН</th>
+					<th class="num" style="width:7.5%">Сума, ₴</th>
+					<th class="num" style="width:6%">Знижка, ₴</th>
+					<th class="num" style="width:7.5%">До сплати, ₴</th>
 				</tr>
 			</thead>
-			<tbody>
-				${orderRows}
-			</tbody>
+			${orderRows}
 			<tfoot>
 				<tr>
 					<td colspan="4">Разом замовлень: ${totals.orders}</td>
 					<td class="num">${totals.positions} / ${totals.units}</td>
-					<td colspan="4"></td>
+					<td colspan="5"></td>
 					<td class="num">${amount(totals.subtotal)}</td>
 					<td class="num">-${amount(totals.discount)}</td>
 					<td class="num">${amount(totals.total)}</td>
 				</tr>
 			</tfoot>
 		</table>
-		<p class="note">Дата продажу — момент оформлення замовлення. Момент надходження коштів у системі не фіксується окремо.</p>
+		<p class="note">Дата продажу — момент оформлення замовлення. Момент надходження коштів у системі не фіксується окремо. Під кожним замовленням — його позиції: SKU · назва · кількість × ціна = сума до знижки. ТТН «—» — самовивіз, «немає» — відправлення без внесеної ТТН.</p>
 	</div>
 
 	<div class="section">

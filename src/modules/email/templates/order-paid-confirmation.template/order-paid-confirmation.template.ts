@@ -1,3 +1,4 @@
+import { escapeTemplateData } from 'src/common/utils/html.utils'
 import { DeliveryMethod, OrderStatus, PaymentStatus } from 'src/common/types/enums'
 import { SUPPORT } from 'src/common/constants/contacts.constant'
 import { formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
@@ -56,7 +57,9 @@ function formatPrice(value: number): string {
 	)
 }
 
-export function orderPaidConfirmationTemplate(data: OrderPaidConfirmationData): string {
+export function orderPaidConfirmationTemplate(input: OrderPaidConfirmationData): string {
+	// Buyer-typed text (name, address, comment) must reach the mail client as text, not markup.
+	const data = escapeTemplateData(input)
 	const itemRows = data.items
 		.map(
 			item => `

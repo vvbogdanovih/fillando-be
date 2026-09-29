@@ -9,6 +9,8 @@ export interface ReportSourceOrder {
 	payment_method: PaymentMethod
 	payment_status: PaymentStatus
 	delivery_method: DeliveryMethod
+	/** Optional: orders written before the field existed carry no key at all. */
+	nova_post_ttn?: string | null
 	customer: { name: string; phone: string; email: string }
 	items: {
 		name: string
@@ -46,6 +48,16 @@ export interface ProductRow {
 	averagePrice: number
 }
 
+/** One line of an order, as the register prints it under the order. */
+export interface OrderLine {
+	sku: string
+	name: string
+	quantity: number
+	price: number
+	/** Before the coupon, like the order's own «Сума» column it adds up to. */
+	amount: number
+}
+
 /** One order, as the finance register lists it. */
 export interface OrderRow {
 	orderNumber: string
@@ -57,6 +69,8 @@ export interface OrderRow {
 	paymentMethod: PaymentMethod
 	paymentStatus: PaymentStatus
 	deliveryMethod: DeliveryMethod
+	ttn: string | null
+	items: OrderLine[]
 	subtotal: number
 	discount: number
 	discountCode: string | null
@@ -274,6 +288,14 @@ export function buildSalesReport(
 		paymentMethod: order.payment_method,
 		paymentStatus: order.payment_status,
 		deliveryMethod: order.delivery_method,
+		ttn: order.nova_post_ttn?.trim() || null,
+		items: order.items.map(item => ({
+			sku: item.sku,
+			name: item.name,
+			quantity: item.quantity,
+			price: round2(item.price),
+			amount: round2(item.price * item.quantity)
+		})),
 		subtotal: round2(order.subtotal_price),
 		discount: round2(order.applied_discount?.discount_amount ?? 0),
 		discountCode: order.applied_discount?.code ?? null,

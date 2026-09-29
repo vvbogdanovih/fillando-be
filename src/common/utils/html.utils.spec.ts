@@ -1,4 +1,4 @@
-import { sanitizePlainText, sanitizeRichText } from './html.utils'
+import { escapeHtml, escapeTemplateData, sanitizePlainText, sanitizeRichText } from './html.utils'
 
 /**
  * Landing copy and product descriptions are rendered with `dangerouslySetInnerHTML`, so what
@@ -89,9 +89,7 @@ describe('sanitizeRichText — non-breaking spaces', () => {
 	})
 
 	it('keeps the one after a digit, which binds a number to its unit', () => {
-		expect(sanitizeRichText('<p>195 °C і 1,75 мм</p>')).toBe(
-			'<p>195 °C і 1,75 мм</p>'
-		)
+		expect(sanitizeRichText('<p>195 °C і 1,75 мм</p>')).toBe('<p>195 °C і 1,75 мм</p>')
 	})
 
 	it('leaves ordinary spaces alone', () => {
@@ -100,5 +98,56 @@ describe('sanitizeRichText — non-breaking spaces', () => {
 
 	it('handles a paragraph that starts with one', () => {
 		expect(sanitizeRichText('<p> текст</p>')).toBe('<p> текст</p>')
+	})
+})
+
+describe('escapeHtml', () => {
+	it('escapes markup and both quote kinds', () => {
+		expect(escapeHtml(`<a href="x" title='y'>&</a>`)).toBe(
+			'&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;'
+		)
+	})
+
+	it('reads null and undefined as empty and prints numbers', () => {
+		expect(escapeHtml(null)).toBe('')
+		expect(escapeHtml(undefined)).toBe('')
+		expect(escapeHtml(42)).toBe('42')
+	})
+})
+
+describe('escapeTemplateData', () => {
+	it('escapes every string, however deep, and leaves other values alone', () => {
+		const createdAt = new Date('2026-09-29T10:00:00.000Z')
+		const result = escapeTemplateData({
+			name: '<b>Іван</b>',
+			total: 918,
+			paid: true,
+			comment: null,
+			createdAt,
+			items: [{ name: '<img src=x>', quantity: 2 }]
+		})
+
+		expect(result).toEqual({
+			name: '&lt;b&gt;Іван&lt;/b&gt;',
+			total: 918,
+			paid: true,
+			comment: null,
+			createdAt,
+			items: [{ name: '&lt;img src=x&gt;', quantity: 2 }]
+		})
+		expect(result.createdAt).toBe(createdAt)
+	})
+
+	it('unwraps a Mongoose subdocument instead of passing it through unescaped', () => {
+		const subdoc = { toObject: () => ({ code: '<script>', discount_percent: 10 }) }
+		expect(escapeTemplateData({ appliedDiscount: subdoc })).toEqual({
+			appliedDiscount: { code: '&lt;script&gt;', discount_percent: 10 }
+		})
+	})
+
+	it('does not mutate its input', () => {
+		const input = { name: '<b>' }
+		escapeTemplateData(input)
+		expect(input.name).toBe('<b>')
 	})
 })

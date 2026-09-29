@@ -7,6 +7,21 @@ type Patch = Partial<ProductVariant>
 
 const RATIO = 750 / 3250
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * A Prom `DD.MM.YYYY` day `offset` days from today in Kyiv. The sync reads the real clock, so
+ * a fixed window turns into an expired discount the day after its `date_end` — which is how
+ * these tests broke on 2026-09-29.
+ */
+const promDayFromToday = (offset: number) =>
+	new Intl.DateTimeFormat('uk-UA', {
+		timeZone: 'Europe/Kyiv',
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric'
+	}).format(new Date(Date.now() + offset * DAY_MS))
+
 const variant = (over: Partial<ProductVariant> = {}): ProductVariant =>
 	({
 		sku: 'SKU-1',
@@ -29,7 +44,12 @@ const product = (over: Partial<PromProduct> = {}): PromProduct => ({
 	quantity_in_stock: 4,
 	price: 3250,
 	currency: 'UAH',
-	discount: { type: 'amount', value: 750, date_start: '01.08.2026', date_end: '28.09.2026' },
+	discount: {
+		type: 'amount',
+		value: 750,
+		date_start: promDayFromToday(-30),
+		date_end: promDayFromToday(30)
+	},
 	...over
 })
 

@@ -1,5 +1,11 @@
 import { SUPPORT } from 'src/common/constants/contacts.constant'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	InvoiceAudience,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus
+} from 'src/common/types/enums'
 import {
 	formatOrderStatus,
 	formatPaymentStatus,
@@ -9,6 +15,7 @@ import {
 	formatDate,
 	formatDeliveryAddress
 } from '../helpers/format.helpers'
+import { escapeHtml } from 'src/common/utils/html.utils'
 
 export interface InvoiceData {
 	orderNumber: string
@@ -46,18 +53,24 @@ export interface InvoiceData {
 	adminComment: string | null
 }
 
-export function invoiceTemplate(data: InvoiceData): string {
+export function invoiceTemplate(
+	data: InvoiceData,
+	audience: InvoiceAudience = InvoiceAudience.INTERNAL
+): string {
+	// The supplier article is ours alone: the customer copy drops the column, not just its values.
+	const showVendorSku = audience === InvoiceAudience.INTERNAL
+
 	const itemRows = data.items
 		.map(
 			(item, index) => `
 		<tr>
 			<td style="border:1px solid #999;padding:6px 8px;text-align:center;vertical-align:middle;">${index + 1}</td>
 			<td style="border:1px solid #999;padding:4px;text-align:center;vertical-align:middle;">
-				${item.image ? `<img src="${item.image}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;display:block;margin:0 auto;" />` : `<div style="width:44px;height:44px;border-radius:4px;background:#eee;margin:0 auto;"></div>`}
+				${item.image ? `<img src="${escapeHtml(item.image)}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;display:block;margin:0 auto;" />` : `<div style="width:44px;height:44px;border-radius:4px;background:#eee;margin:0 auto;"></div>`}
 			</td>
-			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.name}</td>
-			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.sku}</td>
-			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.vendor_sku ?? '—'}</td>
+			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${escapeHtml(item.name)}</td>
+			<td style="border:1px solid #999;padding:6px 8px;white-space:nowrap;vertical-align:middle;">${escapeHtml(item.sku)}</td>
+			${showVendorSku ? `<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${escapeHtml(item.vendor_sku ?? '—')}</td>` : ''}
 			<td style="border:1px solid #999;padding:6px 8px;text-align:center;vertical-align:middle;">${item.quantity}</td>
 			<td style="border:1px solid #999;padding:6px 8px;text-align:right;white-space:nowrap;vertical-align:middle;">${formatPrice(item.price)}</td>
 			<td style="border:1px solid #999;padding:6px 8px;text-align:right;white-space:nowrap;vertical-align:middle;">${formatPrice(item.price * item.quantity)}</td>
@@ -68,7 +81,7 @@ export function invoiceTemplate(data: InvoiceData): string {
 	const discountSection = data.appliedDiscount
 		? `
 		<div style="margin-top:8px;">
-			<span>Знижка (${data.appliedDiscount.code}, ${data.appliedDiscount.discount_percent}%):</span>
+			<span>Знижка (${escapeHtml(data.appliedDiscount.code)}, ${data.appliedDiscount.discount_percent}%):</span>
 			<span style="float:right;">-${formatPrice(data.appliedDiscount.discount_amount)}</span>
 		</div>`
 		: ''
@@ -78,14 +91,14 @@ export function invoiceTemplate(data: InvoiceData): string {
 		commentsSection.push(`
 		<div style="border-top:1px dashed #999;padding-top:12px;margin-top:16px;">
 			<p style="margin:0 0 4px;font-weight:bold;">Коментар замовника:</p>
-			<p style="margin:0;white-space:pre-wrap;">${data.orderComment}</p>
+			<p style="margin:0;white-space:pre-wrap;">${escapeHtml(data.orderComment)}</p>
 		</div>`)
 	}
 	if (data.adminComment) {
 		commentsSection.push(`
 		<div style="border-top:1px dashed #999;padding-top:12px;margin-top:16px;">
-			<p style="margin:0 0 4px;font-weight:bold;">Коментар адміністратора:</p>
-			<p style="margin:0;white-space:pre-wrap;">${data.adminComment}</p>
+			<p style="margin:0 0 4px;font-weight:bold;">${showVendorSku ? 'Коментар адміністратора' : 'Коментар магазину'}:</p>
+			<p style="margin:0;white-space:pre-wrap;">${escapeHtml(data.adminComment)}</p>
 		</div>`)
 	}
 
@@ -103,7 +116,7 @@ export function invoiceTemplate(data: InvoiceData): string {
 <html lang="uk">
 <head>
 	<meta charset="UTF-8" />
-	<title>Інвойс ${data.orderNumber}</title>
+	<title>Інвойс ${escapeHtml(data.orderNumber)}</title>
 </head>
 <body style="margin:0;padding:0;font-family:Courier New,Courier,monospace;font-size:13px;color:#111;line-height:1.5;">
 	<div style="max-width:1400px;margin:0 auto;padding:0;">
@@ -115,7 +128,7 @@ export function invoiceTemplate(data: InvoiceData): string {
 		<div style="${SECTION}">
 			<p style="${SECTION_TITLE}">Замовлення</p>
 			<table style="border-collapse:collapse;">
-				<tr><td style="${LBL}">Номер:</td><td style="${VAL}">${data.orderNumber}</td></tr>
+				<tr><td style="${LBL}">Номер:</td><td style="${VAL}">${escapeHtml(data.orderNumber)}</td></tr>
 				<tr><td style="${LBL}">Дата:</td><td style="${VAL}">${formatDate(data.createdAt)}</td></tr>
 				<tr><td style="${LBL}">Статус:</td><td style="${VAL}">${formatOrderStatus(data.orderStatus)}</td></tr>
 			</table>
@@ -124,9 +137,9 @@ export function invoiceTemplate(data: InvoiceData): string {
 		<div style="${SECTION}">
 			<p style="${SECTION_TITLE}">Замовник</p>
 			<table style="border-collapse:collapse;">
-				<tr><td style="${LBL}">Ім'я:</td><td style="${VAL}">${data.customer.name}</td></tr>
-				<tr><td style="${LBL}">Телефон:</td><td style="${VAL}">${data.customer.phone}</td></tr>
-				<tr><td style="${LBL}">Email:</td><td style="${VAL}">${data.customer.email}</td></tr>
+				<tr><td style="${LBL}">Ім'я:</td><td style="${VAL}">${escapeHtml(data.customer.name)}</td></tr>
+				<tr><td style="${LBL}">Телефон:</td><td style="${VAL}">${escapeHtml(data.customer.phone)}</td></tr>
+				<tr><td style="${LBL}">Email:</td><td style="${VAL}">${escapeHtml(data.customer.email)}</td></tr>
 			</table>
 		</div>
 
@@ -137,9 +150,9 @@ export function invoiceTemplate(data: InvoiceData): string {
 					<tr>
 						<th style="${TH}width:5%;text-align:center;">№</th>
 						<th style="${TH}width:8%;">Фото</th>
-						<th style="${TH}width:25%;">Назва</th>
+						<th style="${TH}width:${showVendorSku ? 25 : 36}%;">Назва</th>
 						<th style="${TH}width:11%;">SKU</th>
-						<th style="${TH}width:11%;">Vendor SKU</th>
+						${showVendorSku ? `<th style="${TH}width:11%;">Vendor SKU</th>` : ''}
 						<th style="${TH}width:8%;text-align:center;">К-сть</th>
 						<th style="${TH}width:14%;text-align:right;">Ціна</th>
 						<th style="${TH}width:14%;text-align:right;">Сума</th>
@@ -175,10 +188,10 @@ export function invoiceTemplate(data: InvoiceData): string {
 			<p style="${SECTION_TITLE}">Доставка</p>
 			<table style="border-collapse:collapse;">
 				<tr><td style="${LBL}">Метод:</td><td style="${VAL}">${formatDeliveryMethod(data.deliveryMethod)}</td></tr>
-				<tr><td style="${LBL}">Отримувач:</td><td style="${VAL}">${data.customer.name}</td></tr>
-				<tr><td style="${LBL}">Телефон:</td><td style="${VAL}">${data.customer.phone}</td></tr>
-				<tr><td style="${LBL}">Адреса:</td><td style="${VAL}">${formatDeliveryAddress(data)}</td></tr>
-				${data.novaPostTtn ? `<tr><td style="${LBL}">ТТН:</td><td style="${VAL}">${data.novaPostTtn}</td></tr>` : ''}
+				<tr><td style="${LBL}">Отримувач:</td><td style="${VAL}">${escapeHtml(data.customer.name)}</td></tr>
+				<tr><td style="${LBL}">Телефон:</td><td style="${VAL}">${escapeHtml(data.customer.phone)}</td></tr>
+				<tr><td style="${LBL}">Адреса:</td><td style="${VAL}">${escapeHtml(formatDeliveryAddress(data))}</td></tr>
+				${data.novaPostTtn ? `<tr><td style="${LBL}">ТТН:</td><td style="${VAL}">${escapeHtml(data.novaPostTtn)}</td></tr>` : ''}
 			</table>
 		</div>
 

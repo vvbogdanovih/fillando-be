@@ -77,6 +77,55 @@ const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
 	}
 }
 
+/**
+ * Escapes a value for interpolation into an HTML template — text content or a double-quoted
+ * attribute. For the PDF and email templates, which are built from string literals: anything a
+ * buyer typed (name, comment, address) is otherwise parsed as markup by Chrome when the PDF is
+ * rendered, and by the vendor's mail client when the same HTML is emailed.
+ */
+export function escapeHtml(value: string | number | null | undefined): string {
+	if (value === null || value === undefined) return ''
+	return String(value)
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+}
+
+/**
+ * `escapeHtml` applied to every string inside a template's data — nested objects and arrays
+ * included; numbers, booleans, dates and null pass through. For the email templates, whose
+ * data is plain text end to end (buyer name, address, product names, coupon code, comment):
+ * escaping at the template's entry covers every interpolation, including the ones a later
+ * edit adds, where escaping at each `${}` would have to be remembered every time.
+ */
+function hasToObject(value: unknown): value is { toObject: () => unknown } {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		typeof (value as { toObject?: unknown }).toObject === 'function'
+	)
+}
+
+export function escapeTemplateData<T>(value: T): T {
+	if (typeof value === 'string') return escapeHtml(value) as T
+	if (Array.isArray(value)) return value.map(item => escapeTemplateData(item as unknown)) as T
+	// A Mongoose subdocument (e.g. `order.applied_discount` passed straight through) is not a
+	// plain object; unwrapped, or its strings — the coupon code — would go out unescaped.
+	if (hasToObject(value)) return escapeTemplateData(value.toObject()) as T
+	if (
+		value !== null &&
+		typeof value === 'object' &&
+		Object.getPrototypeOf(value) === Object.prototype
+	) {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [key, escapeTemplateData(item as unknown)])
+		) as T
+	}
+	return value
+}
+
 /** Sanitizes admin-authored rich text. `null`/`undefined` pass through unchanged. */
 export function sanitizeRichText<T extends string | null | undefined>(html: T): T {
 	if (typeof html !== 'string') return html

@@ -3,6 +3,7 @@ import { Resend } from 'resend'
 import { ENV, SUPPORT } from 'src/common/constants'
 import { PaymentMethod } from 'src/common/types/enums'
 import { formatPaymentMethod } from 'src/modules/order/helpers/format.helpers'
+import { escapeHtml } from 'src/common/utils/html.utils'
 import {
 	OrderCashConfirmationData,
 	orderCashConfirmationTemplate
@@ -360,6 +361,38 @@ export class EmailService {
 		})
 
 		await Promise.all([customerEmail, serviceEmail])
+	}
+
+	/**
+	 * Tells the shop a tracked parcel is not reaching its buyer — refused, returned, or its TTN
+	 * unknown to Nova Post. Sent once per issue code; the order status is left to the admin.
+	 */
+	async sendDeliveryIssueAlert(details: {
+		orderNumber: string
+		ttn: string
+		statusCode: string
+		statusText: string
+		customerName: string
+		customerPhone: string
+	}): Promise<void> {
+		const row = (label: string, value: string) =>
+			`<tr><td style="padding:2px 12px 2px 0;color:#555;">${label}</td><td style="padding:2px 0;">${escapeHtml(value)}</td></tr>`
+
+		await this.send({
+			to: ENV.SERVICE_EMAIL,
+			subject: `Замовлення ${details.orderNumber}: ${details.statusText} (ТТН ${details.ttn})`,
+			html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;">
+				<p style="font-size:16px;font-weight:bold;margin:0 0 12px;">Посилка не доходить до покупця</p>
+				<table style="border-collapse:collapse;">
+					${row('Замовлення', details.orderNumber)}
+					${row('ТТН', details.ttn)}
+					${row('Статус Нової Пошти', `${details.statusText} (код ${details.statusCode})`)}
+					${row('Покупець', details.customerName)}
+					${row('Телефон', details.customerPhone)}
+				</table>
+				<p style="margin:16px 0 0;color:#555;">Статус замовлення не змінено — вирішіть вручну в адмінці.</p>
+			</div>`
+		})
 	}
 
 	/** The service-mail payload every order mail shares; `paymentType` is filled by the caller. */

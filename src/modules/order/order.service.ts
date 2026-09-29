@@ -15,6 +15,7 @@ import { EmailService } from 'src/modules/email/email.service'
 import { orderAccessToken, verifyOrderAccessToken } from 'src/common/services/crypto.util'
 import {
 	DeliveryMethod,
+	InvoiceAudience,
 	OrderStatus,
 	PaymentMethod,
 	PaymentStatus,
@@ -1046,7 +1047,14 @@ export class OrderService {
 	async setTtn(id: string, dto: SetTtnDto) {
 		const order = await this.orderRepository.update(
 			{ _id: new Types.ObjectId(id) },
-			{ $set: { nova_post_ttn: dto.nova_post_ttn } }
+			// A new TTN is a new parcel: what the tracker saw and alerted on was the old one's.
+			{
+				$set: {
+					nova_post_ttn: dto.nova_post_ttn,
+					nova_post_status: null,
+					nova_post_alerted_code: null
+				}
+			}
 		)
 		if (!order) throw new NotFoundException('Order not found')
 		return order
@@ -1091,10 +1099,11 @@ export class OrderService {
 
 	async generateInvoice(
 		id: string,
-		adminComment?: string
+		adminComment?: string,
+		audience: InvoiceAudience = InvoiceAudience.INTERNAL
 	): Promise<{ buffer: Buffer; orderNumber: string }> {
 		const order = await this.findById(id)
-		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment))
+		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment), audience)
 		const buffer = await this.invoicePdfProvider.generatePdf(html)
 		return { buffer, orderNumber: order.order_number }
 	}

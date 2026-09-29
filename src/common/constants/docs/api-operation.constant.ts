@@ -436,7 +436,7 @@ export const API_OPERATION = {
 		GENERATE_INVOICE: {
 			summary: 'Generate order invoice PDF',
 			description:
-				'Generates and returns a PDF invoice for an order. Accepts an optional admin comment. Admin only.'
+				'Generates and returns a PDF invoice for an order. Accepts an optional admin comment and an audience: `internal` (default) includes the supplier article, `customer` omits it. Admin only.'
 		},
 		SEND_VENDOR_EMAIL: {
 			summary: 'Send email to vendor',

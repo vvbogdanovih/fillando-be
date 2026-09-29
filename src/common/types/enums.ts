@@ -66,6 +66,15 @@ export enum OrderStatus {
 	RETURNED = 'RETURNED'
 }
 
+/**
+ * Who an order invoice is for. The internal copy carries the supplier article (`vendor_sku`),
+ * which the buyer must never see — the customer copy drops that column.
+ */
+export enum InvoiceAudience {
+	INTERNAL = 'internal',
+	CUSTOMER = 'customer'
+}
+
 export enum PageOrientation {
 	PORTRAIT = 'portrait',
 	LANDSCAPE = 'landscape'

@@ -15,6 +15,7 @@ import { EmailService } from 'src/modules/email/email.service'
 import { orderAccessToken, verifyOrderAccessToken } from 'src/common/services/crypto.util'
 import {
 	DeliveryMethod,
+	InvoiceAudience,
 	OrderStatus,
 	PaymentMethod,
 	PaymentStatus,
@@ -1091,10 +1092,11 @@ export class OrderService {
 
 	async generateInvoice(
 		id: string,
-		adminComment?: string
+		adminComment?: string,
+		audience: InvoiceAudience = InvoiceAudience.INTERNAL
 	): Promise<{ buffer: Buffer; orderNumber: string }> {
 		const order = await this.findById(id)
-		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment))
+		const html = invoiceTemplate(this.buildInvoiceData(order, adminComment), audience)
 		const buffer = await this.invoicePdfProvider.generatePdf(html)
 		return { buffer, orderNumber: order.order_number }
 	}

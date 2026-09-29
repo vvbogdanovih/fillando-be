@@ -1,5 +1,11 @@
 import { SUPPORT } from 'src/common/constants/contacts.constant'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	InvoiceAudience,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus
+} from 'src/common/types/enums'
 import {
 	formatOrderStatus,
 	formatPaymentStatus,
@@ -46,7 +52,13 @@ export interface InvoiceData {
 	adminComment: string | null
 }
 
-export function invoiceTemplate(data: InvoiceData): string {
+export function invoiceTemplate(
+	data: InvoiceData,
+	audience: InvoiceAudience = InvoiceAudience.INTERNAL
+): string {
+	// The supplier article is ours alone: the customer copy drops the column, not just its values.
+	const showVendorSku = audience === InvoiceAudience.INTERNAL
+
 	const itemRows = data.items
 		.map(
 			(item, index) => `
@@ -56,8 +68,8 @@ export function invoiceTemplate(data: InvoiceData): string {
 				${item.image ? `<img src="${item.image}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;display:block;margin:0 auto;" />` : `<div style="width:44px;height:44px;border-radius:4px;background:#eee;margin:0 auto;"></div>`}
 			</td>
 			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.name}</td>
-			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.sku}</td>
-			<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.vendor_sku ?? '—'}</td>
+			<td style="border:1px solid #999;padding:6px 8px;white-space:nowrap;vertical-align:middle;">${item.sku}</td>
+			${showVendorSku ? `<td style="border:1px solid #999;padding:6px 8px;vertical-align:middle;">${item.vendor_sku ?? '—'}</td>` : ''}
 			<td style="border:1px solid #999;padding:6px 8px;text-align:center;vertical-align:middle;">${item.quantity}</td>
 			<td style="border:1px solid #999;padding:6px 8px;text-align:right;white-space:nowrap;vertical-align:middle;">${formatPrice(item.price)}</td>
 			<td style="border:1px solid #999;padding:6px 8px;text-align:right;white-space:nowrap;vertical-align:middle;">${formatPrice(item.price * item.quantity)}</td>
@@ -84,7 +96,7 @@ export function invoiceTemplate(data: InvoiceData): string {
 	if (data.adminComment) {
 		commentsSection.push(`
 		<div style="border-top:1px dashed #999;padding-top:12px;margin-top:16px;">
-			<p style="margin:0 0 4px;font-weight:bold;">Коментар адміністратора:</p>
+			<p style="margin:0 0 4px;font-weight:bold;">${showVendorSku ? 'Коментар адміністратора' : 'Коментар магазину'}:</p>
 			<p style="margin:0;white-space:pre-wrap;">${data.adminComment}</p>
 		</div>`)
 	}
@@ -137,9 +149,9 @@ export function invoiceTemplate(data: InvoiceData): string {
 					<tr>
 						<th style="${TH}width:5%;text-align:center;">№</th>
 						<th style="${TH}width:8%;">Фото</th>
-						<th style="${TH}width:25%;">Назва</th>
+						<th style="${TH}width:${showVendorSku ? 25 : 36}%;">Назва</th>
 						<th style="${TH}width:11%;">SKU</th>
-						<th style="${TH}width:11%;">Vendor SKU</th>
+						${showVendorSku ? `<th style="${TH}width:11%;">Vendor SKU</th>` : ''}
 						<th style="${TH}width:8%;text-align:center;">К-сть</th>
 						<th style="${TH}width:14%;text-align:right;">Ціна</th>
 						<th style="${TH}width:14%;text-align:right;">Сума</th>

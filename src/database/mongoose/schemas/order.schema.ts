@@ -87,6 +87,22 @@ export class AppliedDiscount {
 
 export const AppliedDiscountSchema = SchemaFactory.createForClass(AppliedDiscount)
 
+/** The last Nova Post tracking result the hourly job saw for `nova_post_ttn`. */
+@Schema({ _id: false })
+export class NovaPostTrackingStatus {
+	/** `StatusCode` as Nova Post returns it — a string («9», «102»…). */
+	@Prop({ type: String, required: true })
+	code: string
+
+	@Prop({ type: String, required: true })
+	text: string
+
+	@Prop({ type: Date, required: true })
+	checked_at: Date
+}
+
+export const NovaPostTrackingStatusSchema = SchemaFactory.createForClass(NovaPostTrackingStatus)
+
 @Schema({ collection: 'orders', timestamps: true })
 export class Order {
 	@Prop({ required: true, unique: true })
@@ -135,6 +151,17 @@ export class Order {
 
 	@Prop({ type: String, default: null })
 	nova_post_ttn: string | null
+
+	/** Written by the delivery tracker (`order/tracking`); reset whenever the TTN changes. */
+	@Prop({ type: NovaPostTrackingStatusSchema, default: null })
+	nova_post_status: NovaPostTrackingStatus | null
+
+	/**
+	 * The issue code (refusal, return, TTN not found) the admin was last emailed about, so one
+	 * refusal is one email and not one an hour. Reset with the TTN.
+	 */
+	@Prop({ type: String, default: null })
+	nova_post_alerted_code: string | null
 
 	@Prop({ type: String, enum: OrderStatus, default: OrderStatus.NEW })
 	order_status: OrderStatus

@@ -14,6 +14,9 @@ import { OrderService } from './order.service'
 import { OrderController } from './order.controller'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { ReportProvider } from './report/report.provider'
+import { NovaPostTrackingClient } from './tracking/nova-post-tracking.client'
+import { DeliveryTrackingService } from './tracking/delivery-tracking.service'
+import { DeliveryTrackingCronService } from './tracking/delivery-tracking-cron.service'
 
 @Module({
 	imports: [
@@ -31,7 +34,10 @@ import { ReportProvider } from './report/report.provider'
 		OrderRepository,
 		DiscountCouponRepository,
 		InvoicePdfProvider,
-		ReportProvider
+		ReportProvider,
+		NovaPostTrackingClient,
+		DeliveryTrackingService,
+		DeliveryTrackingCronService
 	],
 	exports: [OrderService]
 })

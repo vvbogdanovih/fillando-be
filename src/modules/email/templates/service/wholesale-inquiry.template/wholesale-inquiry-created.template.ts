@@ -1,3 +1,4 @@
+import { escapeTemplateData } from 'src/common/utils/html.utils'
 export interface WholesaleInquiryCreatedEmailData {
 	name: string
 	phone: string
@@ -6,7 +7,9 @@ export interface WholesaleInquiryCreatedEmailData {
 	comment: string | null
 }
 
-export function wholesaleInquiryCreatedTemplate(data: WholesaleInquiryCreatedEmailData): string {
+export function wholesaleInquiryCreatedTemplate(input: WholesaleInquiryCreatedEmailData): string {
+	// Buyer-typed text (name, address, comment) must reach the mail client as text, not markup.
+	const data = escapeTemplateData(input)
 	return `<!DOCTYPE html>
 <html lang="uk">
   <head>

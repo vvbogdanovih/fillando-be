@@ -66,3 +66,57 @@ describe('invoiceTemplate — audience', () => {
 		expect(html).not.toContain('Коментар адміністратора')
 	})
 })
+
+describe('invoiceTemplate — buyer-typed text is escaped', () => {
+	const PAYLOAD = '<img src=x onerror="alert(1)"><a href="https://evil.example">Оплатити тут</a>'
+
+	it.each([
+		['name', { customer: { ...DATA.customer, name: PAYLOAD } }],
+		['phone', { customer: { ...DATA.customer, phone: PAYLOAD } }],
+		['email', { customer: { ...DATA.customer, email: PAYLOAD } }],
+		['order comment', { orderComment: PAYLOAD }],
+		['admin comment', { adminComment: PAYLOAD }],
+		['TTN', { novaPostTtn: PAYLOAD }],
+		[
+			'courier address',
+			{
+				deliveryMethod: DeliveryMethod.COURIER,
+				deliveryAddress: {
+					city_name: 'Київ',
+					warehouse_description: null,
+					warehouse_number: null,
+					street: PAYLOAD,
+					building: '1',
+					apartment: null
+				}
+			}
+		],
+		[
+			'discount code',
+			{ appliedDiscount: { code: PAYLOAD, discount_percent: 10, discount_amount: 91.8 } }
+		]
+	] as [string, Partial<InvoiceData>][])('%s', (_, overrides) => {
+		const html = invoiceTemplate({ ...DATA, ...overrides })
+		expect(html).not.toContain('<img src=x')
+		expect(html).not.toContain('<a href=')
+		expect(html).toContain(
+			'&lt;a href=&quot;https://evil.example&quot;&gt;Оплатити тут&lt;/a&gt;'
+		)
+	})
+
+	it('cannot break out of the image src attribute', () => {
+		const html = invoiceTemplate({
+			...DATA,
+			items: [{ ...DATA.items[0], image: 'https://cdn.example/a.jpg" onerror="alert(1)' }]
+		})
+		expect(html).toContain('src="https://cdn.example/a.jpg&quot; onerror=&quot;alert(1)"')
+	})
+
+	it('still prints ordinary text as is', () => {
+		const html = invoiceTemplate({
+			...DATA,
+			orderComment: "Прошу зателефонувати о 18:00 — під'їзд 2"
+		})
+		expect(html).toContain('Прошу зателефонувати о 18:00 — під&#39;їзд 2')
+	})
+})

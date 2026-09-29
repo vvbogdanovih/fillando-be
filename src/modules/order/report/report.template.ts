@@ -1,6 +1,6 @@
 import { SUPPORT } from 'src/common/constants/contacts.constant'
 import { DeliveryMethod, PaymentMethod } from 'src/common/types/enums'
-import { formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
+import { escapeHtml, formatOrderStatus, formatPaymentStatus } from 'src/common/utils'
 import type { BreakdownRow, DayRow, OrderRow, SalesReportData } from './report.builder'
 import { STORE_TIME_ZONE } from './report.period'
 
@@ -54,14 +54,6 @@ const dateTimeFormat = new Intl.DateTimeFormat('uk-UA', {
 	hour: '2-digit',
 	minute: '2-digit'
 })
-
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-}
 
 /** Money without a currency mark — the column header carries the ₴. */
 function amount(value: number): string {

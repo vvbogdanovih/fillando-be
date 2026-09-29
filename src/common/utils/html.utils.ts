@@ -77,6 +77,22 @@ const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
 	}
 }
 
+/**
+ * Escapes a value for interpolation into an HTML template — text content or a double-quoted
+ * attribute. For the PDF and email templates, which are built from string literals: anything a
+ * buyer typed (name, comment, address) is otherwise parsed as markup by Chrome when the PDF is
+ * rendered, and by the vendor's mail client when the same HTML is emailed.
+ */
+export function escapeHtml(value: string | number | null | undefined): string {
+	if (value === null || value === undefined) return ''
+	return String(value)
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+}
+
 /** Sanitizes admin-authored rich text. `null`/`undefined` pass through unchanged. */
 export function sanitizeRichText<T extends string | null | undefined>(html: T): T {
 	if (typeof html !== 'string') return html

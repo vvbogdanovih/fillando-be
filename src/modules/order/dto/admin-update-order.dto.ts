@@ -1,12 +1,16 @@
 import { PartialType } from '@nestjs/mapped-types'
-import { ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
 	ArrayNotEmpty,
 	IsArray,
 	IsEnum,
+	IsNumber,
 	IsOptional,
 	IsString,
+	MaxLength,
+	Min,
+	MinLength,
 	ValidateNested
 } from 'class-validator'
 import { DeliveryMethod, PaymentMethod } from 'src/common/types/enums'
@@ -18,6 +22,19 @@ import {
 
 class UpdateOrderCustomerDto extends PartialType(CreateOrderCustomerDto) {}
 class UpdateOrderAddressDto extends PartialType(CreateOrderAddressDto) {}
+
+export class ManualDiscountDto {
+	@ApiProperty({ example: 50, minimum: 0.01, description: 'Fixed discount in UAH' })
+	@IsNumber({ maxDecimalPlaces: 2 })
+	@Min(0.01)
+	amount: number
+
+	@ApiProperty({ example: 'Клієнт попросив знижку по телефону', maxLength: 300 })
+	@IsString()
+	@MinLength(1)
+	@MaxLength(300)
+	reason: string
+}
 
 export class AdminUpdateOrderDto {
 	/** Full replacement of the order items — omitted items are removed from the order. */
@@ -50,6 +67,16 @@ export class AdminUpdateOrderDto {
 	@ValidateNested()
 	@Type(() => UpdateOrderAddressDto)
 	delivery_address?: UpdateOrderAddressDto
+
+	/**
+	 * Admin discount in UAH on top of the coupon; `null` removes it. Refused once the order is
+	 * paid — `total_price` is what LiqPay is checked against and what the buyer was charged.
+	 */
+	@ApiPropertyOptional({ type: ManualDiscountDto, nullable: true })
+	@IsOptional()
+	@ValidateNested()
+	@Type(() => ManualDiscountDto)
+	manual_discount?: ManualDiscountDto | null
 
 	@ApiPropertyOptional({ example: 'Зателефонуйте за 30 хв до доставки' })
 	@IsOptional()

@@ -23,6 +23,14 @@ const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
 	[DeliveryMethod.PICKUP]: 'Самовивіз'
 }
 
+/** Under the order's discount: the coupon code and/or the admin's fixed part, which has no code. */
+function discountNote(order: OrderRow): string {
+	const parts: string[] = []
+	if (order.discountCode) parts.push(escapeHtml(order.discountCode))
+	if (order.manualDiscount > 0) parts.push(`ручна -${amount(order.manualDiscount)}`)
+	return parts.length ? `<br /><span class="muted tiny">${parts.join(' + ')}</span>` : ''
+}
+
 /**
  * Pickup has no parcel, so a dash. A shipped order still without a TTN is said out loud: a blank
  * cell there is exactly what finance must chase, and a dash would read as «nothing expected».
@@ -214,7 +222,7 @@ export function salesReportTemplate(data: SalesReportData): string {
 					<td class="nowrap">${escapeHtml(DELIVERY_METHOD_LABELS[order.deliveryMethod])}</td>
 					<td class="mono">${ttnCell(order)}</td>
 					<td class="num">${amount(order.subtotal)}</td>
-					<td class="num">${order.discount === 0 ? '—' : `-${amount(order.discount)}${order.discountCode ? `<br /><span class="muted tiny">${escapeHtml(order.discountCode)}</span>` : ''}`}</td>
+					<td class="num">${order.discount === 0 ? '—' : `-${amount(order.discount)}${discountNote(order)}`}</td>
 					<td class="num strong">${amount(order.total)}</td>
 				</tr>
 				<tr class="lines">

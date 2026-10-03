@@ -1428,3 +1428,182 @@ describe('OrderService.create — every refusal the buyer can read is Ukrainian 
 		)
 	})
 })
+
+describe('OrderService.update — manual discount', () => {
+	const ORDER_ID = '64b8f0000000000000000000'
+	const VARIANT_ID = '64b8f0000000000000000001'
+
+	const unpaid = (overrides: Record<string, unknown> = {}) =>
+		buildOrder({
+			order_status: OrderStatus.NEW,
+			payment_status: PaymentStatus.PENDING,
+			manual_discount: null,
+			...overrides
+		})
+
+	const buildService = (order: OrderFixture, variants: unknown[] = []) => {
+		const update = buildUpdateMock(order)
+		const service = new OrderService(
+			{ findById: jest.fn().mockResolvedValue(order), update } as never,
+			{} as never,
+			{ findByIds: jest.fn().mockResolvedValue(variants) } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+		return { service, update }
+	}
+
+	const setOf = (update: UpdateMock) => update.mock.calls[0][1].$set
+
+	it('takes the amount off total_price and stores the reason', async () => {
+		const { service, update } = buildService(unpaid())
+
+		await service.update(ORDER_ID, {
+			manual_discount: { amount: 50, reason: '  попросив по телефону ' }
+		})
+
+		const set = setOf(update)
+		expect(set.total_price).toBe(950)
+		expect(set.manual_discount).toMatchObject({ amount: 50, reason: 'попросив по телефону' })
+		expect(set).not.toHaveProperty('subtotal_price')
+	})
+
+	it('stacks on top of the coupon', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 900,
+				applied_discount: {
+					coupon_id: 'c',
+					code: 'TEN',
+					discount_percent: 10,
+					discount_amount: 100
+				}
+			})
+		)
+
+		await service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+
+		expect(setOf(update).total_price).toBe(850)
+	})
+
+	it('removes the discount with null and restores the total', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 950,
+				manual_discount: { amount: 50, reason: 'x', applied_at: new Date() }
+			})
+		)
+
+		await service.update(ORDER_ID, { manual_discount: null })
+
+		expect(setOf(update)).toMatchObject({ manual_discount: null, total_price: 1000 })
+	})
+
+	it('keeps the discount when the items are edited', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 950,
+				manual_discount: { amount: 50, reason: 'x', applied_at: new Date() }
+			}),
+			[
+				{
+					_id: new Types.ObjectId(VARIANT_ID),
+					product_id: new Types.ObjectId(),
+					name: 'PLA',
+					sku: 'SKU-1',
+					price: 500,
+					stock: 10,
+					status: ProductStatus.ACTIVE
+				}
+			]
+		)
+
+		await service.update(ORDER_ID, { items: [{ variant_id: VARIANT_ID, quantity: 3 }] })
+
+		const set = setOf(update)
+		expect(set.subtotal_price).toBe(1500)
+		expect(set.total_price).toBe(1450)
+		expect(set).not.toHaveProperty('manual_discount')
+	})
+
+	it('refuses a discount larger than what is left to pay', async () => {
+		const { service, update } = buildService(unpaid())
+
+		await expect(
+			service.update(ORDER_ID, { manual_discount: { amount: 1000.01, reason: 'x' } })
+		).rejects.toBeInstanceOf(BadRequestException)
+		expect(update).not.toHaveBeenCalled()
+	})
+
+	it('refuses a blank reason', async () => {
+		const { service } = buildService(unpaid())
+
+		await expect(
+			service.update(ORDER_ID, { manual_discount: { amount: 50, reason: '   ' } })
+		).rejects.toBeInstanceOf(BadRequestException)
+	})
+
+	it.each([PaymentStatus.PAID, PaymentStatus.REFUNDED])(
+		'refuses once the payment is %s — that is a refund',
+		async payment_status => {
+			const { service, update } = buildService(unpaid({ payment_status }))
+
+			await expect(
+				service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+			).rejects.toBeInstanceOf(ConflictException)
+			expect(update).not.toHaveBeenCalled()
+		}
+	)
+
+	it('refuses while a LiqPay session built with the old amount is open', async () => {
+		const { service } = buildService(
+			unpaid({
+				payment_method: PaymentMethod.LIQPAY,
+				liqpay_checkout_started_at: new Date(Date.now() - 60_000)
+			})
+		)
+
+		await expect(
+			service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+		).rejects.toMatchObject({ response: { code: 'LIQPAY_SESSION_ACTIVE' } })
+	})
+
+	it('allows it once the LiqPay session has run out', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				payment_method: PaymentMethod.LIQPAY,
+				liqpay_checkout_started_at: new Date(Date.now() - LIQPAY_SESSION_COOLDOWN_MS - 1000)
+			})
+		)
+
+		await service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+
+		expect(setOf(update).total_price).toBe(950)
+	})
+
+	it('hides the reason from the buyer', async () => {
+		const order = unpaid({
+			user_id: new Types.ObjectId(),
+			total_price: 950,
+			manual_discount: { amount: 50, reason: 'внутрішнє', applied_at: new Date() },
+			liqpay_checkout_started_at: null
+		})
+		const service = new OrderService(
+			{ findByIdAndUserId: jest.fn().mockResolvedValue(order) } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+
+		const result = (await service.findMyOrderById(String(new Types.ObjectId()), ORDER_ID)) as {
+			manual_discount: unknown
+		}
+
+		expect(result.manual_discount).toEqual({ amount: 50 })
+	})
+})

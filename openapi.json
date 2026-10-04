@@ -2339,12 +2339,13 @@
               "type": "string",
               "enum": [
                 "NEW",
-                "CONFIRMED",
                 "PROCESSING",
+                "CONFIRMED",
                 "SHIPPED",
                 "DELIVERED",
                 "COMPLETED",
                 "CANCELLED",
+                "RETURNING",
                 "RETURNED"
               ]
             }
@@ -2442,12 +2443,13 @@
               "type": "string",
               "enum": [
                 "NEW",
-                "CONFIRMED",
                 "PROCESSING",
+                "CONFIRMED",
                 "SHIPPED",
                 "DELIVERED",
                 "COMPLETED",
                 "CANCELLED",
+                "RETURNING",
                 "RETURNED"
               ]
             }
@@ -2540,7 +2542,7 @@
     },
     "/orders/lookup/{orderNumber}": {
       "get": {
-        "description": "Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed. Besides the payment fields the response carries `order_status`, `delivery_method` and `can_change_payment_method` — true while the payment is PENDING or FAILED and the order is NEW or CONFIRMED — so the storefront can offer the payment-method change without mirroring the rule.",
+        "description": "Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed. Besides the payment fields the response carries `order_status`, `delivery_method` and `can_change_payment_method` — true while the payment is PENDING or FAILED and the order has not shipped (NEW, PROCESSING or CONFIRMED — no TTN yet) — so the storefront can offer the payment-method change without mirroring the rule.",
         "operationId": "OrderController_lookupPaymentStatus",
         "parameters": [
           {
@@ -2584,7 +2586,7 @@
     },
     "/orders/{id}": {
       "get": {
-        "description": "Get full order details by MongoDB id. Admin only.",
+        "description": "Get full order details by MongoDB id, with `status_history` and `allowed_status_transitions` — the statuses PATCH /orders/:id/status accepts from the current one (TD-0011). Admin only.",
         "operationId": "OrderController_findById",
         "parameters": [
           {
@@ -2656,7 +2658,7 @@
     },
     "/orders/lookup/{orderNumber}/payment-method": {
       "patch": {
-        "description": "Lets the buyer switch an unpaid order (payment PENDING or FAILED, order NEW or CONFIRMED) from LiqPay to COD, IBAN or CASH. Same HMAC token as the lookup; a wrong token yields 404. The delivery compatibility rule applies (COD only with NOVA_POST/COURIER, CASH only with PICKUP → 400). A FAILED card payment becomes PENDING. Same method again is a 200 no-op. Locked states answer 409 `code: PAYMENT_METHOD_LOCKED`. Sends the customer the confirmation for the new method and a service email. Rate-limited to 5 requests per minute per IP.",
+        "description": "Lets the buyer switch an unpaid order (payment PENDING or FAILED, order not yet shipped: NEW, PROCESSING or CONFIRMED) from LiqPay to COD, IBAN or CASH. Same HMAC token as the lookup; a wrong token yields 404. The delivery compatibility rule applies (COD only with NOVA_POST/COURIER, CASH only with PICKUP → 400). A FAILED card payment becomes PENDING. Same method again is a 200 no-op. Locked states answer 409 `code: PAYMENT_METHOD_LOCKED`. Sends the customer the confirmation for the new method and a service email. Rate-limited to 5 requests per minute per IP.",
         "operationId": "OrderController_changePaymentMethodPublic",
         "parameters": [
           {
@@ -2752,7 +2754,7 @@
     },
     "/orders/{id}/status": {
       "patch": {
-        "description": "Change the fulfillment status of an order. Admin only.",
+        "description": "Change the fulfillment status of an order (TD-0011). Only the transitions listed in `allowed_status_transitions` are accepted; anything else is 409 `INVALID_STATUS_TRANSITION` with `from`, `to` and `allowed`. Before shipping NEW, PROCESSING (buyer contacted, confirmation awaited) and CONFIRMED move freely among themselves. `COMPLETED` is never set by hand (400) — a DELIVERED order becomes COMPLETED once paid; `SHIPPED` is set by the TTN (400 here). Cancelling, or receiving back (`RETURNED`), an unpaid order voids its payment; reopening a cancelled order (`CANCELLED → NEW`) expects payment again. The write is pinned on the statuses read: a concurrent change answers 409 `ORDER_STATUS_CHANGED`. Every change is appended to `status_history` with the admin id. Returns the admin order shape. Admin only.",
         "operationId": "OrderController_updateOrderStatus",
         "parameters": [
           {
@@ -2776,7 +2778,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Update order status",
@@ -2787,7 +2796,7 @@
     },
     "/orders/{id}/payment-status": {
       "patch": {
-        "description": "Change the payment status of an order. Optionally record the payment transaction id. Admin only.",
+        "description": "Change the payment status of an order. Optionally record the payment transaction id. Marking a DELIVERED order PAID makes it COMPLETED in the same write; taking PAID away from a COMPLETED order makes it DELIVERED again (TD-0011). Pinned like the status change (409 `ORDER_STATUS_CHANGED`), recorded in `status_history`. Returns the admin order shape. Admin only.",
         "operationId": "OrderController_updatePaymentStatus",
         "parameters": [
           {
@@ -2811,7 +2820,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Update payment status",
@@ -2822,7 +2838,7 @@
     },
     "/orders/{id}/ttn": {
       "patch": {
-        "description": "Attach the Nova Post tracking number (ТТН) to an order. Admin only.",
+        "description": "Attach the Nova Post tracking number (ТТН) to an order. For a NOVA_POST / COURIER order that has not shipped yet (NEW, PROCESSING, CONFIRMED) the same write sets `order_status = SHIPPED` and records it in `status_history` (TD-0011); a pickup order or one past shipping keeps its status. Resets the tracker fields. Returns the admin order shape. Admin only.",
         "operationId": "OrderController_setTtn",
         "parameters": [
           {
@@ -2846,7 +2862,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Set Nova Post TTN",
@@ -5445,6 +5468,57 @@
           "apartment"
         ]
       },
+      "OrderStatusHistoryEntryDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "order_status",
+              "payment_status"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "example": "CONFIRMED",
+            "nullable": true,
+            "description": "null for the entries written with the order"
+          },
+          "to": {
+            "type": "string",
+            "example": "SHIPPED"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "actor": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "customer",
+              "tracker",
+              "gateway",
+              "system"
+            ]
+          },
+          "admin_id": {
+            "type": "string",
+            "example": "664f1b2c3d4e5f6a7b8c9d11"
+          },
+          "note": {
+            "type": "string",
+            "example": "ТТН 20450081729182"
+          }
+        },
+        "required": [
+          "field",
+          "from",
+          "to",
+          "at",
+          "actor"
+        ]
+      },
       "CreateOrderResponseDto": {
         "type": "object",
         "properties": {
@@ -5533,14 +5607,44 @@
             "type": "string",
             "enum": [
               "NEW",
-              "CONFIRMED",
               "PROCESSING",
+              "CONFIRMED",
               "SHIPPED",
               "DELIVERED",
               "COMPLETED",
               "CANCELLED",
+              "RETURNING",
               "RETURNED"
             ]
+          },
+          "status_history": {
+            "description": "Admin responses only (TD-0011) — never sent to the buyer",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatusHistoryEntryDto"
+            }
+          },
+          "allowed_status_transitions": {
+            "type": "array",
+            "description": "Admin order detail only: the statuses PATCH /orders/:id/status accepts from the current one (TD-0011)",
+            "items": {
+              "type": "string",
+              "enum": [
+                "NEW",
+                "PROCESSING",
+                "CONFIRMED",
+                "SHIPPED",
+                "DELIVERED",
+                "COMPLETED",
+                "CANCELLED",
+                "RETURNING",
+                "RETURNED"
+              ]
+            }
+          },
+          "ships_on_ttn": {
+            "type": "boolean",
+            "description": "Admin order detail only: whether PATCH /orders/:id/ttn will also set SHIPPED — a NOVA_POST / COURIER order that has not shipped yet (TD-0011)"
           },
           "comment": {
             "type": "object",
@@ -5669,14 +5773,44 @@
             "type": "string",
             "enum": [
               "NEW",
-              "CONFIRMED",
               "PROCESSING",
+              "CONFIRMED",
               "SHIPPED",
               "DELIVERED",
               "COMPLETED",
               "CANCELLED",
+              "RETURNING",
               "RETURNED"
             ]
+          },
+          "status_history": {
+            "description": "Admin responses only (TD-0011) — never sent to the buyer",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatusHistoryEntryDto"
+            }
+          },
+          "allowed_status_transitions": {
+            "type": "array",
+            "description": "Admin order detail only: the statuses PATCH /orders/:id/status accepts from the current one (TD-0011)",
+            "items": {
+              "type": "string",
+              "enum": [
+                "NEW",
+                "PROCESSING",
+                "CONFIRMED",
+                "SHIPPED",
+                "DELIVERED",
+                "COMPLETED",
+                "CANCELLED",
+                "RETURNING",
+                "RETURNED"
+              ]
+            }
+          },
+          "ships_on_ttn": {
+            "type": "boolean",
+            "description": "Admin order detail only: whether PATCH /orders/:id/ttn will also set SHIPPED — a NOVA_POST / COURIER order that has not shipped yet (TD-0011)"
           },
           "comment": {
             "type": "object",
@@ -5756,12 +5890,13 @@
             "type": "string",
             "enum": [
               "NEW",
-              "CONFIRMED",
               "PROCESSING",
+              "CONFIRMED",
               "SHIPPED",
               "DELIVERED",
               "COMPLETED",
               "CANCELLED",
+              "RETURNING",
               "RETURNED"
             ]
           },
@@ -5816,12 +5951,13 @@
             "type": "string",
             "enum": [
               "NEW",
-              "CONFIRMED",
               "PROCESSING",
+              "CONFIRMED",
               "SHIPPED",
               "DELIVERED",
               "COMPLETED",
               "CANCELLED",
+              "RETURNING",
               "RETURNED"
             ]
           },
@@ -5927,13 +6063,12 @@
           "order_status": {
             "type": "string",
             "enum": [
-              "NEW",
-              "CONFIRMED",
               "PROCESSING",
-              "SHIPPED",
+              "CONFIRMED",
               "DELIVERED",
-              "COMPLETED",
               "CANCELLED",
+              "NEW",
+              "RETURNING",
               "RETURNED"
             ],
             "example": "CONFIRMED"

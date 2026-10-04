@@ -309,9 +309,9 @@ an offline order onto LiqPay stays an admin action.
 
 1. Same method as the order already has → `200`, nothing written, no mail (a double click must
    not send two mails).
-2. `payment_status ∉ {PENDING, FAILED}` or `order_status ∉ {NEW, CONFIRMED}` →
-   `409 { code: 'PAYMENT_METHOD_LOCKED' }`. From `PROCESSING` on the parcel may already carry a
-   COD invoice; the admin can still change it via `PATCH /orders/:id`.
+2. `payment_status ∉ {PENDING, FAILED}` or `order_status ∉ {NEW, PROCESSING, CONFIRMED}` →
+   `409 { code: 'PAYMENT_METHOD_LOCKED' }`. A TTN ships the order (`SHIPPED`, TD-0011) and from
+   then on the parcel may carry a COD invoice; the admin can still change it via `PATCH /orders/:id`.
 3. Delivery rule → `400` (COD only with `NOVA_POST`/`COURIER`, CASH only with `PICKUP`).
 4. `findOneAndUpdate` **pinned on the state read** in step 2 — payment status, order status
    **and the current method**: a callback that flipped the payment to `PAID` in between, or a

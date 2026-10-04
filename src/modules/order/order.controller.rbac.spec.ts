@@ -173,9 +173,11 @@ describe('OrderController RBAC', () => {
 			})
 
 			expect(orderService.updateOrderStatus).toHaveBeenCalledTimes(1)
-			expect(orderService.updateOrderStatus).toHaveBeenCalledWith(ORDER_ID, {
-				status: 'shipped'
-			})
+			expect(orderService.updateOrderStatus).toHaveBeenCalledWith(
+				ORDER_ID,
+				{ status: 'shipped' },
+				expect.any(String)
+			)
 		})
 	})
 

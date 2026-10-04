@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus,
+	STATUS_ACTORS,
+	type StatusActor
+} from 'src/common/types/enums'
 
 class OrderResponseCustomerDto {
 	@ApiProperty({ example: 'Іван Петренко' })
@@ -41,6 +48,34 @@ class OrderResponseDiscountDto {
 
 	@ApiProperty({ example: 125.5 })
 	discount_amount: number
+}
+
+class OrderStatusHistoryEntryDto {
+	@ApiProperty({ enum: ['order_status', 'payment_status'] })
+	field: 'order_status' | 'payment_status'
+
+	@ApiProperty({
+		type: String,
+		example: 'CONFIRMED',
+		nullable: true,
+		description: 'null for the entries written with the order'
+	})
+	from: string | null
+
+	@ApiProperty({ example: 'SHIPPED' })
+	to: string
+
+	@ApiProperty()
+	at: Date
+
+	@ApiProperty({ enum: STATUS_ACTORS })
+	actor: StatusActor
+
+	@ApiProperty({ example: '664f1b2c3d4e5f6a7b8c9d11', required: false })
+	admin_id?: string
+
+	@ApiProperty({ example: 'ТТН 20450081729182', required: false })
+	note?: string
 }
 
 class OrderResponseItemDto {
@@ -114,6 +149,29 @@ export class OrderResponseDto {
 
 	@ApiProperty({ enum: OrderStatus })
 	order_status: OrderStatus
+
+	@ApiProperty({
+		type: [OrderStatusHistoryEntryDto],
+		required: false,
+		description: 'Admin responses only (TD-0011) — never sent to the buyer'
+	})
+	status_history?: OrderStatusHistoryEntryDto[]
+
+	@ApiProperty({
+		enum: OrderStatus,
+		isArray: true,
+		required: false,
+		description:
+			'Admin order detail only: the statuses PATCH /orders/:id/status accepts from the current one (TD-0011)'
+	})
+	allowed_status_transitions?: OrderStatus[]
+
+	@ApiProperty({
+		required: false,
+		description:
+			'Admin order detail only: whether PATCH /orders/:id/ttn will also set SHIPPED — a NOVA_POST / COURIER order that has not shipped yet (TD-0011)'
+	})
+	ships_on_ttn?: boolean
 
 	@ApiProperty({ example: 'Зателефонуйте перед відправкою', nullable: true })
 	comment: string | null

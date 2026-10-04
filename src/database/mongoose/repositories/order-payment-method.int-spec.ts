@@ -3,6 +3,7 @@ import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/c
 import { connectTestDb, dropTestDb } from '../../../../test/integration-db'
 import { Order, OrderSchema } from '../schemas/order.schema'
 import { OrderRepository } from './order.repository'
+import { OrderService } from 'src/modules/order/order.service'
 
 /**
  * The conditional write behind the customer's payment-method change (TD-0009 §5.4.1): the filter
@@ -84,15 +85,84 @@ describe('OrderRepository.update — pinned payment-method change (MongoDB integ
 		expect(stored!.payment_status).toBe(PaymentStatus.PAID)
 	})
 
-	it('misses an order the admin has already moved to processing', async () => {
+	it('misses an order that already shipped (a TTN may carry a COD invoice)', async () => {
 		const created = await orderModel.create(
 			orderDoc(3, {
 				payment_status: PaymentStatus.PENDING,
-				order_status: OrderStatus.PROCESSING
+				order_status: OrderStatus.SHIPPED
 			})
 		)
 
 		expect(await pinnedChange(created._id, PaymentMethod.IBAN)).toBeNull()
+	})
+
+	describe('claimLiqpayCheckout — the pipeline update behind the retry claim (TD-0011 F6)', () => {
+		const service = () =>
+			new OrderService(
+				repo,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never
+			)
+
+		it('appends the FAILED → PENDING entry to an existing history by one atomic write', async () => {
+			const created = await orderModel.create(
+				orderDoc(10, {
+					status_history: [
+						{
+							field: 'payment_status',
+							from: 'PENDING',
+							to: 'FAILED',
+							at: new Date('2026-10-01T10:00:00.000Z'),
+							actor: 'gateway'
+						}
+					]
+				})
+			)
+			const now = Date.parse('2026-10-03T12:00:00.000Z')
+
+			const claimed = await service().claimLiqpayCheckout(created._id, now)
+
+			expect(claimed).not.toBeNull()
+			expect(claimed!.payment_status).toBe(PaymentStatus.PENDING)
+			expect(claimed!.liqpay_checkout_started_at).toEqual(new Date(now))
+			expect(claimed!.status_history.map(e => `${e.from}→${e.to}:${e.actor}`)).toEqual([
+				'PENDING→FAILED:gateway',
+				'FAILED→PENDING:customer'
+			])
+			expect(claimed!.status_history[1].at).toEqual(new Date(now))
+		})
+
+		it('starts a history on a legacy order that has none', async () => {
+			const created = await orderModel.create(orderDoc(11))
+			await orderModel.updateOne({ _id: created._id }, { $unset: { status_history: '' } })
+
+			const claimed = await service().claimLiqpayCheckout(created._id)
+
+			expect(claimed!.status_history).toHaveLength(1)
+			expect(claimed!.status_history[0].to).toBe(PaymentStatus.PENDING)
+		})
+
+		it('renews a PENDING session without touching the history', async () => {
+			const created = await orderModel.create(
+				orderDoc(12, { payment_status: PaymentStatus.PENDING })
+			)
+
+			const claimed = await service().claimLiqpayCheckout(created._id)
+
+			expect(claimed).not.toBeNull()
+			expect(claimed!.status_history).toEqual([])
+		})
+
+		it('refuses a cancelled order outright', async () => {
+			const created = await orderModel.create(
+				orderDoc(13, { order_status: OrderStatus.CANCELLED })
+			)
+			expect(await service().claimLiqpayCheckout(created._id)).toBeNull()
+		})
 	})
 
 	it('stores the LiqPay checkout stamp the cooldown reads, null until the first payload', async () => {

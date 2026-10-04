@@ -55,7 +55,7 @@ export class OrderRepository extends BaseRepository<Order> {
 				createdAt: { $gte: since }
 			})
 			.select(
-				'order_number order_status payment_status delivery_method nova_post_ttn nova_post_alerted_code customer'
+				'order_number order_status payment_status payment_method delivery_method nova_post_ttn nova_post_alerted_code customer'
 			)
 			.lean()
 			.exec()

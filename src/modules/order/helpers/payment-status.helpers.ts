@@ -4,11 +4,12 @@ import { OrderStatus, PaymentStatus } from 'src/common/types/enums'
  * Cross-machine rule between `order_status` and `payment_status`.
  *
  * Cancelling an order that was never paid must not leave it reading
- * "Очікує оплату" forever, so the payment moves to a terminal `VOIDED`.
+ * "Очікує оплату" forever, so the payment moves to a terminal `VOIDED`. A parcel that came
+ * back unpaid (`RETURNED`, typically a refused COD) is the same case (TD-0011).
  * A `PAID` order keeps its status — the money really arrived and an admin has
  * to refund it manually and set `REFUNDED` afterwards.
  *
- * Documented in docs/architecture/state-machines.md (fillando-meta) and TD-0003.
+ * Documented in docs/architecture/state-machines.md (fillando-meta), TD-0003 and TD-0011.
  *
  * @returns the new payment status, or `null` when payment must stay untouched.
  */
@@ -17,7 +18,7 @@ export function resolvePaymentStatusOnOrderStatusChange(
 	currentOrderStatus: OrderStatus,
 	nextOrderStatus: OrderStatus
 ): PaymentStatus | null {
-	if (nextOrderStatus === OrderStatus.CANCELLED) {
+	if (nextOrderStatus === OrderStatus.CANCELLED || nextOrderStatus === OrderStatus.RETURNED) {
 		// Re-applying CANCELLED is intentionally handled too: it heals legacy
 		// orders cancelled before VOIDED existed and never backfilled.
 		const isUnpaid =
@@ -45,11 +46,13 @@ export const PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES: readonly PaymentStatus[
 ]
 
 /**
- * The fulfilment states in which the buyer may still switch the payment method. From PROCESSING
- * on the parcel may already carry a COD invoice, so only the admin changes it after that.
+ * The fulfilment states in which the buyer may still switch the payment method. A TTN ships the
+ * order (TD-0011), and from then on the parcel may carry a COD invoice, so only the admin changes
+ * the method after that.
  */
 export const PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES: readonly OrderStatus[] = [
 	OrderStatus.NEW,
+	OrderStatus.PROCESSING,
 	OrderStatus.CONFIRMED
 ]
 

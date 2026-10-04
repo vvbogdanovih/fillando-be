@@ -1,6 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { HydratedDocument, Types } from 'mongoose'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus,
+	STATUS_ACTORS,
+	type StatusActor
+} from 'src/common/types/enums'
 
 @Schema({ _id: false })
 export class OrderItem {
@@ -103,6 +110,34 @@ export class NovaPostTrackingStatus {
 
 export const NovaPostTrackingStatusSchema = SchemaFactory.createForClass(NovaPostTrackingStatus)
 
+/** One status change (TD-0011). Written in the same update as the status it records. */
+@Schema({ _id: false })
+export class StatusHistoryEntry {
+	@Prop({ type: String, enum: ['order_status', 'payment_status'], required: true })
+	field: 'order_status' | 'payment_status'
+
+	/** `null` only for the two entries written with the order itself. */
+	@Prop({ type: String, default: null })
+	from: string | null
+
+	@Prop({ type: String, required: true })
+	to: string
+
+	@Prop({ type: Date, required: true })
+	at: Date
+
+	@Prop({ type: String, enum: STATUS_ACTORS, required: true })
+	actor: StatusActor
+
+	@Prop({ type: Types.ObjectId, ref: 'User' })
+	admin_id?: Types.ObjectId
+
+	@Prop({ type: String })
+	note?: string
+}
+
+export const StatusHistoryEntrySchema = SchemaFactory.createForClass(StatusHistoryEntry)
+
 @Schema({ collection: 'orders', timestamps: true })
 export class Order {
 	@Prop({ required: true, unique: true })
@@ -165,6 +200,10 @@ export class Order {
 
 	@Prop({ type: String, enum: OrderStatus, default: OrderStatus.NEW })
 	order_status: OrderStatus
+
+	/** Admin-only; stripped from every buyer-facing response. */
+	@Prop({ type: [StatusHistoryEntrySchema], default: [] })
+	status_history: StatusHistoryEntry[]
 
 	@Prop({ type: String, default: null })
 	comment: string | null

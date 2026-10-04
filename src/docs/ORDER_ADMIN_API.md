@@ -22,9 +22,9 @@ list of codes.
 | `GET`   | `/orders`                    | Paginated orders list with filters by `order_status` and `payment_status` |
 | `GET`   | `/orders/:id`                | Full order details                                                        |
 | `PATCH` | `/orders/:id`                | Edit order fields (items, customer, delivery, payment method, comment)    |
-| `PATCH` | `/orders/:id/status`         | Update fulfillment status                                                 |
+| `PATCH` | `/orders/:id/status`         | Update fulfillment status — allowed transitions only (TD-0011)            |
 | `PATCH` | `/orders/:id/payment-status` | Update payment status and optional transaction id                         |
-| `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN                                                         |
+| `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN — ships a NOVA_POST/COURIER order not yet shipped       |
 | `POST`  | `/orders/:id/invoice`        | One order's invoice as PDF                                                |
 | `POST`  | `/orders/report`             | Sales report for a period — see _The sales report_ below                  |
 
@@ -33,7 +33,7 @@ list of codes.
 | Method  | Path                                                 | Access                    | Description                                                                                                                                                                                                        |
 | ------- | ---------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET`   | `/orders/lookup/:orderNumber?token=…`                | public, HMAC token        | Payment state of an order (`order_number`, `payment_method`, `payment_status`, `total_price`, `order_status`, `delivery_method`, `can_change_payment_method`) for the checkout success page — see `LIQPAY_FLOW.md` |
-| `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order `NEW`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
+| `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order not yet shipped: `NEW`/`PROCESSING`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
 | `PATCH` | `/orders/me/:id/payment-method`                      | `JwtAuthGuard`, owner     | The same change for a signed-in buyer's own order; returns the customer order shape                                                                                                                                |
 
 ---
@@ -150,25 +150,79 @@ Payment / delivery combination:
   putting `CASH` on a parcel is now a `400` as well.
 - `IBAN` and `LIQPAY` are unrestricted at the API level.
 
-COD payment status is never automated: it stays `PENDING` until an admin sets
-`PAID` via `PATCH /orders/:id/payment-status` once Nova Post remits the money.
-Setting the TTN does not change it.
+COD payment is confirmed by the parcel being received: the buyer pays at the counter to get it,
+so when the Nova Post tracker sees a «received» code on a COD order whose payment is `PENDING`,
+the same write sets `payment_status = PAID` and the order lands on `COMPLETED` (TD-0011,
+`decideTracking` → `markPaid`). The admin can still set `PAID` by hand first — the tracker then
+leaves the payment alone. For every other payment method the tracker never touches the payment.
+Setting the TTN does not change the payment status (it does ship the order — below).
 
 ---
 
-## `PATCH /orders/:id/status` — payment side effect
+## Order lifecycle (TD-0011)
 
-`order_status` and `payment_status` are otherwise independent, but cancelling an
-order also recalculates the payment status
+Facts move the status; the admin only decides. One module owns the rules —
+`src/modules/order/helpers/order-status.rules.ts` — and every write of either status
+(admin endpoints, TTN, the Nova Post tracker, the LiqPay callback, the buyer's payment-method
+change) goes through its `planStatusChange`, which applies the payment rule below, settles
+`COMPLETED` and builds the `status_history` entries in one place.
+
+```
+NEW ─► PROCESSING ─► CONFIRMED ─ TTN ─► SHIPPED ─ НП «отримано» ─► DELIVERED ─ PAID ─► COMPLETED
+ │  (buyer contacted,   │                   │                            ▲
+ │   confirmation awaited; the three        └ НП відмова ─► RETURNING ───┴─► RETURNED
+ │   move freely; TTN ships any of them; pickup: «Видано» → DELIVERED)
+ └─► CANCELLED ─ «Відновити» ─► NEW
+```
+
+| From | Admin may set (`allowed_status_transitions`) | Automatic |
+|---|---|---|
+| `NEW` / `PROCESSING` / `CONFIRMED` | the other two, `CANCELLED`, `DELIVERED` (pickup only) | TTN → `SHIPPED` |
+| `SHIPPED` | `DELIVERED` (fallback when the tracker cannot see the parcel), `RETURNING` | tracker: received → `DELIVERED`, refusal → `RETURNING` |
+| `DELIVERED` / `COMPLETED` | `RETURNING` | `DELIVERED` ⇄ `COMPLETED` by `PAID` |
+| `RETURNING` | `RETURNED`, `DELIVERED` (the buyer collected after all) | — |
+| `CANCELLED` | `NEW` | — |
+| `RETURNED` | — (terminal) | — |
+
+- **`COMPLETED` is never set by hand.** It is «delivered and paid»: whichever of the two arrives
+  second settles it in the same write, and losing `PAID` takes it back to `DELIVERED`.
+- **A shipped order cannot be cancelled** — it is returned (`RETURNING → RETURNED`).
+- **`PROCESSING` means «Очікує підтвердження»** — the admin has written to the buyer and waits
+  for the confirmation; it sits before `CONFIRMED`, not after it as the old «В обробці» (packing)
+  did. A one-off migration (run by the owner at release, not kept in the repo) moved legacy rows
+  set under the old meaning to `CONFIRMED` — or `SHIPPED` when they carried a TTN — telling them
+  apart by the absence of a `status_history` entry, and closed `DELIVERED` + `PAID` as `COMPLETED`. The buyer may still change the payment method in it — the lock is the TTN.
+- **Errors:** a move not in the list → `409 { code: 'INVALID_STATUS_TRANSITION', from, to,
+  allowed }`; a status no row targets (`SHIPPED`, `COMPLETED`) → `400` from the DTO
+  (`ADMIN_SETTABLE_ORDER_STATUSES` is derived from the table, so the Swagger enum is the truth);
+  a write whose pinned statuses moved meanwhile (tracker, callback, another tab) →
+  `409 { code: 'ORDER_STATUS_CHANGED' }`. Sending the current status again is a `200` no-op —
+  except that re-applying `CANCELLED` still voids a legacy order that reads `PENDING` (TD-0003).
+- **`status_history[]`** — `{ field, from, to, at, actor, admin_id?, note? }`, `actor ∈ admin |
+  customer | tracker | gateway | system`. Written with `$push` in the same update as the
+  status; the LiqPay retry claim (`FAILED → PENDING` on `POST /liqpay/checkout`) records its move
+  through a pipeline update (`REPOSITORY_PATTERN.md` §7). Admin **detail** only — the admin list
+  drops it, and `/orders/me*` and the public lookup never carry it.
+- **Gateway writes are pinned on the whole state read** (method, order status, payment status):
+  the planned write carries a derived order status, so a callback racing the tracker must miss
+  rather than stamp `COMPLETED` over `RETURNING`. A miss re-reads once and starts over from the
+  fresh state; a second miss is logged and left to the next callback.
+- **`GET /orders/:id`** also answers `ships_on_ttn` — whether `PATCH /orders/:id/ttn` will set
+  `SHIPPED` — so the admin UI's hint comes from the same rule as the write.
+
+## Payment side effect of an order status change
+
+`order_status` and `payment_status` are otherwise independent, but cancelling or receiving back
+an order also recalculates the payment status
 (`resolvePaymentStatusOnOrderStatusChange` in
 `src/modules/order/helpers/payment-status.helpers.ts`):
 
 | Requested `order_status` | Current `payment_status` | New `payment_status` | Why                                                                                    |
 | ------------------------ | ------------------------ | -------------------- | -------------------------------------------------------------------------------------- |
-| `CANCELLED`              | `PENDING` / `FAILED`     | `VOIDED`             | No money arrived — payment is no longer expected                                       |
-| `CANCELLED`              | `PAID`                   | unchanged            | Money really arrived; admin refunds manually and sets `REFUNDED` (logged as a warning) |
-| `CANCELLED`              | `REFUNDED` / `VOIDED`    | unchanged            | Already terminal                                                                       |
-| anything else            | `VOIDED`                 | `PENDING`            | Order reopened — payment is expected again                                             |
+| `CANCELLED` / `RETURNED` | `PENDING` / `FAILED`     | `VOIDED`             | No money arrived — payment is no longer expected                                       |
+| `CANCELLED` / `RETURNED` | `PAID`                   | unchanged            | Money really arrived; admin refunds manually and sets `REFUNDED` (logged as a warning) |
+| `CANCELLED` / `RETURNED` | `REFUNDED` / `VOIDED`    | unchanged            | Already terminal                                                                       |
+| `NEW` (from `CANCELLED`) | `VOIDED`                 | `PENDING`            | Order reopened — payment is expected again                                             |
 | anything else            | other                    | unchanged            | —                                                                                      |
 
 Without this, a cancelled unpaid order kept reading «Очікує оплату» in the

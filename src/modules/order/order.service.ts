@@ -25,9 +25,16 @@ import {
 	canCustomerChangePaymentMethod,
 	PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES,
 	PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES,
-	resolvePaymentStatusOnOrderStatusChange,
 	resolvePaymentStatusOnPaymentMethodChange
 } from './helpers/payment-status.helpers'
+import {
+	adminStatusTransitions,
+	initialStatusHistory,
+	planStatusChange,
+	shipsOnTtn,
+	statusChangeUpdate,
+	statusHistoryEntry
+} from './helpers/order-status.rules'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { ReportProvider } from './report/report.provider'
@@ -62,6 +69,20 @@ interface OrderableVariant {
 	stock: number
 	status: ProductStatus
 	images?: string[] | null
+}
+
+/**
+ * The admin order shape: the stored document plus the two TD-0011 fields derived per response.
+ * `mapOrderResponse` is untyped, so this names what the admin endpoints are known to return.
+ */
+type AdminOrderResponse = Record<string, unknown> & {
+	order_number: string
+	order_status: OrderStatus
+	payment_status: PaymentStatus
+	payment_method: PaymentMethod
+	delivery_method: DeliveryMethod
+	allowed_status_transitions: OrderStatus[]
+	ships_on_ttn: boolean
 }
 
 @Injectable()
@@ -295,8 +316,28 @@ export class OrderService {
 	}
 
 	/**
+	 * Admin order detail: the base shape plus the status actions the admin may take from here
+	 * (TD-0011). The rule lives here, so the admin UI renders buttons without mirroring it.
+	 */
+	private mapAdminOrderResponse(order: unknown): AdminOrderResponse {
+		const mapped = this.mapOrderResponse(order) as AdminOrderResponse
+		return {
+			...mapped,
+			allowed_status_transitions: adminStatusTransitions(mapped),
+			ships_on_ttn: shipsOnTtn(mapped)
+		}
+	}
+
+	/** An admin list row: the base shape without the history, which only the detail shows. */
+	private mapAdminListRow(order: unknown) {
+		const row = this.mapOrderResponse(order) as Record<string, unknown>
+		delete row.status_history
+		return row
+	}
+
+	/**
 	 * Customer-facing shape (POST /orders, GET /orders/me*): like {@link mapOrderResponse}
-	 * minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
+	 * minus `status_history` (who changed what, admin ids — internal) and minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
 	 * and vendor e-mail only and must never reach a buyer.
 	 *
 	 * Plus the two derived payment fields the public lookup already carries, computed by the
@@ -313,8 +354,10 @@ export class OrderService {
 			order_status: OrderStatus
 			liqpay_checkout_started_at: Date | null
 		}
+		const customerOrder: Record<string, unknown> = { ...mapped }
+		delete customerOrder.status_history
 		return {
-			...mapped,
+			...customerOrder,
 			can_change_payment_method: canCustomerChangePaymentMethod(paymentState),
 			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(paymentState),
 			items: mapped.items.map((item: any) => {
@@ -388,7 +431,11 @@ export class OrderService {
 				dto.delivery_method === DeliveryMethod.PICKUP
 					? null
 					: this.mapDeliveryAddress(dto.delivery_address),
-			comment: dto.comment ?? null
+			comment: dto.comment ?? null,
+			status_history: initialStatusHistory({
+				order_status: OrderStatus.NEW,
+				payment_status: PaymentStatus.PENDING
+			})
 		})
 
 		if (applied_discount) {
@@ -491,7 +538,7 @@ export class OrderService {
 		])
 
 		return {
-			items: items.map(item => this.mapOrderResponse(item)),
+			items: items.map(item => this.mapAdminListRow(item)),
 			total,
 			page,
 			limit
@@ -607,6 +654,9 @@ export class OrderService {
 
 		const nextStatus =
 			resolvePaymentStatusOnPaymentMethodChange(order.payment_status) ?? order.payment_status
+		const plan = planStatusChange(order, { payment_status: nextStatus }, 'customer', {
+			note: `Спосіб оплати: ${order.payment_method} → ${target}`
+		})
 
 		const updated = await this.orderRepository.update(
 			{
@@ -615,7 +665,7 @@ export class OrderService {
 				payment_status: { $in: PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES },
 				order_status: { $in: PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES }
 			},
-			{ $set: { payment_method: target, payment_status: nextStatus } }
+			statusChangeUpdate(plan, { payment_method: target })
 		)
 		if (!updated) {
 			const fresh = await this.orderRepository.findById(String(order._id))
@@ -661,12 +711,23 @@ export class OrderService {
 	 * There are no transactions here (standalone MongoDB), so this is deliberately one
 	 * `findOneAndUpdate` pinned on the whole state it read: nothing is written unless the
 	 * order is still exactly the unpaid LiqPay order without a live session.
+	 *
+	 * The update is a pipeline so the `FAILED → PENDING` move can be written to
+	 * `status_history` by the same atomic write (TD-0011 F6) — only when the stored status really
+	 * is `FAILED`, which no plain `$push` can express without reading the document first.
 	 */
 	async claimLiqpayCheckout(
 		orderId: Types.ObjectId,
 		now: number = Date.now()
 	): Promise<OrderDocument | null> {
-		return this.orderRepository.update(
+		const retryEntry = statusHistoryEntry(
+			'payment_status',
+			PaymentStatus.FAILED,
+			PaymentStatus.PENDING,
+			'customer',
+			new Date(now)
+		)
+		return this.orderRepository.updateWithPipeline(
 			{
 				_id: orderId,
 				payment_method: PaymentMethod.LIQPAY,
@@ -678,19 +739,33 @@ export class OrderService {
 					{ payment_status: PaymentStatus.FAILED }
 				]
 			},
-			{
-				$set: {
-					liqpay_checkout_started_at: new Date(now),
-					payment_status: PaymentStatus.PENDING
+			[
+				{
+					$set: {
+						liqpay_checkout_started_at: new Date(now),
+						payment_status: PaymentStatus.PENDING,
+						status_history: {
+							$cond: [
+								{ $eq: ['$payment_status', PaymentStatus.FAILED] },
+								{
+									$concatArrays: [
+										{ $ifNull: ['$status_history', []] },
+										[retryEntry]
+									]
+								},
+								{ $ifNull: ['$status_history', []] }
+							]
+						}
+					}
 				}
-			}
+			]
 		)
 	}
 
 	async findById(id: string) {
 		const order = await this.orderRepository.findById(id)
 		if (!order) throw new NotFoundException('Order not found')
-		return this.mapOrderResponse(order)
+		return this.mapAdminOrderResponse(order)
 	}
 
 	async findMyOrderById(userId: string, id: string) {
@@ -789,48 +864,129 @@ export class OrderService {
 		)
 		if (!updatedOrder) throw new NotFoundException('Order not found')
 
-		return this.mapOrderResponse(updatedOrder)
+		return this.mapAdminOrderResponse(updatedOrder)
 	}
 
-	async updateOrderStatus(id: string, dto: UpdateOrderStatusDto) {
-		const current = await this.orderRepository.findById(id)
-		if (!current) throw new NotFoundException('Order not found')
+	/**
+	 * Admin status change (TD-0011): only the transitions {@link adminStatusTransitions} offers,
+	 * with the payment rule, the `COMPLETED` settlement and the history entry decided together by
+	 * `planStatusChange`. The write is pinned on the state it read, so a tracker or gateway write
+	 * that landed in between makes it a 409 instead of being overwritten.
+	 */
+	async updateOrderStatus(id: string, dto: UpdateOrderStatusDto, adminId?: string) {
+		const current = await this.findOrderOrThrow(id)
 
-		const update: Record<string, unknown> = { order_status: dto.order_status }
+		const allowed = adminStatusTransitions(current)
+		// The current status again is a no-op — unless the payment rule still has something to
+		// do: re-applying CANCELLED heals an order cancelled before VOIDED existed (TD-0003).
+		if (current.order_status === dto.order_status) {
+			const heal = planStatusChange(current, { order_status: dto.order_status }, 'admin', {
+				adminId
+			})
+			if (heal.history.length === 0) return this.mapAdminOrderResponse(current)
+			return this.mapAdminOrderResponse(
+				await this.writePinned(current, statusChangeUpdate(heal))
+			)
+		}
+		if (!allowed.includes(dto.order_status)) {
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'INVALID_STATUS_TRANSITION',
+				message: 'Такий перехід статусу недоступний для цього замовлення',
+				from: current.order_status,
+				to: dto.order_status,
+				allowed
+			})
+		}
 
-		const nextPaymentStatus = resolvePaymentStatusOnOrderStatusChange(
-			current.payment_status,
-			current.order_status,
-			dto.order_status
-		)
-		if (nextPaymentStatus) update.payment_status = nextPaymentStatus
-
+		const plan = planStatusChange(current, { order_status: dto.order_status }, 'admin', {
+			adminId
+		})
 		if (
-			dto.order_status === OrderStatus.CANCELLED &&
-			current.payment_status === PaymentStatus.PAID
+			plan.order_status === OrderStatus.CANCELLED &&
+			plan.payment_status === PaymentStatus.PAID
 		) {
 			this.logger.warn(
 				`Order ${current.order_number} cancelled while PAID — refund the customer manually and set REFUNDED`
 			)
 		}
 
-		const order = await this.orderRepository.update(
-			{ _id: new Types.ObjectId(id) },
-			{ $set: update }
+		const order = await this.writePinned(current, statusChangeUpdate(plan))
+		return this.mapAdminOrderResponse(order)
+	}
+
+	async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto, adminId?: string) {
+		const current = await this.findOrderOrThrow(id)
+		const plan = planStatusChange(current, { payment_status: dto.payment_status }, 'admin', {
+			adminId
+		})
+		const extra: Record<string, unknown> = {}
+		if (dto.payment_transaction_id) extra.payment_transaction_id = dto.payment_transaction_id
+
+		const order = await this.writePinned(current, statusChangeUpdate(plan, extra))
+		return this.mapAdminOrderResponse(order)
+	}
+
+	/**
+	 * A TTN is the parcel leaving: a carrier order that has not shipped yet becomes `SHIPPED` in
+	 * the same write (TD-0011). Pickup orders and orders past that point keep their status — a
+	 * replaced TTN on a shipped order is just a new parcel number.
+	 */
+	async setTtn(id: string, dto: SetTtnDto, adminId?: string) {
+		const current = await this.findOrderOrThrow(id)
+		const plan = shipsOnTtn(current)
+			? planStatusChange(current, { order_status: OrderStatus.SHIPPED }, 'admin', {
+					adminId,
+					note: `ТТН ${dto.nova_post_ttn}`
+				})
+			: planStatusChange(current, {}, 'admin')
+
+		// A new TTN is a new parcel: what the tracker saw and alerted on was the old one's.
+		const order = await this.writePinned(
+			current,
+			statusChangeUpdate(plan, {
+				nova_post_ttn: dto.nova_post_ttn,
+				nova_post_status: null,
+				nova_post_alerted_code: null
+			})
 		)
+		return this.mapAdminOrderResponse(order)
+	}
+
+	private async findOrderOrThrow(id: string): Promise<OrderDocument> {
+		if (!Types.ObjectId.isValid(id)) throw new NotFoundException('Order not found')
+		const order = await this.orderRepository.findById(id)
 		if (!order) throw new NotFoundException('Order not found')
 		return order
 	}
 
-	async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto) {
-		const update: Record<string, unknown> = { payment_status: dto.payment_status }
-		if (dto.payment_transaction_id) update.payment_transaction_id = dto.payment_transaction_id
+	/**
+	 * An admin write pinned on both statuses it read. Mongo here is standalone (no transactions),
+	 * so this conditional update is the concurrency control: a miss means the tracker, a gateway
+	 * callback or another tab changed the order first, and the admin has to look again.
+	 */
+	private async writePinned(
+		current: OrderDocument,
+		update: Record<string, unknown>
+	): Promise<OrderDocument> {
 		const order = await this.orderRepository.update(
-			{ _id: new Types.ObjectId(id) },
-			{ $set: update }
+			{
+				_id: current._id,
+				order_status: current.order_status,
+				payment_status: current.payment_status
+			},
+			update
 		)
-		if (!order) throw new NotFoundException('Order not found')
-		return order
+		if (order) return order
+		const exists = await this.orderRepository.findById(String(current._id))
+		if (!exists) throw new NotFoundException('Order not found')
+		throw new ConflictException({
+			statusCode: 409,
+			error: 'Conflict',
+			code: 'ORDER_STATUS_CHANGED',
+			message: 'Статус замовлення щойно змінився — оновіть сторінку й спробуйте ще раз'
+		})
 	}
 
 	/**
@@ -847,137 +1003,139 @@ export class OrderService {
 	async applyGatewayPaymentResult(orderNumber: string, isPaid: boolean, transactionId?: string) {
 		const order = await this.orderRepository.findByOrderNumber(orderNumber)
 		if (!order) throw new NotFoundException(`Order ${orderNumber} not found`)
+		return this.applyGatewayResultTo(order, isPaid, transactionId, false)
+	}
 
+	/**
+	 * One attempt, pinned on the whole state read — method, order status and payment status.
+	 * The planned write carries a derived order status (a paid delivery closes, TD-0011) and the
+	 * history's `from`, and both are only right for the state that was read: pinned on less, a
+	 * callback racing the tracker could stamp COMPLETED over RETURNING. A miss re-reads once and
+	 * starts over from the fresh state, so a switched method, a cancellation or a tracker move
+	 * takes the branch it should have; a second miss is logged and left to the next callback.
+	 */
+	private async applyGatewayResultTo(
+		order: OrderDocument,
+		isPaid: boolean,
+		transactionId: string | undefined,
+		retried: boolean
+	): Promise<OrderDocument> {
+		const orderNumber = order.order_number
 		if (order.payment_status === PaymentStatus.PAID) {
 			this.logger.log(`Order ${orderNumber} already PAID, skipping gateway update`)
 			return order
 		}
 
-		if (order.order_status === OrderStatus.CANCELLED) {
-			return this.applyGatewayPaymentResultToCancelledOrder(order, isPaid, transactionId)
+		const extra: Record<string, unknown> = {}
+		if (transactionId) extra.payment_transaction_id = transactionId
+		const pinned = {
+			_id: order._id,
+			payment_method: order.payment_method,
+			order_status: order.order_status,
+			payment_status: order.payment_status
+		}
+		const retry = async (): Promise<OrderDocument> => {
+			const fresh = await this.orderRepository.findById(String(order._id))
+			if (!fresh) throw new NotFoundException(`Order ${orderNumber} not found`)
+			if (retried) {
+				this.logger.warn(
+					`Order ${orderNumber} changed twice while one gateway result was applied — left as ${fresh.order_status}/${fresh.payment_status}`
+				)
+				return fresh
+			}
+			return this.applyGatewayResultTo(fresh, isPaid, transactionId, true)
 		}
 
-		const stillLiqpay = {
-			_id: order._id,
-			payment_method: PaymentMethod.LIQPAY,
-			payment_status: { $ne: PaymentStatus.PAID }
+		if (order.order_status === OrderStatus.CANCELLED) {
+			if (!isPaid) {
+				this.logger.log(
+					`Order ${orderNumber} is CANCELLED and the gateway reported a failed payment — keeping ${order.payment_status}`
+				)
+				return order
+			}
+			// The money really arrived, so it is recorded; the customer is not told the order
+			// is paid — the admin is, because a refund is now required (TD-0003).
+			const plan = planStatusChange(
+				order,
+				{ payment_status: PaymentStatus.PAID },
+				'gateway',
+				{
+					note: 'Оплата після скасування — потрібне повернення'
+				}
+			)
+			const updated = await this.orderRepository.update(
+				pinned,
+				statusChangeUpdate(plan, extra)
+			)
+			if (!updated) return retry()
+			this.logger.warn(
+				`Order ${orderNumber} was paid via gateway after being CANCELLED — refund required`
+			)
+			this.sendCancelledOrderPaidNotification(updated).catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to notify service about a paid cancelled order ${orderNumber}`
+				)
+			)
+			return updated
 		}
 
 		if (!isPaid) {
-			const update: Record<string, unknown> = { payment_status: PaymentStatus.FAILED }
-			if (transactionId) update.payment_transaction_id = transactionId
-			const updated = await this.orderRepository.update(stillLiqpay, { $set: update })
-			if (!updated) {
-				// Paid meanwhile, or moved to an offline method: a dead card session says
-				// nothing about either.
+			if (order.payment_method !== PaymentMethod.LIQPAY) {
+				// A dead card session says nothing about an order now paid offline.
 				this.logger.log(
-					`Order ${orderNumber} is no longer an unpaid LiqPay order — failed gateway result ignored`
+					`Order ${orderNumber} is no longer a LiqPay order — failed gateway result ignored`
 				)
-				return (await this.orderRepository.findById(String(order._id))) ?? order
+				return order
 			}
+			const plan = planStatusChange(
+				order,
+				{ payment_status: PaymentStatus.FAILED },
+				'gateway'
+			)
+			const updated = await this.orderRepository.update(
+				pinned,
+				statusChangeUpdate(plan, extra)
+			)
+			if (!updated) return retry()
 			this.logger.log(`Order ${orderNumber} payment marked FAILED via gateway`)
 			return updated
 		}
 
 		if (order.payment_method === PaymentMethod.LIQPAY) {
-			const update: Record<string, unknown> = { payment_status: PaymentStatus.PAID }
-			if (transactionId) update.payment_transaction_id = transactionId
-			const updated = await this.orderRepository.update(stillLiqpay, { $set: update })
-			if (updated) {
-				this.logger.log(`Order ${orderNumber} payment marked PAID via gateway`)
-				this.sendPaidConfirmationEmail(updated).catch(err =>
-					this.logger.error(
-						{ err },
-						`Failed to send paid confirmation email for order ${orderNumber}`
-					)
+			const plan = planStatusChange(order, { payment_status: PaymentStatus.PAID }, 'gateway')
+			const updated = await this.orderRepository.update(
+				pinned,
+				statusChangeUpdate(plan, extra)
+			)
+			if (!updated) return retry()
+			this.logger.log(`Order ${orderNumber} payment marked PAID via gateway`)
+			this.sendPaidConfirmationEmail(updated).catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to send paid confirmation email for order ${orderNumber}`
 				)
-				return updated
-			}
-			// The pinned write missed: either a duplicate callback got there first, or the
-			// buyer switched methods between our read and our write.
-			const fresh = await this.orderRepository.findById(String(order._id))
-			if (!fresh) throw new NotFoundException(`Order ${orderNumber} not found`)
-			if (fresh.payment_status === PaymentStatus.PAID) {
-				this.logger.log(`Order ${orderNumber} already PAID, skipping gateway update`)
-				return fresh
-			}
-			return this.applyGatewayPaymentAfterMethodChange(fresh, transactionId)
-		}
-
-		return this.applyGatewayPaymentAfterMethodChange(order, transactionId)
-	}
-
-	/**
-	 * A gateway callback that arrives after the order was already cancelled.
-	 *
-	 * A successful payment is still recorded — the money really arrived, so it
-	 * must never be silently dropped — but the customer is NOT told the order is
-	 * paid. The admin is notified instead, because a refund is now required.
-	 * A failed payment leaves the `VOIDED` status alone.
-	 */
-	private async applyGatewayPaymentResultToCancelledOrder(
-		order: OrderDocument,
-		isPaid: boolean,
-		transactionId?: string
-	): Promise<OrderDocument> {
-		if (!isPaid) {
-			this.logger.log(
-				`Order ${order.order_number} is CANCELLED and the gateway reported a failed payment — keeping ${order.payment_status}`
 			)
-			return order
+			return updated
 		}
 
-		const update: Record<string, unknown> = { payment_status: PaymentStatus.PAID }
-		if (transactionId) update.payment_transaction_id = transactionId
-
-		const updated = await this.orderRepository.update({ _id: order._id }, { $set: update })
-		if (!updated) throw new NotFoundException(`Order ${order.order_number} not found`)
-
-		this.logger.warn(
-			`Order ${order.order_number} was paid via gateway after being CANCELLED — refund required`
-		)
-
-		this.sendCancelledOrderPaidNotification(updated).catch(err =>
-			this.logger.error(
-				{ err },
-				`Failed to notify service about a paid cancelled order ${order.order_number}`
-			)
-		)
-
-		return updated
-	}
-
-	/**
-	 * A successful card payment for an order the buyer has since moved to an offline method.
-	 *
-	 * The money really arrived: the order becomes PAID and the method goes back to LIQPAY so
-	 * nobody also collects the offline sum. The service mail says why — and says it loudest
-	 * when the order is already in fulfilment, because a COD invoice may be on the parcel.
-	 */
-	private async applyGatewayPaymentAfterMethodChange(
-		order: OrderDocument,
-		transactionId?: string
-	): Promise<OrderDocument> {
-		const update: Record<string, unknown> = {
-			payment_status: PaymentStatus.PAID,
-			payment_method: PaymentMethod.LIQPAY
-		}
-		if (transactionId) update.payment_transaction_id = transactionId
-
+		// A successful card payment for an order the buyer has since moved to an offline method.
+		// The money really arrived: the order becomes PAID and the method goes back to LIQPAY so
+		// nobody also collects the offline sum. The service mail says why — and says it loudest
+		// when the order is already in fulfilment, because a COD invoice may be on the parcel.
+		const plan = planStatusChange(order, { payment_status: PaymentStatus.PAID }, 'gateway', {
+			note: `Оплачено карткою після зміни способу на ${order.payment_method}`
+		})
 		const updated = await this.orderRepository.update(
-			{ _id: order._id, payment_status: { $ne: PaymentStatus.PAID } },
-			{ $set: update }
+			pinned,
+			statusChangeUpdate(plan, { ...extra, payment_method: PaymentMethod.LIQPAY })
 		)
-		if (!updated) {
-			this.logger.log(`Order ${order.order_number} already PAID, skipping gateway update`)
-			return (await this.orderRepository.findById(String(order._id))) ?? order
-		}
+		if (!updated) return retry()
 
 		const inFulfilment = !PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES.includes(order.order_status)
 		this.logger.warn(
-			`Order ${order.order_number} was paid via LiqPay after the buyer switched to ${order.payment_method}${inFulfilment ? ` and the order is already ${order.order_status}` : ''} — payment method restored to LIQPAY, do not collect ${order.payment_method}`
+			`Order ${orderNumber} was paid via LiqPay after the buyer switched to ${order.payment_method}${inFulfilment ? ` and the order is already ${order.order_status}` : ''} — payment method restored to LIQPAY, do not collect ${order.payment_method}`
 		)
-
 		this.emailService
 			.sendLiqpayPaidAfterMethodChange(
 				updated.customer.email,
@@ -989,10 +1147,9 @@ export class OrderService {
 			.catch(err =>
 				this.logger.error(
 					{ err },
-					`Failed to send paid-after-method-change emails for order ${order.order_number}`
+					`Failed to send paid-after-method-change emails for order ${orderNumber}`
 				)
 			)
-
 		return updated
 	}
 
@@ -1042,22 +1199,6 @@ export class OrderService {
 			order.order_number,
 			this.buildOrderEmailDetails(order)
 		)
-	}
-
-	async setTtn(id: string, dto: SetTtnDto) {
-		const order = await this.orderRepository.update(
-			{ _id: new Types.ObjectId(id) },
-			// A new TTN is a new parcel: what the tracker saw and alerted on was the old one's.
-			{
-				$set: {
-					nova_post_ttn: dto.nova_post_ttn,
-					nova_post_status: null,
-					nova_post_alerted_code: null
-				}
-			}
-		)
-		if (!order) throw new NotFoundException('Order not found')
-		return order
 	}
 
 	private buildInvoiceData(order: any, adminComment?: string): InvoiceData {

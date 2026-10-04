@@ -394,12 +394,12 @@ export const API_OPERATION = {
 		LOOKUP: {
 			summary: 'Public payment-status lookup',
 			description:
-				'Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed. Besides the payment fields the response carries `order_status`, `delivery_method` and `can_change_payment_method` — true while the payment is PENDING or FAILED and the order is NEW or CONFIRMED — so the storefront can offer the payment-method change without mirroring the rule.'
+				'Returns payment status of an order by its number. Requires the HMAC access token issued with the order (LiqPay result_url / create response). Public endpoint; a wrong token yields 404 so order numbers cannot be probed. Besides the payment fields the response carries `order_status`, `delivery_method` and `can_change_payment_method` — true while the payment is PENDING or FAILED and the order has not shipped (NEW, PROCESSING or CONFIRMED — no TTN yet) — so the storefront can offer the payment-method change without mirroring the rule.'
 		},
 		LOOKUP_PAYMENT_METHOD: {
 			summary: 'Change payment method (public, token)',
 			description:
-				'Lets the buyer switch an unpaid order (payment PENDING or FAILED, order NEW or CONFIRMED) from LiqPay to COD, IBAN or CASH. Same HMAC token as the lookup; a wrong token yields 404. The delivery compatibility rule applies (COD only with NOVA_POST/COURIER, CASH only with PICKUP → 400). A FAILED card payment becomes PENDING. Same method again is a 200 no-op. Locked states answer 409 `code: PAYMENT_METHOD_LOCKED`. Sends the customer the confirmation for the new method and a service email. Rate-limited to 5 requests per minute per IP.'
+				'Lets the buyer switch an unpaid order (payment PENDING or FAILED, order not yet shipped: NEW, PROCESSING or CONFIRMED) from LiqPay to COD, IBAN or CASH. Same HMAC token as the lookup; a wrong token yields 404. The delivery compatibility rule applies (COD only with NOVA_POST/COURIER, CASH only with PICKUP → 400). A FAILED card payment becomes PENDING. Same method again is a 200 no-op. Locked states answer 409 `code: PAYMENT_METHOD_LOCKED`. Sends the customer the confirmation for the new method and a service email. Rate-limited to 5 requests per minute per IP.'
 		},
 		MY_PAYMENT_METHOD: {
 			summary: 'Change payment method (my order)',
@@ -413,7 +413,8 @@ export const API_OPERATION = {
 		},
 		GET_BY_ID: {
 			summary: 'Get order by id',
-			description: 'Get full order details by MongoDB id. Admin only.'
+			description:
+				'Get full order details by MongoDB id, with `status_history` and `allowed_status_transitions` — the statuses PATCH /orders/:id/status accepts from the current one (TD-0011). Admin only.'
 		},
 		UPDATE: {
 			summary: 'Update order',
@@ -422,16 +423,18 @@ export const API_OPERATION = {
 		},
 		UPDATE_ORDER_STATUS: {
 			summary: 'Update order status',
-			description: 'Change the fulfillment status of an order. Admin only.'
+			description:
+				'Change the fulfillment status of an order (TD-0011). Only the transitions listed in `allowed_status_transitions` are accepted; anything else is 409 `INVALID_STATUS_TRANSITION` with `from`, `to` and `allowed`. Before shipping NEW, PROCESSING (buyer contacted, confirmation awaited) and CONFIRMED move freely among themselves. `COMPLETED` is never set by hand (400) — a DELIVERED order becomes COMPLETED once paid; `SHIPPED` is set by the TTN (400 here). Cancelling, or receiving back (`RETURNED`), an unpaid order voids its payment; reopening a cancelled order (`CANCELLED → NEW`) expects payment again. The write is pinned on the statuses read: a concurrent change answers 409 `ORDER_STATUS_CHANGED`. Every change is appended to `status_history` with the admin id. Returns the admin order shape. Admin only.'
 		},
 		UPDATE_PAYMENT_STATUS: {
 			summary: 'Update payment status',
 			description:
-				'Change the payment status of an order. Optionally record the payment transaction id. Admin only.'
+				'Change the payment status of an order. Optionally record the payment transaction id. Marking a DELIVERED order PAID makes it COMPLETED in the same write; taking PAID away from a COMPLETED order makes it DELIVERED again (TD-0011). Pinned like the status change (409 `ORDER_STATUS_CHANGED`), recorded in `status_history`. Returns the admin order shape. Admin only.'
 		},
 		SET_TTN: {
 			summary: 'Set Nova Post TTN',
-			description: 'Attach the Nova Post tracking number (ТТН) to an order. Admin only.'
+			description:
+				'Attach the Nova Post tracking number (ТТН) to an order. For a NOVA_POST / COURIER order that has not shipped yet (NEW, PROCESSING, CONFIRMED) the same write sets `order_status = SHIPPED` and records it in `status_history` (TD-0011); a pickup order or one past shipping keeps its status. Resets the tracker fields. Returns the admin order shape. Admin only.'
 		},
 		GENERATE_INVOICE: {
 			summary: 'Generate order invoice PDF',

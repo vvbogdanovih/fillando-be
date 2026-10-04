@@ -62,6 +62,7 @@ abstract class BaseRepository<T> {
 | `findOne`  | `(filter: QueryFilter<T>)`                       | `HydratedDocument<T> \| null` | Single doc, not lean                                  |
 | `findAll`  | `(filter?: QueryFilter<T>)`                      | `T[]`                         | **Lean** — no document methods                        |
 | `update`   | `(filter: QueryFilter<T>, data: UpdateQuery<T>)` | `HydratedDocument<T> \| null` | `findOneAndUpdate` with `{ returnDocument: 'after' }` |
+| `updateWithPipeline` | `(filter: QueryFilter<T>, stages: PipelineStage.Set[])` | `HydratedDocument<T> \| null` | Same, with an aggregation pipeline (`updatePipeline: true`) — a field's new value may depend on its stored value; see §7 |
 | `delete`   | `(filter: QueryFilter<T>)`                       | `boolean`                     | `deleteOne`, returns `deletedCount > 0`               |
 
 Single-record reads (`findById`, `findOne`) return hydrated documents so callers can use virtuals like `.id`.
@@ -227,6 +228,17 @@ renameVariants(renames: Array<{ id: Types.ObjectId; name: string }>): Promise<nu
 The service plans in memory between the two calls and returns how many documents moved, which is
 what the log line reports. A `findById` per variant, or an `update` per variant, is the shape to
 avoid — it is also the shape that makes a partial failure impossible to reason about.
+
+**A write that must record what it changed, without reading first, is a pipeline update.**
+`OrderService.claimLiqpayCheckout` (TD-0009 §5.4.3) is one conditional `findOneAndUpdate` that
+moves a `FAILED` payment back to `PENDING`; TD-0011 wants that move in `status_history`, but a
+plain `$push` cannot be made conditional on the stored value, and reading first would reopen the
+race the single write exists to close. `updateWithPipeline` runs
+`[{ $set: { status_history: { $cond: [{ $eq: ['$payment_status', 'FAILED'] }, { $concatArrays: [...] }, '$status_history'] } } }]`
+instead — the filter still pins the state, and the stage decides from the document it matched.
+Mongoose 9 refuses an array in `update` unless `updatePipeline` is set, which is why this is a
+separate method rather than an overload. Reach for it only when the new value depends on the
+old one; a plain `$set`/`$push` stays `update`.
 
 **Derived fields are only ever written from their source of truth.** The dictionary is written
 first, the copies second (see `ColorService.update`). Never the reverse order, and never a

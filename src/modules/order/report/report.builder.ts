@@ -131,7 +131,11 @@ export interface SalesReportData {
 	subtotalMismatch: number | null
 }
 
-const NON_REVENUE_STATUSES = new Set<OrderStatus>([OrderStatus.CANCELLED, OrderStatus.RETURNED])
+const NON_REVENUE_STATUSES = new Set<OrderStatus>([
+	OrderStatus.CANCELLED,
+	OrderStatus.RETURNING,
+	OrderStatus.RETURNED
+])
 
 function round2(value: number): number {
 	return Math.round((value + Number.EPSILON) * 100) / 100

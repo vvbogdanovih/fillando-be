@@ -94,6 +94,25 @@ export class AppliedDiscount {
 
 export const AppliedDiscountSchema = SchemaFactory.createForClass(AppliedDiscount)
 
+/**
+ * A fixed-amount discount the admin grants after checkout (the buyer asked for 50 ₴ off).
+ * It stacks on top of the coupon and is only allowed while the order is unpaid — after that
+ * the money has moved and taking it back is a refund, not a discount.
+ */
+@Schema({ _id: false })
+export class ManualDiscount {
+	@Prop({ required: true, min: 0 })
+	amount: number
+
+	@Prop({ required: true })
+	reason: string
+
+	@Prop({ type: Date, required: true })
+	applied_at: Date
+}
+
+export const ManualDiscountSchema = SchemaFactory.createForClass(ManualDiscount)
+
 /** The last Nova Post tracking result the hourly job saw for `nova_post_ttn`. */
 @Schema({ _id: false })
 export class NovaPostTrackingStatus {
@@ -160,6 +179,9 @@ export class Order {
 
 	@Prop({ type: AppliedDiscountSchema, default: null })
 	applied_discount: AppliedDiscount | null
+
+	@Prop({ type: ManualDiscountSchema, default: null })
+	manual_discount: ManualDiscount | null
 
 	@Prop({ type: String, enum: PaymentMethod, required: true })
 	payment_method: PaymentMethod

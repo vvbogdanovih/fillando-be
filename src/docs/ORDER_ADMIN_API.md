@@ -121,6 +121,7 @@ Editable fields:
 - `delivery_method`
 - `delivery_address`
 - `comment`
+- `manual_discount` — `{ amount, reason }` or `null` to remove it (see below)
 
 Calculation rules:
 
@@ -128,7 +129,18 @@ Calculation rules:
 - each line total is calculated as `price * quantity`
 - `subtotal_price` is recalculated from all line totals
 - if `applied_discount` exists, its `discount_percent` is preserved and `discount_amount` is recalculated from the new `subtotal_price`
-- `total_price` is recalculated as `subtotal_price - discount_amount` (or equal to `subtotal_price` when no discount is applied)
+- `total_price` is recalculated as `subtotal_price - discount_amount - manual_discount.amount` (each term 0 when absent)
+
+Manual discount (`manual_discount`) — a fixed amount in UAH the admin grants after checkout,
+e.g. the buyer asked for 50 ₴ off by phone:
+
+- `amount` > 0 (2 decimals max), `reason` 1..300 chars (trimmed; blank → 400); stored with `applied_at`
+- stacks on top of the coupon; `amount` greater than `subtotal_price - discount_amount` → `400 MANUAL_DISCOUNT_TOO_LARGE`. An `items` edit keeps it and re-checks the same limit
+- `payment_status` `PAID` / `REFUNDED` → `409 MANUAL_DISCOUNT_ORDER_PAID`: once the money moved it is a refund, handled outside the system
+- an open LiqPay session (`liqpay_retry_after_seconds > 0`) → `409 LIQPAY_SESSION_ACTIVE` with `retry_after_seconds`: that session was built with the old amount, and the callback is checked against `total_price` (±0.01), so the admin waits the cooldown out rather than invite a second charge
+- the buyer projection (`GET /orders/me*`) carries `{ amount }` only — `reason` and `applied_at` are admin-only
+- the invoice prints «Знижка магазину» (reason on the internal copy only); the sales report adds it to the order's discount, spreads it over the lines like the coupon and marks it «ручна»
+- the Nova Post COD amount is set by the admin in the NP cabinet — use the new `total_price` there
 
 Delivery validation:
 

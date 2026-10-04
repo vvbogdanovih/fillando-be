@@ -5426,6 +5426,29 @@
           "discount_amount"
         ]
       },
+      "OrderResponseManualDiscountDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "example": 50
+          },
+          "reason": {
+            "type": "string",
+            "example": "Клієнт попросив знижку по телефону",
+            "description": "Admin responses only — never sent to the buyer"
+          },
+          "applied_at": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-02T10:00:00.000Z",
+            "description": "Admin responses only"
+          }
+        },
+        "required": [
+          "amount"
+        ]
+      },
       "OrderResponseDeliveryAddressDto": {
         "type": "object",
         "properties": {
@@ -5556,6 +5579,15 @@
               }
             ]
           },
+          "manual_discount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderResponseManualDiscountDto"
+              }
+            ]
+          },
           "payment_method": {
             "type": "string",
             "enum": [
@@ -5673,6 +5705,7 @@
           "subtotal_price",
           "total_price",
           "applied_discount",
+          "manual_discount",
           "payment_method",
           "payment_status",
           "payment_transaction_id",
@@ -5719,6 +5752,15 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/OrderResponseDiscountDto"
+              }
+            ]
+          },
+          "manual_discount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderResponseManualDiscountDto"
               }
             ]
           },
@@ -5834,6 +5876,7 @@
           "subtotal_price",
           "total_price",
           "applied_discount",
+          "manual_discount",
           "payment_method",
           "payment_status",
           "payment_transaction_id",
@@ -6015,6 +6058,26 @@
         "type": "object",
         "properties": {}
       },
+      "ManualDiscountDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "example": 50,
+            "minimum": 0.01,
+            "description": "Fixed discount in UAH"
+          },
+          "reason": {
+            "type": "string",
+            "example": "Клієнт попросив знижку по телефону",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "amount",
+          "reason"
+        ]
+      },
       "AdminUpdateOrderDto": {
         "type": "object",
         "properties": {
@@ -6050,6 +6113,15 @@
           },
           "delivery_address": {
             "$ref": "#/components/schemas/UpdateOrderAddressDto"
+          },
+          "manual_discount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManualDiscountDto"
+              }
+            ]
           },
           "comment": {
             "type": "string",

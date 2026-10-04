@@ -22,6 +22,8 @@ export interface ReportSourceOrder {
 	subtotal_price: number
 	total_price: number
 	applied_discount: { code: string; discount_amount: number } | null
+	/** Optional: orders written before the field existed carry no key at all. */
+	manual_discount?: { amount: number } | null
 }
 
 export interface ReportFilters {
@@ -74,6 +76,8 @@ export interface OrderRow {
 	subtotal: number
 	discount: number
 	discountCode: string | null
+	/** The admin's fixed discount, already included in `discount`; 0 when there is none. */
+	manualDiscount: number
 	total: number
 }
 
@@ -171,18 +175,25 @@ function toBreakdown<Key extends string>(
 		.sort((a, b) => b.amount - a.amount)
 }
 
+/** Coupon plus the admin's fixed discount — everything taken off the order's subtotal. */
+function orderDiscount(order: ReportSourceOrder): number {
+	return (order.applied_discount?.discount_amount ?? 0) + (order.manual_discount?.amount ?? 0)
+}
+
 /**
  * The coupon's share of each line of one order, allocated in proportion to line value.
  *
  * A coupon is a flat percent off the whole subtotal (`order.service.ts`), so a share proportional
  * to line value is the very discount the buyer got on that line, not an approximation of it. The
  * rounding residual goes to the largest line, so the parts add back up to the order's stored
- * discount exactly and section 1 keeps reconciling with the period totals.
+ * discount exactly and section 1 keeps reconciling with the period totals. The admin's fixed
+ * discount has no line of its own, so it is spread the same way — the buyer was told «50 ₴ off
+ * the order», and proportional is the only split that does not invent a preference.
  */
 function allocateDiscount(order: ReportSourceOrder): number[] {
 	const lineValues = order.items.map(item => item.price * item.quantity)
 	const base = lineValues.reduce((acc, value) => acc + value, 0)
-	const discount = order.applied_discount?.discount_amount ?? 0
+	const discount = orderDiscount(order)
 
 	if (discount <= 0 || base <= 0) return lineValues.map(() => 0)
 
@@ -301,8 +312,9 @@ export function buildSalesReport(
 			amount: round2(item.price * item.quantity)
 		})),
 		subtotal: round2(order.subtotal_price),
-		discount: round2(order.applied_discount?.discount_amount ?? 0),
+		discount: round2(orderDiscount(order)),
 		discountCode: order.applied_discount?.code ?? null,
+		manualDiscount: round2(order.manual_discount?.amount ?? 0),
 		total: round2(order.total_price)
 	}))
 

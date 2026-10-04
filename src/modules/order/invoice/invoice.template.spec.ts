@@ -120,3 +120,23 @@ describe('invoiceTemplate — buyer-typed text is escaped', () => {
 		expect(html).toContain('Прошу зателефонувати о 18:00 — під&#39;їзд 2')
 	})
 })
+
+describe('invoiceTemplate — ручна знижка', () => {
+	const withDiscount: InvoiceData = {
+		...DATA,
+		totalPrice: 868,
+		manualDiscount: { amount: 50, reason: 'ВНУТРІШНЯ-ПРИЧИНА' }
+	}
+
+	it('prints the discount and its reason on the internal copy', () => {
+		const html = invoiceTemplate(withDiscount)
+		expect(html).toContain('Знижка магазину')
+		expect(html).toContain('ВНУТРІШНЯ-ПРИЧИНА')
+	})
+
+	it('prints the discount without the reason on the customer copy', () => {
+		const html = invoiceTemplate(withDiscount, InvoiceAudience.CUSTOMER)
+		expect(html).toContain('Знижка магазину')
+		expect(html).not.toContain('ВНУТРІШНЯ-ПРИЧИНА')
+	})
+})

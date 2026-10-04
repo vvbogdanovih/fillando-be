@@ -39,6 +39,7 @@ export interface InvoiceData {
 		discount_percent: number
 		discount_amount: number
 	} | null
+	manualDiscount?: { amount: number; reason: string } | null
 	deliveryMethod: DeliveryMethod
 	deliveryAddress: {
 		city_name: string
@@ -83,6 +84,15 @@ export function invoiceTemplate(
 		<div style="margin-top:8px;">
 			<span>Знижка (${escapeHtml(data.appliedDiscount.code)}, ${data.appliedDiscount.discount_percent}%):</span>
 			<span style="float:right;">-${formatPrice(data.appliedDiscount.discount_amount)}</span>
+		</div>`
+		: ''
+
+	// The reason is the admin's note on why the buyer got it — ours, like the vendor article.
+	const manualDiscountSection = data.manualDiscount
+		? `
+		<div style="margin-top:8px;">
+			<span>Знижка магазину${showVendorSku ? ` (${escapeHtml(data.manualDiscount.reason)})` : ''}:</span>
+			<span style="float:right;">-${formatPrice(data.manualDiscount.amount)}</span>
 		</div>`
 		: ''
 
@@ -169,6 +179,7 @@ export function invoiceTemplate(
 					<span>${formatPrice(data.subtotalPrice)}</span>
 				</div>
 				${discountSection}
+				${manualDiscountSection}
 				<div style="font-size:16px;font-weight:bold;border-top:2px solid #111;padding-top:6px;margin-top:6px;">
 					<span>Загальна сума:</span>
 					<span>${formatPrice(data.totalPrice)}</span>

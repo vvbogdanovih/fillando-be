@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common'
 import { Types } from 'mongoose'
 import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
-import type { OrderDocument } from 'src/database/mongoose/schemas/order.schema'
+import type { ManualDiscount, OrderDocument } from 'src/database/mongoose/schemas/order.schema'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
@@ -356,8 +356,11 @@ export class OrderService {
 		}
 		const customerOrder: Record<string, unknown> = { ...mapped }
 		delete customerOrder.status_history
+		// The amount is the buyer's; the reason is the admin's note about them.
+		const { manual_discount } = mapped as { manual_discount?: ManualDiscount | null }
 		return {
 			...customerOrder,
+			...(manual_discount ? { manual_discount: { amount: manual_discount.amount } } : {}),
 			can_change_payment_method: canCustomerChangePaymentMethod(paymentState),
 			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(paymentState),
 			items: mapped.items.map((item: any) => {
@@ -797,24 +800,56 @@ export class OrderService {
 
 		const updateSet: Record<string, unknown> = {}
 
-		if (dto.items) {
-			const { orderItems, subtotalPrice } = await this.buildOrderItems(dto.items)
-			updateSet.items = orderItems
-			updateSet.subtotal_price = subtotalPrice
-			if (order.applied_discount) {
-				const discountAmount = Number(
-					((subtotalPrice * order.applied_discount.discount_percent) / 100).toFixed(2)
-				)
-				updateSet.applied_discount = {
-					coupon_id: order.applied_discount.coupon_id,
-					code: order.applied_discount.code,
-					discount_percent: order.applied_discount.discount_percent,
-					discount_amount: discountAmount
+		if (dto.manual_discount !== undefined) this.assertManualDiscountAllowed(order)
+
+		if (dto.items || dto.manual_discount !== undefined) {
+			let subtotalPrice = order.subtotal_price
+			let couponAmount = order.applied_discount?.discount_amount ?? 0
+
+			if (dto.items) {
+				const built = await this.buildOrderItems(dto.items)
+				subtotalPrice = built.subtotalPrice
+				updateSet.items = built.orderItems
+				updateSet.subtotal_price = subtotalPrice
+				if (order.applied_discount) {
+					couponAmount = Number(
+						((subtotalPrice * order.applied_discount.discount_percent) / 100).toFixed(2)
+					)
+					updateSet.applied_discount = {
+						coupon_id: order.applied_discount.coupon_id,
+						code: order.applied_discount.code,
+						discount_percent: order.applied_discount.discount_percent,
+						discount_amount: couponAmount
+					}
 				}
-				updateSet.total_price = Number((subtotalPrice - discountAmount).toFixed(2))
-			} else {
-				updateSet.total_price = subtotalPrice
 			}
+
+			let manualDiscount = order.manual_discount ?? null
+			if (dto.manual_discount !== undefined) {
+				const reason = dto.manual_discount?.reason.trim()
+				if (dto.manual_discount && !reason) {
+					throw new BadRequestException('manual_discount.reason must not be blank')
+				}
+				manualDiscount = dto.manual_discount
+					? {
+							amount: dto.manual_discount.amount,
+							reason: reason!,
+							applied_at: new Date()
+						}
+					: null
+				updateSet.manual_discount = manualDiscount
+			}
+
+			const payable = Number((subtotalPrice - couponAmount).toFixed(2))
+			if (manualDiscount && manualDiscount.amount > payable) {
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'MANUAL_DISCOUNT_TOO_LARGE',
+					message: `Знижка ${manualDiscount.amount} ₴ більша за суму до сплати ${payable} ₴`
+				})
+			}
+			updateSet.total_price = Number((payable - (manualDiscount?.amount ?? 0)).toFixed(2))
 		}
 
 		if (dto.customer) {
@@ -865,6 +900,36 @@ export class OrderService {
 		if (!updatedOrder) throw new NotFoundException('Order not found')
 
 		return this.mapAdminOrderResponse(updatedOrder)
+	}
+
+	/**
+	 * A manual discount changes `total_price`, which is what the buyer pays and what LiqPay's
+	 * callback is checked against. Once the money has moved it is a refund, not a discount; and
+	 * while a card session is open it was built with the old amount — a second session at the
+	 * new amount is the double charge the cooldown exists to prevent, so the admin waits it out.
+	 */
+	private assertManualDiscountAllowed(order: OrderDocument): void {
+		if (
+			order.payment_status === PaymentStatus.PAID ||
+			order.payment_status === PaymentStatus.REFUNDED
+		) {
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'MANUAL_DISCOUNT_ORDER_PAID',
+				message: 'Замовлення вже оплачене — знижку можна оформити лише як повернення коштів'
+			})
+		}
+		const retryAfter = liqpayRetryAfterSeconds(order)
+		if (retryAfter) {
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'LIQPAY_SESSION_ACTIVE',
+				message: 'Покупець зараз оплачує карткою за старою сумою — спробуйте пізніше',
+				retry_after_seconds: retryAfter
+			})
+		}
 	}
 
 	/**
@@ -1201,6 +1266,13 @@ export class OrderService {
 		)
 	}
 
+	private invoiceManualDiscount(order: {
+		manual_discount?: ManualDiscount | null
+	}): InvoiceData['manualDiscount'] {
+		const discount = order.manual_discount
+		return discount ? { amount: discount.amount, reason: discount.reason } : null
+	}
+
 	private buildInvoiceData(order: any, adminComment?: string): InvoiceData {
 		return {
 			orderNumber: order.order_number,
@@ -1230,6 +1302,7 @@ export class OrderService {
 						discount_amount: order.applied_discount.discount_amount
 					}
 				: null,
+			manualDiscount: this.invoiceManualDiscount(order),
 			deliveryMethod: order.delivery_method,
 			deliveryAddress: order.delivery_address ?? null,
 			novaPostTtn: order.nova_post_ttn ?? null,

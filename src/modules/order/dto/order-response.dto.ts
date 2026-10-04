@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import {
 	DeliveryMethod,
 	OrderStatus,
@@ -78,6 +78,23 @@ class OrderStatusHistoryEntryDto {
 	note?: string
 }
 
+class OrderResponseManualDiscountDto {
+	@ApiProperty({ example: 50 })
+	amount: number
+
+	@ApiPropertyOptional({
+		example: 'Клієнт попросив знижку по телефону',
+		description: 'Admin responses only — never sent to the buyer'
+	})
+	reason?: string
+
+	@ApiPropertyOptional({
+		example: '2026-10-02T10:00:00.000Z',
+		description: 'Admin responses only'
+	})
+	applied_at?: Date
+}
+
 class OrderResponseItemDto {
 	@ApiProperty({ example: '664f1b2c3d4e5f6a7b8c9d0e' })
 	variant_id: string
@@ -128,6 +145,9 @@ export class OrderResponseDto {
 
 	@ApiProperty({ type: OrderResponseDiscountDto, nullable: true })
 	applied_discount: OrderResponseDiscountDto | null
+
+	@ApiProperty({ type: OrderResponseManualDiscountDto, nullable: true })
+	manual_discount: OrderResponseManualDiscountDto | null
 
 	@ApiProperty({ enum: PaymentMethod })
 	payment_method: PaymentMethod

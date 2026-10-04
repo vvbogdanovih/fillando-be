@@ -122,6 +122,7 @@ describe('Partner catalogue MongoDB', () => {
 			sku: 'A003',
 			name: 'Variant',
 			price: 500.25,
+			sale_price: null,
 			currency: 'UAH',
 			description_html: '<p>PLA</p>',
 			category: { id: catA.toString(), name: 'A', slug: 'a' },

@@ -203,9 +203,14 @@ someone decides otherwise. For the product domain the allowlists live in
 
 | Export                                               | Used by                                                                 | Fields                                                                                                                      |
 | ---------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `toPublicVariant(variant)` + `PUBLIC_VARIANT_FIELDS` | `GET /products/by-slug/:slug` (the variant and its siblings)            | `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`       |
+| `toPublicVariant(variant)` + `PUBLIC_VARIANT_FIELDS` | `GET /products/by-slug/:slug` (the variant and its siblings)            | `id`, `name`, `slug`, `sku`, `price`, `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`, `sale_price`, `promo_percent`, `promo_ends_at` |
 | `toPublicAttributes(attributes, requiredAttributes)`  | `GET /products/by-slug/:slug` (`product.attributes`)                    | `k`, `l`, `v`, `unit`                                                                                                       |
-| `PRICE_SHEET_PUBLIC_PROJECTION`                      | `ProductVariantRepository.findPriceSheet` → `GET /products/price-sheet` | `id`, `product_name`, `slug`, `v_value`, `sku`, `price`, `stock`, `stock_updated_at`, `image`, `attributes`, `variant_type` |
+| `PRICE_SHEET_PUBLIC_PROJECTION`                      | `ProductVariantRepository.findPriceSheet` → `GET /products/price-sheet` | `id`, `product_name`, `slug`, `v_value`, `sku`, `price`, `stock`, `stock_updated_at`, `image`, `attributes`, `variant_type`, `sale_price`, `promo_percent`, `promo_ends_at` |
+
+The three promotion fields (TD-0012) are the shop's own sale and say nothing about the supplier;
+they are derived from the stored `promo_percent` / `promo_ends_at` by
+`src/modules/product/promo-pricing.ts` and are null outside an active promotion. The catalogue and
+search projections carry the same trio through `publicPromoProjection()`.
 
 Never on either list: `vendor_product_sku`, `prom_id`, `prom_base_price`, `prom_discount_ratio`,
 `prom_discount_seen_at` — the shop resells at supplier price + margin, so any of them lets a visitor

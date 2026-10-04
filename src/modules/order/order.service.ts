@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common'
 import { Types } from 'mongoose'
 import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
-import type { OrderDocument } from 'src/database/mongoose/schemas/order.schema'
+import type { ManualDiscount, OrderDocument } from 'src/database/mongoose/schemas/order.schema'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
@@ -25,9 +25,16 @@ import {
 	canCustomerChangePaymentMethod,
 	PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES,
 	PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES,
-	resolvePaymentStatusOnOrderStatusChange,
 	resolvePaymentStatusOnPaymentMethodChange
 } from './helpers/payment-status.helpers'
+import {
+	adminStatusTransitions,
+	initialStatusHistory,
+	planStatusChange,
+	shipsOnTtn,
+	statusChangeUpdate,
+	statusHistoryEntry
+} from './helpers/order-status.rules'
 import { InvoicePdfProvider } from './invoice/invoice-pdf.provider'
 import { invoiceTemplate, type InvoiceData } from './invoice/invoice.template'
 import { ReportProvider } from './report/report.provider'
@@ -46,6 +53,7 @@ import {
 	liqpaySessionExpiredBefore
 } from './helpers/liqpay-session.helpers'
 import { GenerateReportDto } from './dto/generate-report.dto'
+import { activePromo } from 'src/modules/product/promo-pricing'
 
 /**
  * The variant fields an order line is built from. `ProductVariantRepository.findByIds` answers
@@ -59,9 +67,25 @@ interface OrderableVariant {
 	sku: string
 	vendor_product_sku?: string | null
 	price: number
+	promo_percent?: number | null
+	promo_ends_at?: Date | null
 	stock: number
 	status: ProductStatus
 	images?: string[] | null
+}
+
+/**
+ * The admin order shape: the stored document plus the two TD-0011 fields derived per response.
+ * `mapOrderResponse` is untyped, so this names what the admin endpoints are known to return.
+ */
+type AdminOrderResponse = Record<string, unknown> & {
+	order_number: string
+	order_status: OrderStatus
+	payment_status: PaymentStatus
+	payment_method: PaymentMethod
+	delivery_method: DeliveryMethod
+	allowed_status_transitions: OrderStatus[]
+	ships_on_ttn: boolean
 }
 
 @Injectable()
@@ -187,6 +211,12 @@ export class OrderService {
 		)
 	}
 
+	/**
+	 * Prices every line at the moment of the write (TD-0012): `price` is what the buyer pays —
+	 * the sale price while the variant's promotion is on — `list_price` the regular price, so the
+	 * snapshot can still say what the sale was. `couponEligibleSubtotal` is the part of the
+	 * subtotal a coupon may act on: promo lines are already discounted and are left out.
+	 */
 	private async buildOrderItems(items: Array<{ variant_id: string; quantity: number }>): Promise<{
 		orderItems: Array<{
 			variant_id: Types.ObjectId
@@ -195,10 +225,13 @@ export class OrderService {
 			sku: string
 			vendor_sku: string | null
 			price: number
+			list_price: number
+			promo_percent: number | null
 			quantity: number
 			image: string | null
 		}>
 		subtotalPrice: number
+		couponEligibleSubtotal: number
 	}> {
 		const variantIds = items.map(i => new Types.ObjectId(i.variant_id))
 		const variants = await this.productVariantRepository.findByIds(variantIds)
@@ -210,10 +243,15 @@ export class OrderService {
 			sku: string
 			vendor_sku: string | null
 			price: number
+			list_price: number
+			promo_percent: number | null
 			quantity: number
 			image: string | null
 		}> = []
 		let subtotalPrice = 0
+		let couponEligibleSubtotal = 0
+		// One instant for the whole order: two lines of one variant must not straddle an expiry.
+		const now = new Date()
 
 		for (const item of items) {
 			const variant = variantMap.get(item.variant_id) as OrderableVariant | undefined
@@ -263,15 +301,20 @@ export class OrderService {
 				})
 			}
 
-			const linePrice = this.toLineTotal(variant.price, item.quantity)
+			const promo = activePromo(variant, now)
+			const unitPrice = promo?.sale_price ?? variant.price
+			const linePrice = this.toLineTotal(unitPrice, item.quantity)
 			subtotalPrice += linePrice
+			if (!promo) couponEligibleSubtotal += linePrice
 			orderItems.push({
 				variant_id: new Types.ObjectId(item.variant_id),
 				product_id: variant.product_id,
 				name: variant.name,
 				sku: variant.sku,
 				vendor_sku: variant.vendor_product_sku ?? null,
-				price: variant.price,
+				price: unitPrice,
+				list_price: variant.price,
+				promo_percent: promo?.percent ?? null,
 				quantity: item.quantity,
 				image: variant.images?.[0] ?? null
 			})
@@ -279,24 +322,54 @@ export class OrderService {
 
 		return {
 			orderItems,
-			subtotalPrice: Number(subtotalPrice.toFixed(2))
+			subtotalPrice: Number(subtotalPrice.toFixed(2)),
+			couponEligibleSubtotal: Number(couponEligibleSubtotal.toFixed(2))
 		}
 	}
 
 	private mapOrderResponse(order: any) {
 		const plainOrder = typeof order?.toObject === 'function' ? order.toObject() : order
+		type StoredItem = {
+			price: number
+			quantity: number
+			list_price?: number | null
+			promo_percent?: number | null
+		}
 		return {
 			...plainOrder,
-			items: plainOrder.items.map((item: any) => ({
+			items: plainOrder.items.map((item: StoredItem) => ({
 				...item,
+				// Orders written before TD-0012 carry no list price: the regular price was the price.
+				list_price: item.list_price ?? item.price,
+				promo_percent: item.promo_percent ?? null,
 				line_total: this.toLineTotal(item.price, item.quantity)
 			}))
 		}
 	}
 
 	/**
+	 * Admin order detail: the base shape plus the status actions the admin may take from here
+	 * (TD-0011). The rule lives here, so the admin UI renders buttons without mirroring it.
+	 */
+	private mapAdminOrderResponse(order: unknown): AdminOrderResponse {
+		const mapped = this.mapOrderResponse(order) as AdminOrderResponse
+		return {
+			...mapped,
+			allowed_status_transitions: adminStatusTransitions(mapped),
+			ships_on_ttn: shipsOnTtn(mapped)
+		}
+	}
+
+	/** An admin list row: the base shape without the history, which only the detail shows. */
+	private mapAdminListRow(order: unknown) {
+		const row = this.mapOrderResponse(order) as Record<string, unknown>
+		delete row.status_history
+		return row
+	}
+
+	/**
 	 * Customer-facing shape (POST /orders, GET /orders/me*): like {@link mapOrderResponse}
-	 * minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
+	 * minus `status_history` (who changed what, admin ids — internal) and minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
 	 * and vendor e-mail only and must never reach a buyer.
 	 *
 	 * Plus the two derived payment fields the public lookup already carries, computed by the
@@ -313,8 +386,13 @@ export class OrderService {
 			order_status: OrderStatus
 			liqpay_checkout_started_at: Date | null
 		}
+		const customerOrder: Record<string, unknown> = { ...mapped }
+		delete customerOrder.status_history
+		// The amount is the buyer's; the reason is the admin's note about them.
+		const { manual_discount } = mapped as { manual_discount?: ManualDiscount | null }
 		return {
-			...mapped,
+			...customerOrder,
+			...(manual_discount ? { manual_discount: { amount: manual_discount.amount } } : {}),
 			can_change_payment_method: canCustomerChangePaymentMethod(paymentState),
 			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(paymentState),
 			items: mapped.items.map((item: any) => {
@@ -328,7 +406,9 @@ export class OrderService {
 	async create(dto: CreateOrderDto, userId?: string) {
 		this.validateDeliveryData(dto.delivery_method, dto.delivery_address)
 		this.validatePaymentDeliveryCombination(dto.payment_method, dto.delivery_method)
-		const { orderItems, subtotalPrice } = await this.buildOrderItems(dto.items)
+		const { orderItems, subtotalPrice, couponEligibleSubtotal } = await this.buildOrderItems(
+			dto.items
+		)
 
 		let applied_discount: {
 			coupon_id: Types.ObjectId
@@ -359,8 +439,21 @@ export class OrderService {
 				})
 			}
 
+			// A coupon acts on the lines that are not already on promotion (TD-0012). When every
+			// line is, the coupon would buy nothing — refused rather than recorded at 0, so a
+			// single-use code is not burned for it.
+			if (couponEligibleSubtotal <= 0) {
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'COUPON_NOT_APPLICABLE',
+					message: `Купон «${formattedCouponCode}» не діє на акційні товари, а в замовленні лише вони — оформіть його без купона`
+				})
+			}
 			const discountPercent = coupon.discount_percent
-			const discountAmount = Number(((subtotalPrice * discountPercent) / 100).toFixed(2))
+			const discountAmount = Number(
+				((couponEligibleSubtotal * discountPercent) / 100).toFixed(2)
+			)
 			total_price = Number((subtotalPrice - discountAmount).toFixed(2))
 			applied_discount = {
 				coupon_id: coupon._id,
@@ -388,7 +481,11 @@ export class OrderService {
 				dto.delivery_method === DeliveryMethod.PICKUP
 					? null
 					: this.mapDeliveryAddress(dto.delivery_address),
-			comment: dto.comment ?? null
+			comment: dto.comment ?? null,
+			status_history: initialStatusHistory({
+				order_status: OrderStatus.NEW,
+				payment_status: PaymentStatus.PENDING
+			})
 		})
 
 		if (applied_discount) {
@@ -491,7 +588,7 @@ export class OrderService {
 		])
 
 		return {
-			items: items.map(item => this.mapOrderResponse(item)),
+			items: items.map(item => this.mapAdminListRow(item)),
 			total,
 			page,
 			limit
@@ -607,6 +704,9 @@ export class OrderService {
 
 		const nextStatus =
 			resolvePaymentStatusOnPaymentMethodChange(order.payment_status) ?? order.payment_status
+		const plan = planStatusChange(order, { payment_status: nextStatus }, 'customer', {
+			note: `Спосіб оплати: ${order.payment_method} → ${target}`
+		})
 
 		const updated = await this.orderRepository.update(
 			{
@@ -615,7 +715,7 @@ export class OrderService {
 				payment_status: { $in: PAYMENT_METHOD_CHANGEABLE_PAYMENT_STATUSES },
 				order_status: { $in: PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES }
 			},
-			{ $set: { payment_method: target, payment_status: nextStatus } }
+			statusChangeUpdate(plan, { payment_method: target })
 		)
 		if (!updated) {
 			const fresh = await this.orderRepository.findById(String(order._id))
@@ -661,12 +761,23 @@ export class OrderService {
 	 * There are no transactions here (standalone MongoDB), so this is deliberately one
 	 * `findOneAndUpdate` pinned on the whole state it read: nothing is written unless the
 	 * order is still exactly the unpaid LiqPay order without a live session.
+	 *
+	 * The update is a pipeline so the `FAILED → PENDING` move can be written to
+	 * `status_history` by the same atomic write (TD-0011 F6) — only when the stored status really
+	 * is `FAILED`, which no plain `$push` can express without reading the document first.
 	 */
 	async claimLiqpayCheckout(
 		orderId: Types.ObjectId,
 		now: number = Date.now()
 	): Promise<OrderDocument | null> {
-		return this.orderRepository.update(
+		const retryEntry = statusHistoryEntry(
+			'payment_status',
+			PaymentStatus.FAILED,
+			PaymentStatus.PENDING,
+			'customer',
+			new Date(now)
+		)
+		return this.orderRepository.updateWithPipeline(
 			{
 				_id: orderId,
 				payment_method: PaymentMethod.LIQPAY,
@@ -678,19 +789,33 @@ export class OrderService {
 					{ payment_status: PaymentStatus.FAILED }
 				]
 			},
-			{
-				$set: {
-					liqpay_checkout_started_at: new Date(now),
-					payment_status: PaymentStatus.PENDING
+			[
+				{
+					$set: {
+						liqpay_checkout_started_at: new Date(now),
+						payment_status: PaymentStatus.PENDING,
+						status_history: {
+							$cond: [
+								{ $eq: ['$payment_status', PaymentStatus.FAILED] },
+								{
+									$concatArrays: [
+										{ $ifNull: ['$status_history', []] },
+										[retryEntry]
+									]
+								},
+								{ $ifNull: ['$status_history', []] }
+							]
+						}
+					}
 				}
-			}
+			]
 		)
 	}
 
 	async findById(id: string) {
 		const order = await this.orderRepository.findById(id)
 		if (!order) throw new NotFoundException('Order not found')
-		return this.mapOrderResponse(order)
+		return this.mapAdminOrderResponse(order)
 	}
 
 	async findMyOrderById(userId: string, id: string) {
@@ -722,24 +847,60 @@ export class OrderService {
 
 		const updateSet: Record<string, unknown> = {}
 
-		if (dto.items) {
-			const { orderItems, subtotalPrice } = await this.buildOrderItems(dto.items)
-			updateSet.items = orderItems
-			updateSet.subtotal_price = subtotalPrice
-			if (order.applied_discount) {
-				const discountAmount = Number(
-					((subtotalPrice * order.applied_discount.discount_percent) / 100).toFixed(2)
-				)
-				updateSet.applied_discount = {
-					coupon_id: order.applied_discount.coupon_id,
-					code: order.applied_discount.code,
-					discount_percent: order.applied_discount.discount_percent,
-					discount_amount: discountAmount
+		if (dto.manual_discount !== undefined) this.assertManualDiscountAllowed(order)
+
+		if (dto.items || dto.manual_discount !== undefined) {
+			let subtotalPrice = order.subtotal_price
+			let couponAmount = order.applied_discount?.discount_amount ?? 0
+
+			if (dto.items) {
+				const built = await this.buildOrderItems(dto.items)
+				subtotalPrice = built.subtotalPrice
+				updateSet.items = built.orderItems
+				updateSet.subtotal_price = subtotalPrice
+				if (order.applied_discount) {
+					couponAmount = Number(
+						(
+							(built.couponEligibleSubtotal *
+								order.applied_discount.discount_percent) /
+							100
+						).toFixed(2)
+					)
+					updateSet.applied_discount = {
+						coupon_id: order.applied_discount.coupon_id,
+						code: order.applied_discount.code,
+						discount_percent: order.applied_discount.discount_percent,
+						discount_amount: couponAmount
+					}
 				}
-				updateSet.total_price = Number((subtotalPrice - discountAmount).toFixed(2))
-			} else {
-				updateSet.total_price = subtotalPrice
 			}
+
+			let manualDiscount = order.manual_discount ?? null
+			if (dto.manual_discount !== undefined) {
+				const reason = dto.manual_discount?.reason.trim()
+				if (dto.manual_discount && !reason) {
+					throw new BadRequestException('manual_discount.reason must not be blank')
+				}
+				manualDiscount = dto.manual_discount
+					? {
+							amount: dto.manual_discount.amount,
+							reason: reason!,
+							applied_at: new Date()
+						}
+					: null
+				updateSet.manual_discount = manualDiscount
+			}
+
+			const payable = Number((subtotalPrice - couponAmount).toFixed(2))
+			if (manualDiscount && manualDiscount.amount > payable) {
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'MANUAL_DISCOUNT_TOO_LARGE',
+					message: `Знижка ${manualDiscount.amount} ₴ більша за суму до сплати ${payable} ₴`
+				})
+			}
+			updateSet.total_price = Number((payable - (manualDiscount?.amount ?? 0)).toFixed(2))
 		}
 
 		if (dto.customer) {
@@ -789,48 +950,160 @@ export class OrderService {
 		)
 		if (!updatedOrder) throw new NotFoundException('Order not found')
 
-		return this.mapOrderResponse(updatedOrder)
+		return this.mapAdminOrderResponse(updatedOrder)
 	}
 
-	async updateOrderStatus(id: string, dto: UpdateOrderStatusDto) {
-		const current = await this.orderRepository.findById(id)
-		if (!current) throw new NotFoundException('Order not found')
-
-		const update: Record<string, unknown> = { order_status: dto.order_status }
-
-		const nextPaymentStatus = resolvePaymentStatusOnOrderStatusChange(
-			current.payment_status,
-			current.order_status,
-			dto.order_status
-		)
-		if (nextPaymentStatus) update.payment_status = nextPaymentStatus
-
+	/**
+	 * A manual discount changes `total_price`, which is what the buyer pays and what LiqPay's
+	 * callback is checked against. Once the money has moved it is a refund, not a discount; and
+	 * while a card session is open it was built with the old amount — a second session at the
+	 * new amount is the double charge the cooldown exists to prevent, so the admin waits it out.
+	 */
+	private assertManualDiscountAllowed(order: OrderDocument): void {
 		if (
-			dto.order_status === OrderStatus.CANCELLED &&
-			current.payment_status === PaymentStatus.PAID
+			order.payment_status === PaymentStatus.PAID ||
+			order.payment_status === PaymentStatus.REFUNDED
+		) {
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'MANUAL_DISCOUNT_ORDER_PAID',
+				message: 'Замовлення вже оплачене — знижку можна оформити лише як повернення коштів'
+			})
+		}
+		const retryAfter = liqpayRetryAfterSeconds(order)
+		if (retryAfter) {
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'LIQPAY_SESSION_ACTIVE',
+				message: 'Покупець зараз оплачує карткою за старою сумою — спробуйте пізніше',
+				retry_after_seconds: retryAfter
+			})
+		}
+	}
+
+	/**
+	 * Admin status change (TD-0011): only the transitions {@link adminStatusTransitions} offers,
+	 * with the payment rule, the `COMPLETED` settlement and the history entry decided together by
+	 * `planStatusChange`. The write is pinned on the state it read, so a tracker or gateway write
+	 * that landed in between makes it a 409 instead of being overwritten.
+	 */
+	async updateOrderStatus(id: string, dto: UpdateOrderStatusDto, adminId?: string) {
+		const current = await this.findOrderOrThrow(id)
+
+		const allowed = adminStatusTransitions(current)
+		// The current status again is a no-op — unless the payment rule still has something to
+		// do: re-applying CANCELLED heals an order cancelled before VOIDED existed (TD-0003).
+		if (current.order_status === dto.order_status) {
+			const heal = planStatusChange(current, { order_status: dto.order_status }, 'admin', {
+				adminId
+			})
+			if (heal.history.length === 0) return this.mapAdminOrderResponse(current)
+			return this.mapAdminOrderResponse(
+				await this.writePinned(current, statusChangeUpdate(heal))
+			)
+		}
+		if (!allowed.includes(dto.order_status)) {
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: 'INVALID_STATUS_TRANSITION',
+				message: 'Такий перехід статусу недоступний для цього замовлення',
+				from: current.order_status,
+				to: dto.order_status,
+				allowed
+			})
+		}
+
+		const plan = planStatusChange(current, { order_status: dto.order_status }, 'admin', {
+			adminId
+		})
+		if (
+			plan.order_status === OrderStatus.CANCELLED &&
+			plan.payment_status === PaymentStatus.PAID
 		) {
 			this.logger.warn(
 				`Order ${current.order_number} cancelled while PAID — refund the customer manually and set REFUNDED`
 			)
 		}
 
-		const order = await this.orderRepository.update(
-			{ _id: new Types.ObjectId(id) },
-			{ $set: update }
+		const order = await this.writePinned(current, statusChangeUpdate(plan))
+		return this.mapAdminOrderResponse(order)
+	}
+
+	async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto, adminId?: string) {
+		const current = await this.findOrderOrThrow(id)
+		const plan = planStatusChange(current, { payment_status: dto.payment_status }, 'admin', {
+			adminId
+		})
+		const extra: Record<string, unknown> = {}
+		if (dto.payment_transaction_id) extra.payment_transaction_id = dto.payment_transaction_id
+
+		const order = await this.writePinned(current, statusChangeUpdate(plan, extra))
+		return this.mapAdminOrderResponse(order)
+	}
+
+	/**
+	 * A TTN is the parcel leaving: an order that has not shipped yet becomes `SHIPPED` in the
+	 * same write (TD-0011) — a pickup order included, since a TTN on it means it was posted after
+	 * all. Orders past that point keep their status: a replaced TTN on a shipped order is just a
+	 * new parcel number.
+	 */
+	async setTtn(id: string, dto: SetTtnDto, adminId?: string) {
+		const current = await this.findOrderOrThrow(id)
+		const plan = shipsOnTtn(current)
+			? planStatusChange(current, { order_status: OrderStatus.SHIPPED }, 'admin', {
+					adminId,
+					note: `ТТН ${dto.nova_post_ttn}`
+				})
+			: planStatusChange(current, {}, 'admin')
+
+		// A new TTN is a new parcel: what the tracker saw and alerted on was the old one's.
+		const order = await this.writePinned(
+			current,
+			statusChangeUpdate(plan, {
+				nova_post_ttn: dto.nova_post_ttn,
+				nova_post_status: null,
+				nova_post_alerted_code: null
+			})
 		)
+		return this.mapAdminOrderResponse(order)
+	}
+
+	private async findOrderOrThrow(id: string): Promise<OrderDocument> {
+		if (!Types.ObjectId.isValid(id)) throw new NotFoundException('Order not found')
+		const order = await this.orderRepository.findById(id)
 		if (!order) throw new NotFoundException('Order not found')
 		return order
 	}
 
-	async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto) {
-		const update: Record<string, unknown> = { payment_status: dto.payment_status }
-		if (dto.payment_transaction_id) update.payment_transaction_id = dto.payment_transaction_id
+	/**
+	 * An admin write pinned on both statuses it read. Mongo here is standalone (no transactions),
+	 * so this conditional update is the concurrency control: a miss means the tracker, a gateway
+	 * callback or another tab changed the order first, and the admin has to look again.
+	 */
+	private async writePinned(
+		current: OrderDocument,
+		update: Record<string, unknown>
+	): Promise<OrderDocument> {
 		const order = await this.orderRepository.update(
-			{ _id: new Types.ObjectId(id) },
-			{ $set: update }
+			{
+				_id: current._id,
+				order_status: current.order_status,
+				payment_status: current.payment_status
+			},
+			update
 		)
-		if (!order) throw new NotFoundException('Order not found')
-		return order
+		if (order) return order
+		const exists = await this.orderRepository.findById(String(current._id))
+		if (!exists) throw new NotFoundException('Order not found')
+		throw new ConflictException({
+			statusCode: 409,
+			error: 'Conflict',
+			code: 'ORDER_STATUS_CHANGED',
+			message: 'Статус замовлення щойно змінився — оновіть сторінку й спробуйте ще раз'
+		})
 	}
 
 	/**
@@ -847,137 +1120,139 @@ export class OrderService {
 	async applyGatewayPaymentResult(orderNumber: string, isPaid: boolean, transactionId?: string) {
 		const order = await this.orderRepository.findByOrderNumber(orderNumber)
 		if (!order) throw new NotFoundException(`Order ${orderNumber} not found`)
+		return this.applyGatewayResultTo(order, isPaid, transactionId, false)
+	}
 
+	/**
+	 * One attempt, pinned on the whole state read — method, order status and payment status.
+	 * The planned write carries a derived order status (a paid delivery closes, TD-0011) and the
+	 * history's `from`, and both are only right for the state that was read: pinned on less, a
+	 * callback racing the tracker could stamp COMPLETED over RETURNING. A miss re-reads once and
+	 * starts over from the fresh state, so a switched method, a cancellation or a tracker move
+	 * takes the branch it should have; a second miss is logged and left to the next callback.
+	 */
+	private async applyGatewayResultTo(
+		order: OrderDocument,
+		isPaid: boolean,
+		transactionId: string | undefined,
+		retried: boolean
+	): Promise<OrderDocument> {
+		const orderNumber = order.order_number
 		if (order.payment_status === PaymentStatus.PAID) {
 			this.logger.log(`Order ${orderNumber} already PAID, skipping gateway update`)
 			return order
 		}
 
-		if (order.order_status === OrderStatus.CANCELLED) {
-			return this.applyGatewayPaymentResultToCancelledOrder(order, isPaid, transactionId)
+		const extra: Record<string, unknown> = {}
+		if (transactionId) extra.payment_transaction_id = transactionId
+		const pinned = {
+			_id: order._id,
+			payment_method: order.payment_method,
+			order_status: order.order_status,
+			payment_status: order.payment_status
+		}
+		const retry = async (): Promise<OrderDocument> => {
+			const fresh = await this.orderRepository.findById(String(order._id))
+			if (!fresh) throw new NotFoundException(`Order ${orderNumber} not found`)
+			if (retried) {
+				this.logger.warn(
+					`Order ${orderNumber} changed twice while one gateway result was applied — left as ${fresh.order_status}/${fresh.payment_status}`
+				)
+				return fresh
+			}
+			return this.applyGatewayResultTo(fresh, isPaid, transactionId, true)
 		}
 
-		const stillLiqpay = {
-			_id: order._id,
-			payment_method: PaymentMethod.LIQPAY,
-			payment_status: { $ne: PaymentStatus.PAID }
+		if (order.order_status === OrderStatus.CANCELLED) {
+			if (!isPaid) {
+				this.logger.log(
+					`Order ${orderNumber} is CANCELLED and the gateway reported a failed payment — keeping ${order.payment_status}`
+				)
+				return order
+			}
+			// The money really arrived, so it is recorded; the customer is not told the order
+			// is paid — the admin is, because a refund is now required (TD-0003).
+			const plan = planStatusChange(
+				order,
+				{ payment_status: PaymentStatus.PAID },
+				'gateway',
+				{
+					note: 'Оплата після скасування — потрібне повернення'
+				}
+			)
+			const updated = await this.orderRepository.update(
+				pinned,
+				statusChangeUpdate(plan, extra)
+			)
+			if (!updated) return retry()
+			this.logger.warn(
+				`Order ${orderNumber} was paid via gateway after being CANCELLED — refund required`
+			)
+			this.sendCancelledOrderPaidNotification(updated).catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to notify service about a paid cancelled order ${orderNumber}`
+				)
+			)
+			return updated
 		}
 
 		if (!isPaid) {
-			const update: Record<string, unknown> = { payment_status: PaymentStatus.FAILED }
-			if (transactionId) update.payment_transaction_id = transactionId
-			const updated = await this.orderRepository.update(stillLiqpay, { $set: update })
-			if (!updated) {
-				// Paid meanwhile, or moved to an offline method: a dead card session says
-				// nothing about either.
+			if (order.payment_method !== PaymentMethod.LIQPAY) {
+				// A dead card session says nothing about an order now paid offline.
 				this.logger.log(
-					`Order ${orderNumber} is no longer an unpaid LiqPay order — failed gateway result ignored`
+					`Order ${orderNumber} is no longer a LiqPay order — failed gateway result ignored`
 				)
-				return (await this.orderRepository.findById(String(order._id))) ?? order
+				return order
 			}
+			const plan = planStatusChange(
+				order,
+				{ payment_status: PaymentStatus.FAILED },
+				'gateway'
+			)
+			const updated = await this.orderRepository.update(
+				pinned,
+				statusChangeUpdate(plan, extra)
+			)
+			if (!updated) return retry()
 			this.logger.log(`Order ${orderNumber} payment marked FAILED via gateway`)
 			return updated
 		}
 
 		if (order.payment_method === PaymentMethod.LIQPAY) {
-			const update: Record<string, unknown> = { payment_status: PaymentStatus.PAID }
-			if (transactionId) update.payment_transaction_id = transactionId
-			const updated = await this.orderRepository.update(stillLiqpay, { $set: update })
-			if (updated) {
-				this.logger.log(`Order ${orderNumber} payment marked PAID via gateway`)
-				this.sendPaidConfirmationEmail(updated).catch(err =>
-					this.logger.error(
-						{ err },
-						`Failed to send paid confirmation email for order ${orderNumber}`
-					)
+			const plan = planStatusChange(order, { payment_status: PaymentStatus.PAID }, 'gateway')
+			const updated = await this.orderRepository.update(
+				pinned,
+				statusChangeUpdate(plan, extra)
+			)
+			if (!updated) return retry()
+			this.logger.log(`Order ${orderNumber} payment marked PAID via gateway`)
+			this.sendPaidConfirmationEmail(updated).catch(err =>
+				this.logger.error(
+					{ err },
+					`Failed to send paid confirmation email for order ${orderNumber}`
 				)
-				return updated
-			}
-			// The pinned write missed: either a duplicate callback got there first, or the
-			// buyer switched methods between our read and our write.
-			const fresh = await this.orderRepository.findById(String(order._id))
-			if (!fresh) throw new NotFoundException(`Order ${orderNumber} not found`)
-			if (fresh.payment_status === PaymentStatus.PAID) {
-				this.logger.log(`Order ${orderNumber} already PAID, skipping gateway update`)
-				return fresh
-			}
-			return this.applyGatewayPaymentAfterMethodChange(fresh, transactionId)
-		}
-
-		return this.applyGatewayPaymentAfterMethodChange(order, transactionId)
-	}
-
-	/**
-	 * A gateway callback that arrives after the order was already cancelled.
-	 *
-	 * A successful payment is still recorded — the money really arrived, so it
-	 * must never be silently dropped — but the customer is NOT told the order is
-	 * paid. The admin is notified instead, because a refund is now required.
-	 * A failed payment leaves the `VOIDED` status alone.
-	 */
-	private async applyGatewayPaymentResultToCancelledOrder(
-		order: OrderDocument,
-		isPaid: boolean,
-		transactionId?: string
-	): Promise<OrderDocument> {
-		if (!isPaid) {
-			this.logger.log(
-				`Order ${order.order_number} is CANCELLED and the gateway reported a failed payment — keeping ${order.payment_status}`
 			)
-			return order
+			return updated
 		}
 
-		const update: Record<string, unknown> = { payment_status: PaymentStatus.PAID }
-		if (transactionId) update.payment_transaction_id = transactionId
-
-		const updated = await this.orderRepository.update({ _id: order._id }, { $set: update })
-		if (!updated) throw new NotFoundException(`Order ${order.order_number} not found`)
-
-		this.logger.warn(
-			`Order ${order.order_number} was paid via gateway after being CANCELLED — refund required`
-		)
-
-		this.sendCancelledOrderPaidNotification(updated).catch(err =>
-			this.logger.error(
-				{ err },
-				`Failed to notify service about a paid cancelled order ${order.order_number}`
-			)
-		)
-
-		return updated
-	}
-
-	/**
-	 * A successful card payment for an order the buyer has since moved to an offline method.
-	 *
-	 * The money really arrived: the order becomes PAID and the method goes back to LIQPAY so
-	 * nobody also collects the offline sum. The service mail says why — and says it loudest
-	 * when the order is already in fulfilment, because a COD invoice may be on the parcel.
-	 */
-	private async applyGatewayPaymentAfterMethodChange(
-		order: OrderDocument,
-		transactionId?: string
-	): Promise<OrderDocument> {
-		const update: Record<string, unknown> = {
-			payment_status: PaymentStatus.PAID,
-			payment_method: PaymentMethod.LIQPAY
-		}
-		if (transactionId) update.payment_transaction_id = transactionId
-
+		// A successful card payment for an order the buyer has since moved to an offline method.
+		// The money really arrived: the order becomes PAID and the method goes back to LIQPAY so
+		// nobody also collects the offline sum. The service mail says why — and says it loudest
+		// when the order is already in fulfilment, because a COD invoice may be on the parcel.
+		const plan = planStatusChange(order, { payment_status: PaymentStatus.PAID }, 'gateway', {
+			note: `Оплачено карткою після зміни способу на ${order.payment_method}`
+		})
 		const updated = await this.orderRepository.update(
-			{ _id: order._id, payment_status: { $ne: PaymentStatus.PAID } },
-			{ $set: update }
+			pinned,
+			statusChangeUpdate(plan, { ...extra, payment_method: PaymentMethod.LIQPAY })
 		)
-		if (!updated) {
-			this.logger.log(`Order ${order.order_number} already PAID, skipping gateway update`)
-			return (await this.orderRepository.findById(String(order._id))) ?? order
-		}
+		if (!updated) return retry()
 
 		const inFulfilment = !PAYMENT_METHOD_CHANGEABLE_ORDER_STATUSES.includes(order.order_status)
 		this.logger.warn(
-			`Order ${order.order_number} was paid via LiqPay after the buyer switched to ${order.payment_method}${inFulfilment ? ` and the order is already ${order.order_status}` : ''} — payment method restored to LIQPAY, do not collect ${order.payment_method}`
+			`Order ${orderNumber} was paid via LiqPay after the buyer switched to ${order.payment_method}${inFulfilment ? ` and the order is already ${order.order_status}` : ''} — payment method restored to LIQPAY, do not collect ${order.payment_method}`
 		)
-
 		this.emailService
 			.sendLiqpayPaidAfterMethodChange(
 				updated.customer.email,
@@ -989,10 +1264,9 @@ export class OrderService {
 			.catch(err =>
 				this.logger.error(
 					{ err },
-					`Failed to send paid-after-method-change emails for order ${order.order_number}`
+					`Failed to send paid-after-method-change emails for order ${orderNumber}`
 				)
 			)
-
 		return updated
 	}
 
@@ -1044,20 +1318,11 @@ export class OrderService {
 		)
 	}
 
-	async setTtn(id: string, dto: SetTtnDto) {
-		const order = await this.orderRepository.update(
-			{ _id: new Types.ObjectId(id) },
-			// A new TTN is a new parcel: what the tracker saw and alerted on was the old one's.
-			{
-				$set: {
-					nova_post_ttn: dto.nova_post_ttn,
-					nova_post_status: null,
-					nova_post_alerted_code: null
-				}
-			}
-		)
-		if (!order) throw new NotFoundException('Order not found')
-		return order
+	private invoiceManualDiscount(order: {
+		manual_discount?: ManualDiscount | null
+	}): InvoiceData['manualDiscount'] {
+		const discount = order.manual_discount
+		return discount ? { amount: discount.amount, reason: discount.reason } : null
 	}
 
 	private buildInvoiceData(order: any, adminComment?: string): InvoiceData {
@@ -1089,6 +1354,7 @@ export class OrderService {
 						discount_amount: order.applied_discount.discount_amount
 					}
 				: null,
+			manualDiscount: this.invoiceManualDiscount(order),
 			deliveryMethod: order.delivery_method,
 			deliveryAddress: order.delivery_address ?? null,
 			novaPostTtn: order.nova_post_ttn ?? null,

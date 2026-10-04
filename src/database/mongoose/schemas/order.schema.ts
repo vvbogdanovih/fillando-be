@@ -1,6 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { HydratedDocument, Types } from 'mongoose'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import {
+	DeliveryMethod,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus,
+	STATUS_ACTORS,
+	type StatusActor
+} from 'src/common/types/enums'
 
 @Schema({ _id: false })
 export class OrderItem {
@@ -19,8 +26,20 @@ export class OrderItem {
 	@Prop({ type: String, default: null })
 	vendor_sku: string | null
 
+	/** Unit price the buyer pays — the sale price while a promotion was on (TD-0012). */
 	@Prop({ required: true })
 	price: number
+
+	/**
+	 * Regular unit price at order time. Equal to `price` without a promotion; orders written
+	 * before TD-0012 have no value and are read back as `price`.
+	 */
+	@Prop({ type: Number, default: null })
+	list_price: number | null
+
+	/** The promotion percent the line was sold under; null when there was none. */
+	@Prop({ type: Number, default: null })
+	promo_percent: number | null
 
 	@Prop({ required: true, min: 1 })
 	quantity: number
@@ -87,6 +106,25 @@ export class AppliedDiscount {
 
 export const AppliedDiscountSchema = SchemaFactory.createForClass(AppliedDiscount)
 
+/**
+ * A fixed-amount discount the admin grants after checkout (the buyer asked for 50 ₴ off).
+ * It stacks on top of the coupon and is only allowed while the order is unpaid — after that
+ * the money has moved and taking it back is a refund, not a discount.
+ */
+@Schema({ _id: false })
+export class ManualDiscount {
+	@Prop({ required: true, min: 0 })
+	amount: number
+
+	@Prop({ required: true })
+	reason: string
+
+	@Prop({ type: Date, required: true })
+	applied_at: Date
+}
+
+export const ManualDiscountSchema = SchemaFactory.createForClass(ManualDiscount)
+
 /** The last Nova Post tracking result the hourly job saw for `nova_post_ttn`. */
 @Schema({ _id: false })
 export class NovaPostTrackingStatus {
@@ -102,6 +140,34 @@ export class NovaPostTrackingStatus {
 }
 
 export const NovaPostTrackingStatusSchema = SchemaFactory.createForClass(NovaPostTrackingStatus)
+
+/** One status change (TD-0011). Written in the same update as the status it records. */
+@Schema({ _id: false })
+export class StatusHistoryEntry {
+	@Prop({ type: String, enum: ['order_status', 'payment_status'], required: true })
+	field: 'order_status' | 'payment_status'
+
+	/** `null` only for the two entries written with the order itself. */
+	@Prop({ type: String, default: null })
+	from: string | null
+
+	@Prop({ type: String, required: true })
+	to: string
+
+	@Prop({ type: Date, required: true })
+	at: Date
+
+	@Prop({ type: String, enum: STATUS_ACTORS, required: true })
+	actor: StatusActor
+
+	@Prop({ type: Types.ObjectId, ref: 'User' })
+	admin_id?: Types.ObjectId
+
+	@Prop({ type: String })
+	note?: string
+}
+
+export const StatusHistoryEntrySchema = SchemaFactory.createForClass(StatusHistoryEntry)
 
 @Schema({ collection: 'orders', timestamps: true })
 export class Order {
@@ -125,6 +191,9 @@ export class Order {
 
 	@Prop({ type: AppliedDiscountSchema, default: null })
 	applied_discount: AppliedDiscount | null
+
+	@Prop({ type: ManualDiscountSchema, default: null })
+	manual_discount: ManualDiscount | null
 
 	@Prop({ type: String, enum: PaymentMethod, required: true })
 	payment_method: PaymentMethod
@@ -165,6 +234,10 @@ export class Order {
 
 	@Prop({ type: String, enum: OrderStatus, default: OrderStatus.NEW })
 	order_status: OrderStatus
+
+	/** Admin-only; stripped from every buyer-facing response. */
+	@Prop({ type: [StatusHistoryEntrySchema], default: [] })
+	status_history: StatusHistoryEntry[]
 
 	@Prop({ type: String, default: null })
 	comment: string | null

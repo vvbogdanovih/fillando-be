@@ -1,5 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import {
+	DeliveryMethod,
+	OrderStatus,
+	PaymentMethod,
+	PaymentStatus,
+	STATUS_ACTORS,
+	type StatusActor
+} from 'src/common/types/enums'
 
 class OrderResponseCustomerDto {
 	@ApiProperty({ example: 'Іван Петренко' })
@@ -43,6 +50,51 @@ class OrderResponseDiscountDto {
 	discount_amount: number
 }
 
+class OrderStatusHistoryEntryDto {
+	@ApiProperty({ enum: ['order_status', 'payment_status'] })
+	field: 'order_status' | 'payment_status'
+
+	@ApiProperty({
+		type: String,
+		example: 'CONFIRMED',
+		nullable: true,
+		description: 'null for the entries written with the order'
+	})
+	from: string | null
+
+	@ApiProperty({ example: 'SHIPPED' })
+	to: string
+
+	@ApiProperty()
+	at: Date
+
+	@ApiProperty({ enum: STATUS_ACTORS })
+	actor: StatusActor
+
+	@ApiProperty({ example: '664f1b2c3d4e5f6a7b8c9d11', required: false })
+	admin_id?: string
+
+	@ApiProperty({ example: 'ТТН 20450081729182', required: false })
+	note?: string
+}
+
+class OrderResponseManualDiscountDto {
+	@ApiProperty({ example: 50 })
+	amount: number
+
+	@ApiPropertyOptional({
+		example: 'Клієнт попросив знижку по телефону',
+		description: 'Admin responses only — never sent to the buyer'
+	})
+	reason?: string
+
+	@ApiPropertyOptional({
+		example: '2026-10-02T10:00:00.000Z',
+		description: 'Admin responses only'
+	})
+	applied_at?: Date
+}
+
 class OrderResponseItemDto {
 	@ApiProperty({ example: '664f1b2c3d4e5f6a7b8c9d0e' })
 	variant_id: string
@@ -59,8 +111,25 @@ class OrderResponseItemDto {
 	@ApiProperty({ example: 'VEND-CH-42', nullable: true })
 	vendor_sku: string | null
 
-	@ApiProperty({ example: 1299 })
+	@ApiProperty({
+		example: 1299,
+		description: 'Unit price the buyer pays (the sale price under a promotion)'
+	})
 	price: number
+
+	@ApiProperty({
+		example: 1529,
+		description:
+			'Regular unit price at order time (TD-0012); equals `price` without a promotion'
+	})
+	list_price: number
+
+	@ApiProperty({
+		example: 15,
+		nullable: true,
+		description: 'Promotion percent the line was sold under'
+	})
+	promo_percent: number | null
 
 	@ApiProperty({ example: 2 })
 	quantity: number
@@ -94,6 +163,9 @@ export class OrderResponseDto {
 	@ApiProperty({ type: OrderResponseDiscountDto, nullable: true })
 	applied_discount: OrderResponseDiscountDto | null
 
+	@ApiProperty({ type: OrderResponseManualDiscountDto, nullable: true })
+	manual_discount: OrderResponseManualDiscountDto | null
+
 	@ApiProperty({ enum: PaymentMethod })
 	payment_method: PaymentMethod
 
@@ -114,6 +186,29 @@ export class OrderResponseDto {
 
 	@ApiProperty({ enum: OrderStatus })
 	order_status: OrderStatus
+
+	@ApiProperty({
+		type: [OrderStatusHistoryEntryDto],
+		required: false,
+		description: 'Admin responses only (TD-0011) — never sent to the buyer'
+	})
+	status_history?: OrderStatusHistoryEntryDto[]
+
+	@ApiProperty({
+		enum: OrderStatus,
+		isArray: true,
+		required: false,
+		description:
+			'Admin order detail only: the statuses PATCH /orders/:id/status accepts from the current one (TD-0011)'
+	})
+	allowed_status_transitions?: OrderStatus[]
+
+	@ApiProperty({
+		required: false,
+		description:
+			'Admin order detail only: whether PATCH /orders/:id/ttn will also set SHIPPED — a NOVA_POST / COURIER order that has not shipped yet (TD-0011)'
+	})
+	ships_on_ttn?: boolean
 
 	@ApiProperty({ example: 'Зателефонуйте перед відправкою', nullable: true })
 	comment: string | null

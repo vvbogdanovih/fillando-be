@@ -17,6 +17,7 @@ import type {
 	FeedRequiredAttributeRef,
 	FeedWarningCode
 } from './feed.types'
+import { activePromo } from 'src/modules/product/promo-pricing'
 
 /** Google caps `title` at 150 and `description` at 5000 characters. */
 const TITLE_MAX = 150
@@ -264,7 +265,17 @@ export interface BuildItemContext {
 	productType: string
 	/** Units of this variant sold in the trailing window; omitted → 0 → `standard`. */
 	unitsSold?: number
+	/** The generation instant — decides which promotions are on (TD-0012); omitted → now. */
+	now?: Date
 }
+
+/**
+ * `YYYY-MM-DDThh:mm:ss+00:00` — ISO 8601 in UTC, as Merchant accepts for
+ * `sale_price_effective_date`. Seconds are kept: a window that starts at 12:00:10 and ends at
+ * 12:00:50 would otherwise read `12:00/12:00`, which Google rejects as a start that is not before
+ * its end, and every longer window would end up to a minute early.
+ */
+export const googleDate = (date: Date): string => `${date.toISOString().slice(0, 19)}+00:00`
 
 const tag = (name: string, value: string | number) =>
 	`<${name}>${xmlEscape(String(value))}</${name}>`
@@ -294,6 +305,9 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	if (!row.product) return { ok: false, reason: 'dangling_product' }
 	if (!row.category) return { ok: false, reason: 'dangling_category' }
 	if (!(row.price > 0)) return { ok: false, reason: 'no_price' }
+	// The shop's own promotion, from the same rule the page uses — Merchant compares the two.
+	const now = ctx.now ?? new Date()
+	const promo = activePromo(row, now)
 	const images = (row.images ?? []).filter(Boolean)
 	if (images.length === 0) return { ok: false, reason: 'no_images' }
 
@@ -361,6 +375,17 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 			.map(url => tag('g:additional_image_link', url)),
 		tag('g:availability', availabilityOf(row.stock ?? 0)),
 		tag('g:price', `${row.price.toFixed(2)} UAH`),
+		// Regular price above, sale price here; the window starts at this generation (there is no
+		// stored start) and ends with the promo — open-ended promos send no window at all.
+		...(promo ? [tag('g:sale_price', `${promo.sale_price.toFixed(2)} UAH`)] : []),
+		...(promo?.ends_at
+			? [
+					tag(
+						'g:sale_price_effective_date',
+						`${googleDate(now)}/${googleDate(promo.ends_at)}`
+					)
+				]
+			: []),
 		tag('g:brand', brand),
 		tag('g:condition', 'new'),
 		tag('g:identifier_exists', 'false'),
@@ -381,7 +406,8 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 		tag('g:custom_label_0', typeFamilyLabel(attributes, material)),
 		tag('g:custom_label_1', brand),
 		tag('g:custom_label_2', stockDepthLabel(row.stock ?? 0)),
-		tag('g:custom_label_3', priceBandLabel(row.price)),
+		// The band is for bidding by what the shopper pays, so it follows the sale price.
+		tag('g:custom_label_3', priceBandLabel(promo?.sale_price ?? row.price)),
 		tag('g:custom_label_4', salesVelocityLabel(ctx.unitsSold ?? 0))
 	)
 

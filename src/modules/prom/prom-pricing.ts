@@ -179,3 +179,19 @@ export function resolveVendorPrice(
 export function resolveShopPrice(vendorPrice: number): number {
 	return Math.round(vendorPrice + getMarkupAmount(vendorPrice))
 }
+
+/**
+ * What the shop pays the supplier for a variant, as last seen on Prom: the pre-discount price
+ * with the vendor's own discount taken off. Null for a variant that was never priced from Prom.
+ * Admin-only — it is the number a promotion must not go below (TD-0012), and it never reaches
+ * a public response.
+ */
+export function supplierPriceOf(variant: {
+	prom_base_price?: number | null
+	prom_discount_ratio?: number | null
+}): number | null {
+	const base = variant.prom_base_price
+	if (typeof base !== 'number' || !isFinite(base) || base <= 0) return null
+	const ratio = variant.prom_discount_ratio ?? 0
+	return Math.round(base * (1 - ratio) * 100) / 100
+}

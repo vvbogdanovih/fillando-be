@@ -436,3 +436,50 @@ describe('buildSalesReport — реєстр замовлень', () => {
 		expect(report.orders.map(order => order.ttn)).toEqual(['20451234567890', null, null])
 	})
 })
+
+describe('buildSalesReport — ручна знижка адміна', () => {
+	it('adds the manual discount to the coupon and spreads both over the lines', () => {
+		const report = buildSalesReport(
+			[
+				makeOrder({
+					items: [
+						{
+							name: 'PETG 1кг',
+							sku: 'FL-000253',
+							vendor_sku: null,
+							price: 600,
+							quantity: 2
+						},
+						{
+							name: 'Сопло 0.4',
+							sku: 'FL-000010',
+							vendor_sku: null,
+							price: 300,
+							quantity: 1
+						}
+					],
+					subtotal_price: 1500,
+					total_price: 1300,
+					applied_discount: { code: 'AUTUMN10', discount_amount: 150 },
+					manual_discount: { amount: 50 }
+				})
+			],
+			FILTERS
+		)
+
+		expect(report.orders[0]).toMatchObject({
+			discount: 200,
+			discountCode: 'AUTUMN10',
+			manualDiscount: 50,
+			total: 1300
+		})
+		const amounts = report.products.reduce((acc, product) => acc + product.amount, 0)
+		expect(amounts).toBe(1300)
+		expect(report.products.find(p => p.sku === 'FL-000253')?.discount).toBe(160)
+	})
+
+	it('reads an order written before the field existed as no manual discount', () => {
+		const report = buildSalesReport([makeOrder()], FILTERS)
+		expect(report.orders[0].manualDiscount).toBe(0)
+	})
+})

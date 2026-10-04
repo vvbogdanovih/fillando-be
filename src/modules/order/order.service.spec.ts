@@ -83,8 +83,27 @@ describe('OrderService.applyGatewayPaymentResult — cancelled orders', () => {
 		const result = await service.applyGatewayPaymentResult('FO-0000123', true, 'txn-42')
 
 		expect(update).toHaveBeenCalledWith(
-			{ _id: 'order-object-id' },
-			{ $set: { payment_status: PaymentStatus.PAID, payment_transaction_id: 'txn-42' } }
+			{
+				_id: 'order-object-id',
+				payment_method: PaymentMethod.IBAN,
+				order_status: OrderStatus.CANCELLED,
+				payment_status: PaymentStatus.VOIDED
+			},
+			expect.objectContaining({
+				$set: { payment_status: PaymentStatus.PAID, payment_transaction_id: 'txn-42' },
+				$push: {
+					status_history: {
+						$each: [
+							expect.objectContaining({
+								field: 'payment_status',
+								from: PaymentStatus.VOIDED,
+								to: PaymentStatus.PAID,
+								actor: 'gateway'
+							})
+						]
+					}
+				}
+			})
 		)
 		expect(result?.payment_status).toBe(PaymentStatus.PAID)
 		expect(emailService.sendOrderPaidConfirmation).not.toHaveBeenCalled()
@@ -118,8 +137,9 @@ describe('OrderService.applyGatewayPaymentResult — cancelled orders', () => {
 	})
 })
 
-describe('OrderService.updateOrderStatus — payment side effect', () => {
+describe('OrderService — admin status writes (TD-0011)', () => {
 	const ORDER_ID = '64b8f0000000000000000000'
+	const ADMIN_ID = '64b8f00000000000000000aa'
 
 	const buildService = (order: OrderFixture, update: UpdateMock): OrderService =>
 		new OrderService(
@@ -132,54 +152,303 @@ describe('OrderService.updateOrderStatus — payment side effect', () => {
 			{} as never
 		)
 
-	it('voids the payment of a cancelled unpaid order', async () => {
-		const order = buildOrder({
-			order_status: OrderStatus.NEW,
-			payment_status: PaymentStatus.PENDING
-		})
-		const update = buildUpdateMock(order)
+	const pushed = (update: UpdateMock) =>
+		(update.mock.calls[0][1] as unknown as { $push?: { status_history: { $each: unknown[] } } })
+			.$push?.status_history.$each
 
-		await buildService(order, update).updateOrderStatus(ORDER_ID, {
-			order_status: OrderStatus.CANCELLED
+	describe('updateOrderStatus', () => {
+		it('voids the payment of a cancelled unpaid order and records both changes', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.NEW,
+				payment_status: PaymentStatus.PENDING
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updateOrderStatus(
+				ORDER_ID,
+				{ order_status: OrderStatus.CANCELLED },
+				ADMIN_ID
+			)
+
+			expect(update).toHaveBeenCalledWith(
+				{
+					_id: 'order-object-id',
+					order_status: OrderStatus.NEW,
+					payment_status: PaymentStatus.PENDING
+				},
+				expect.objectContaining({
+					$set: {
+						order_status: OrderStatus.CANCELLED,
+						payment_status: PaymentStatus.VOIDED
+					}
+				})
+			)
+			expect(pushed(update)).toEqual([
+				expect.objectContaining({
+					field: 'order_status',
+					from: OrderStatus.NEW,
+					to: OrderStatus.CANCELLED,
+					actor: 'admin',
+					admin_id: new Types.ObjectId(ADMIN_ID)
+				}),
+				expect.objectContaining({
+					field: 'payment_status',
+					from: PaymentStatus.PENDING,
+					to: PaymentStatus.VOIDED,
+					actor: 'admin'
+				})
+			])
 		})
 
-		expect(update).toHaveBeenCalledWith(expect.anything(), {
-			$set: {
-				order_status: OrderStatus.CANCELLED,
+		it('does not touch the payment of a cancelled paid order', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.CONFIRMED,
+				payment_status: PaymentStatus.PAID
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: OrderStatus.CANCELLED
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({ order_status: OrderStatus.CANCELLED })
+		})
+
+		it('reopens a cancelled order as NEW and expects payment again', async () => {
+			const order = buildOrder()
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: OrderStatus.NEW
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({
+				order_status: OrderStatus.NEW,
+				payment_status: PaymentStatus.PENDING
+			})
+		})
+
+		it('voids the payment of an unpaid parcel that came back', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.RETURNING,
+				payment_status: PaymentStatus.PENDING,
+				payment_method: PaymentMethod.COD,
+				delivery_method: DeliveryMethod.NOVA_POST
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: OrderStatus.RETURNED
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({
+				order_status: OrderStatus.RETURNED,
 				payment_status: PaymentStatus.VOIDED
-			}
+			})
+		})
+
+		it('completes a paid pickup at handover in the same write', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.CONFIRMED,
+				payment_status: PaymentStatus.PAID
+			})
+			const update = buildUpdateMock(order)
+
+			const result = await buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: OrderStatus.DELIVERED
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({ order_status: OrderStatus.COMPLETED })
+			expect(result.allowed_status_transitions).toEqual([OrderStatus.RETURNING])
+		})
+
+		it.each([
+			[OrderStatus.CANCELLED, OrderStatus.SHIPPED, DeliveryMethod.NOVA_POST],
+			[OrderStatus.SHIPPED, OrderStatus.CANCELLED, DeliveryMethod.NOVA_POST],
+			[OrderStatus.COMPLETED, OrderStatus.NEW, DeliveryMethod.NOVA_POST],
+			[OrderStatus.CONFIRMED, OrderStatus.DELIVERED, DeliveryMethod.NOVA_POST],
+			[OrderStatus.RETURNED, OrderStatus.NEW, DeliveryMethod.NOVA_POST]
+		])('refuses %s → %s (%s) with 409 and writes nothing', async (from, to, delivery) => {
+			const order = buildOrder({ order_status: from, delivery_method: delivery })
+			const update = buildUpdateMock(order)
+
+			const call = buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: to
+			})
+
+			await expect(call).rejects.toBeInstanceOf(ConflictException)
+			await expect(call).rejects.toMatchObject({
+				response: { code: 'INVALID_STATUS_TRANSITION', from, to }
+			})
+			expect(update).not.toHaveBeenCalled()
+		})
+
+		it('re-applying CANCELLED still voids a legacy cancelled order that reads PENDING (TD-0003)', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.CANCELLED,
+				payment_status: PaymentStatus.PENDING
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: OrderStatus.CANCELLED
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({ payment_status: PaymentStatus.VOIDED })
+		})
+
+		it('treats the current status as a no-op', async () => {
+			const order = buildOrder({ order_status: OrderStatus.CONFIRMED })
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updateOrderStatus(ORDER_ID, {
+				order_status: OrderStatus.CONFIRMED
+			})
+
+			expect(update).not.toHaveBeenCalled()
+		})
+
+		it('answers 409 ORDER_STATUS_CHANGED when another write landed first', async () => {
+			const order = buildOrder({ order_status: OrderStatus.NEW })
+			const update = jest.fn().mockResolvedValue(null) as unknown as UpdateMock
+
+			await expect(
+				buildService(order, update).updateOrderStatus(ORDER_ID, {
+					order_status: OrderStatus.CONFIRMED
+				})
+			).rejects.toMatchObject({ response: { code: 'ORDER_STATUS_CHANGED' } })
 		})
 	})
 
-	it('does not touch the payment of a cancelled paid order', async () => {
-		const order = buildOrder({
-			order_status: OrderStatus.SHIPPED,
-			payment_status: PaymentStatus.PAID
+	describe('updatePaymentStatus', () => {
+		it('completes a delivered order the moment it is marked paid', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.DELIVERED,
+				payment_status: PaymentStatus.PENDING,
+				payment_method: PaymentMethod.COD,
+				delivery_method: DeliveryMethod.NOVA_POST
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updatePaymentStatus(
+				ORDER_ID,
+				{ payment_status: PaymentStatus.PAID },
+				ADMIN_ID
+			)
+
+			expect(update.mock.calls[0][1].$set).toEqual({
+				order_status: OrderStatus.COMPLETED,
+				payment_status: PaymentStatus.PAID
+			})
+			expect(pushed(update)).toHaveLength(2)
 		})
-		const update = buildUpdateMock(order)
 
-		await buildService(order, update).updateOrderStatus(ORDER_ID, {
-			order_status: OrderStatus.CANCELLED
+		it('takes a completed order back to DELIVERED when PAID is undone', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.COMPLETED,
+				payment_status: PaymentStatus.PAID
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updatePaymentStatus(ORDER_ID, {
+				payment_status: PaymentStatus.PENDING
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({
+				order_status: OrderStatus.DELIVERED,
+				payment_status: PaymentStatus.PENDING
+			})
 		})
 
-		expect(update).toHaveBeenCalledWith(expect.anything(), {
-			$set: { order_status: OrderStatus.CANCELLED }
-		})
-	})
-
-	it('expects payment again when a cancelled order is reopened', async () => {
-		const order = buildOrder()
-		const update = buildUpdateMock(order)
-
-		await buildService(order, update).updateOrderStatus(ORDER_ID, {
-			order_status: OrderStatus.CONFIRMED
-		})
-
-		expect(update).toHaveBeenCalledWith(expect.anything(), {
-			$set: {
+		it('leaves the order status of an undelivered order alone', async () => {
+			const order = buildOrder({
 				order_status: OrderStatus.CONFIRMED,
 				payment_status: PaymentStatus.PENDING
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).updatePaymentStatus(ORDER_ID, {
+				payment_status: PaymentStatus.PAID,
+				payment_transaction_id: 'iban-1'
+			})
+
+			expect(update.mock.calls[0][1].$set).toEqual({
+				payment_transaction_id: 'iban-1',
+				payment_status: PaymentStatus.PAID
+			})
+		})
+	})
+
+	describe('setTtn', () => {
+		it.each([OrderStatus.NEW, OrderStatus.CONFIRMED, OrderStatus.PROCESSING])(
+			'ships a %s Nova Post order and notes the TTN in its history',
+			async status => {
+				const order = buildOrder({
+					order_status: status,
+					payment_status: PaymentStatus.PENDING,
+					delivery_method: DeliveryMethod.NOVA_POST
+				})
+				const update = buildUpdateMock(order)
+
+				await buildService(order, update).setTtn(
+					ORDER_ID,
+					{ nova_post_ttn: '20450081729182' },
+					ADMIN_ID
+				)
+
+				expect(update.mock.calls[0][1].$set).toEqual({
+					nova_post_ttn: '20450081729182',
+					nova_post_status: null,
+					nova_post_alerted_code: null,
+					order_status: OrderStatus.SHIPPED
+				})
+				expect(pushed(update)).toEqual([
+					expect.objectContaining({
+						field: 'order_status',
+						from: status,
+						to: OrderStatus.SHIPPED,
+						note: 'ТТН 20450081729182'
+					})
+				])
 			}
+		)
+
+		it('ships a courier order too', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.CONFIRMED,
+				delivery_method: DeliveryMethod.COURIER
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).setTtn(ORDER_ID, { nova_post_ttn: '1' })
+
+			expect(update.mock.calls[0][1].$set.order_status).toBe(OrderStatus.SHIPPED)
+		})
+
+		it('only replaces the number on an order that already shipped', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.SHIPPED,
+				delivery_method: DeliveryMethod.NOVA_POST
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).setTtn(ORDER_ID, { nova_post_ttn: '2' })
+
+			expect(update.mock.calls[0][1]).toEqual({
+				$set: { nova_post_ttn: '2', nova_post_status: null, nova_post_alerted_code: null }
+			})
+		})
+
+		it('ships a pickup order as well — the TTN says it was posted after all', async () => {
+			const order = buildOrder({
+				order_status: OrderStatus.CONFIRMED,
+				delivery_method: DeliveryMethod.PICKUP
+			})
+			const update = buildUpdateMock(order)
+
+			await buildService(order, update).setTtn(ORDER_ID, { nova_post_ttn: '3' })
+
+			expect(update.mock.calls[0][1].$set.order_status).toBe(OrderStatus.SHIPPED)
 		})
 	})
 })
@@ -625,7 +894,7 @@ describe('OrderService — the buyer changes the payment method (TD-0009 §5.4.1
 			_id: 'order-object-id',
 			payment_method: PaymentMethod.LIQPAY,
 			payment_status: { $in: [PaymentStatus.PENDING, PaymentStatus.FAILED] },
-			order_status: { $in: [OrderStatus.NEW, OrderStatus.CONFIRMED] }
+			order_status: { $in: [OrderStatus.NEW, OrderStatus.PROCESSING, OrderStatus.CONFIRMED] }
 		})
 		expect(payload.$set).toEqual({
 			payment_method: PaymentMethod.COD,
@@ -689,7 +958,7 @@ describe('OrderService — the buyer changes the payment method (TD-0009 §5.4.1
 			'a voided order',
 			{ payment_status: PaymentStatus.VOIDED, order_status: OrderStatus.CANCELLED }
 		],
-		['an order already in processing', { order_status: OrderStatus.PROCESSING }]
+		['an order that already shipped', { order_status: OrderStatus.SHIPPED }]
 	])('locks %s with a structured 409', async (_label, overrides) => {
 		const { service, update } = buildService(failedCardOrder(overrides))
 
@@ -872,18 +1141,63 @@ describe('OrderService.applyGatewayPaymentResult — after the buyer switched me
 		update.mock.calls[call][0] as Record<string, unknown>
 	const setOf = (update: GatewayUpdateMock, call: number) => update.mock.calls[call][1].$set
 
-	it('pins a failed result on the card method: a switched order is left alone', async () => {
+	it('ignores a failed result for an order that is no longer paid by card — nothing written', async () => {
 		const codOrder = order({ payment_method: PaymentMethod.COD })
-		const { service, update, emailService } = buildService(codOrder, [null])
+		const { service, update, emailService } = buildService(codOrder, [])
 
 		const result = await service.applyGatewayPaymentResult(ORDER_NUMBER, false, 'tx-1')
 
-		expect(filterOf(update, 0)).toMatchObject({
-			payment_method: PaymentMethod.LIQPAY,
-			payment_status: { $ne: PaymentStatus.PAID }
-		})
+		expect(update).not.toHaveBeenCalled()
 		expect(result.payment_status).toBe(PaymentStatus.PENDING)
 		expect(emailService.sendLiqpayPaidAfterMethodChange).not.toHaveBeenCalled()
+	})
+
+	it('pins every write on the whole state it read, not only on the method', async () => {
+		const liqpay = order({ order_status: OrderStatus.CONFIRMED })
+		const { service, update } = buildService(liqpay, [
+			{ ...liqpay, payment_status: PaymentStatus.FAILED }
+		])
+
+		await service.applyGatewayPaymentResult(ORDER_NUMBER, false)
+
+		expect(filterOf(update, 0)).toEqual({
+			_id: 'order-object-id',
+			payment_method: PaymentMethod.LIQPAY,
+			order_status: OrderStatus.CONFIRMED,
+			payment_status: PaymentStatus.PENDING
+		})
+	})
+
+	it('never stamps COMPLETED over a status that moved under it (TD-0011)', async () => {
+		// Read as DELIVERED/PENDING: paying it would close it. Between the read and the write
+		// the tracker (or the admin) moved it to RETURNING — the pinned write misses, the fresh
+		// state is applied instead, and RETURNING is kept.
+		const delivered = order({ order_status: OrderStatus.DELIVERED })
+		const returning = { ...delivered, order_status: OrderStatus.RETURNING }
+		const paid = { ...returning, payment_status: PaymentStatus.PAID }
+		const { service, update, emailService } = buildService(delivered, [null, paid], returning)
+
+		const result = await service.applyGatewayPaymentResult(ORDER_NUMBER, true, 'tx-1')
+
+		expect(update).toHaveBeenCalledTimes(2)
+		expect(setOf(update, 0)).toMatchObject({ order_status: OrderStatus.COMPLETED })
+		expect(filterOf(update, 1)).toMatchObject({ order_status: OrderStatus.RETURNING })
+		expect(setOf(update, 1)).not.toHaveProperty('order_status')
+		expect(setOf(update, 1)).toMatchObject({ payment_status: PaymentStatus.PAID })
+		expect(result.order_status).toBe(OrderStatus.RETURNING)
+		expect(emailService.sendOrderPaidConfirmation).toHaveBeenCalledTimes(1)
+	})
+
+	it('gives up after a second miss and leaves the order to the next callback', async () => {
+		const liqpay = order()
+		const moved = { ...liqpay, order_status: OrderStatus.CONFIRMED }
+		const { service, update, emailService } = buildService(liqpay, [null, null], moved)
+
+		const result = await service.applyGatewayPaymentResult(ORDER_NUMBER, true)
+
+		expect(update).toHaveBeenCalledTimes(2)
+		expect(result.payment_status).toBe(PaymentStatus.PENDING)
+		expect(emailService.sendOrderPaidConfirmation).not.toHaveBeenCalled()
 	})
 
 	it('marks a still-LiqPay order FAILED through the same pinned write', async () => {
@@ -1027,13 +1341,42 @@ describe('OrderService.claimLiqpayCheckout — one live session, retries include
 			liqpay_checkout_started_at: null,
 			...overrides
 		}
-		const update = jest.fn((filter: unknown, payload: UpdatePayload) => {
+		/** Enough of the aggregation expression language for the claim's conditional history. */
+		const evaluate = (expr: unknown): unknown => {
+			if (typeof expr === 'string' && expr.startsWith('$')) return doc[expr.slice(1)]
+			if (Array.isArray(expr)) return expr.map(evaluate)
+			if (expr instanceof Date || expr instanceof Types.ObjectId) return expr
+			if (expr && typeof expr === 'object') {
+				const [op, args] = Object.entries(expr as Record<string, unknown>)[0]
+				if (op === '$cond') {
+					const [test, yes, no] = args as unknown[]
+					return evaluate(test) ? evaluate(yes) : evaluate(no)
+				}
+				if (op === '$eq') {
+					const [a, b] = (args as unknown[]).map(evaluate)
+					return a === b
+				}
+				if (op === '$ifNull') {
+					const [value, fallback] = args as unknown[]
+					return evaluate(value) ?? evaluate(fallback)
+				}
+				if (op === '$concatArrays')
+					return (args as unknown[]).flatMap(part => evaluate(part) as unknown[])
+				return expr
+			}
+			return expr
+		}
+		const update = jest.fn((filter: unknown, stages: UpdatePayload[]) => {
 			if (!matches(doc, filter as Doc)) return Promise.resolve(null)
-			Object.assign(doc, payload.$set)
+			// Pipeline semantics: every stage reads the document as it was before the stage.
+			const next: Doc = {}
+			for (const stage of stages)
+				for (const [key, expr] of Object.entries(stage.$set)) next[key] = evaluate(expr)
+			Object.assign(doc, next)
 			return Promise.resolve(doc)
 		})
 		const service = new OrderService(
-			{ update } as never,
+			{ updateWithPipeline: update } as never,
 			{} as never,
 			{} as never,
 			{} as never,
@@ -1081,11 +1424,42 @@ describe('OrderService.claimLiqpayCheckout — one live session, retries include
 
 		await service.claimLiqpayCheckout(ORDER_ID, NOW)
 
-		expect(update.mock.calls[0][1].$set).toEqual({
-			liqpay_checkout_started_at: new Date(NOW),
-			payment_status: PaymentStatus.PENDING
-		})
+		expect(update).toHaveBeenCalledTimes(1)
+		expect(doc.payment_status).toBe(PaymentStatus.PENDING)
+		expect(doc.liqpay_checkout_started_at).toEqual(new Date(NOW))
 		expect(liqpayRetryAfterSeconds(doc as never, NOW)).toBe(15 * 60)
+	})
+
+	it('writes the FAILED → PENDING move into the history by the same atomic update (TD-0011 F6)', async () => {
+		const { service, doc } = buildService({
+			payment_status: PaymentStatus.FAILED,
+			liqpay_checkout_started_at: new Date(NOW - 60_000),
+			status_history: [{ field: 'payment_status', from: 'PENDING', to: 'FAILED' }]
+		})
+
+		await service.claimLiqpayCheckout(ORDER_ID, NOW)
+
+		expect(doc.status_history).toEqual([
+			{ field: 'payment_status', from: 'PENDING', to: 'FAILED' },
+			{
+				field: 'payment_status',
+				from: PaymentStatus.FAILED,
+				to: PaymentStatus.PENDING,
+				at: new Date(NOW),
+				actor: 'customer'
+			}
+		])
+	})
+
+	it('adds no history entry when a PENDING session is simply renewed', async () => {
+		const { service, doc } = buildService({
+			liqpay_checkout_started_at: new Date(NOW - LIQPAY_SESSION_COOLDOWN_MS - 1)
+		})
+
+		await service.claimLiqpayCheckout(ORDER_ID, NOW)
+
+		expect(doc.payment_status).toBe(PaymentStatus.PENDING)
+		expect(doc.status_history).toEqual([])
 	})
 
 	it('still refuses a second session while a PENDING one is inside the cooldown', async () => {
@@ -1426,5 +1800,338 @@ describe('OrderService.create — every refusal the buyer can read is Ukrainian 
 		expect(body.message).toBe(
 			'Термін дії купона «SPRING24» закінчився — оформіть замовлення без нього'
 		)
+	})
+})
+
+describe('OrderService.findAll — the admin list leaves the history to the detail (TD-0011)', () => {
+	it('strips status_history from every row and adds no transitions', async () => {
+		const row = buildOrder({
+			status_history: [{ field: 'order_status', from: null, to: 'NEW' }]
+		})
+		const service = new OrderService(
+			{
+				findAllPaginated: jest.fn().mockResolvedValue([row]),
+				countDocuments: jest.fn().mockResolvedValue(1)
+			} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+
+		const result = await service.findAll({ page: 1, limit: 20 })
+
+		expect(result.items[0]).not.toHaveProperty('status_history')
+		expect(result.items[0]).not.toHaveProperty('allowed_status_transitions')
+		expect(result.items[0].order_number).toBe('FO-0000123')
+	})
+})
+
+describe('OrderService.update — manual discount', () => {
+	const ORDER_ID = '64b8f0000000000000000000'
+	const VARIANT_ID = '64b8f0000000000000000001'
+
+	const unpaid = (overrides: Record<string, unknown> = {}) =>
+		buildOrder({
+			order_status: OrderStatus.NEW,
+			payment_status: PaymentStatus.PENDING,
+			manual_discount: null,
+			...overrides
+		})
+
+	const buildService = (order: OrderFixture, variants: unknown[] = []) => {
+		const update = buildUpdateMock(order)
+		const service = new OrderService(
+			{ findById: jest.fn().mockResolvedValue(order), update } as never,
+			{} as never,
+			{ findByIds: jest.fn().mockResolvedValue(variants) } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+		return { service, update }
+	}
+
+	const setOf = (update: UpdateMock) => update.mock.calls[0][1].$set
+
+	it('takes the amount off total_price and stores the reason', async () => {
+		const { service, update } = buildService(unpaid())
+
+		await service.update(ORDER_ID, {
+			manual_discount: { amount: 50, reason: '  попросив по телефону ' }
+		})
+
+		const set = setOf(update)
+		expect(set.total_price).toBe(950)
+		expect(set.manual_discount).toMatchObject({ amount: 50, reason: 'попросив по телефону' })
+		expect(set).not.toHaveProperty('subtotal_price')
+	})
+
+	it('stacks on top of the coupon', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 900,
+				applied_discount: {
+					coupon_id: 'c',
+					code: 'TEN',
+					discount_percent: 10,
+					discount_amount: 100
+				}
+			})
+		)
+
+		await service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+
+		expect(setOf(update).total_price).toBe(850)
+	})
+
+	it('removes the discount with null and restores the total', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 950,
+				manual_discount: { amount: 50, reason: 'x', applied_at: new Date() }
+			})
+		)
+
+		await service.update(ORDER_ID, { manual_discount: null })
+
+		expect(setOf(update)).toMatchObject({ manual_discount: null, total_price: 1000 })
+	})
+
+	it('keeps the discount when the items are edited', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 950,
+				manual_discount: { amount: 50, reason: 'x', applied_at: new Date() }
+			}),
+			[
+				{
+					_id: new Types.ObjectId(VARIANT_ID),
+					product_id: new Types.ObjectId(),
+					name: 'PLA',
+					sku: 'SKU-1',
+					price: 500,
+					stock: 10,
+					status: ProductStatus.ACTIVE
+				}
+			]
+		)
+
+		await service.update(ORDER_ID, { items: [{ variant_id: VARIANT_ID, quantity: 3 }] })
+
+		const set = setOf(update)
+		expect(set.subtotal_price).toBe(1500)
+		expect(set.total_price).toBe(1450)
+		expect(set).not.toHaveProperty('manual_discount')
+	})
+
+	it('refuses a discount larger than what is left to pay', async () => {
+		const { service, update } = buildService(unpaid())
+
+		await expect(
+			service.update(ORDER_ID, { manual_discount: { amount: 1000.01, reason: 'x' } })
+		).rejects.toBeInstanceOf(BadRequestException)
+		expect(update).not.toHaveBeenCalled()
+	})
+
+	it('refuses a blank reason', async () => {
+		const { service } = buildService(unpaid())
+
+		await expect(
+			service.update(ORDER_ID, { manual_discount: { amount: 50, reason: '   ' } })
+		).rejects.toBeInstanceOf(BadRequestException)
+	})
+
+	it.each([PaymentStatus.PAID, PaymentStatus.REFUNDED])(
+		'refuses once the payment is %s — that is a refund',
+		async payment_status => {
+			const { service, update } = buildService(unpaid({ payment_status }))
+
+			await expect(
+				service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+			).rejects.toBeInstanceOf(ConflictException)
+			expect(update).not.toHaveBeenCalled()
+		}
+	)
+
+	it('refuses while a LiqPay session built with the old amount is open', async () => {
+		const { service } = buildService(
+			unpaid({
+				payment_method: PaymentMethod.LIQPAY,
+				liqpay_checkout_started_at: new Date(Date.now() - 60_000)
+			})
+		)
+
+		await expect(
+			service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+		).rejects.toMatchObject({ response: { code: 'LIQPAY_SESSION_ACTIVE' } })
+	})
+
+	it('allows it once the LiqPay session has run out', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				payment_method: PaymentMethod.LIQPAY,
+				liqpay_checkout_started_at: new Date(Date.now() - LIQPAY_SESSION_COOLDOWN_MS - 1000)
+			})
+		)
+
+		await service.update(ORDER_ID, { manual_discount: { amount: 50, reason: 'x' } })
+
+		expect(setOf(update).total_price).toBe(950)
+	})
+
+	it('hides the reason from the buyer', async () => {
+		const order = unpaid({
+			user_id: new Types.ObjectId(),
+			total_price: 950,
+			manual_discount: { amount: 50, reason: 'внутрішнє', applied_at: new Date() },
+			liqpay_checkout_started_at: null
+		})
+		const service = new OrderService(
+			{ findByIdAndUserId: jest.fn().mockResolvedValue(order) } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+
+		const result = (await service.findMyOrderById(String(new Types.ObjectId()), ORDER_ID)) as {
+			manual_discount: unknown
+		}
+
+		expect(result.manual_discount).toEqual({ amount: 50 })
+	})
+})
+
+describe('OrderService.create — promotions and coupons (TD-0012)', () => {
+	const PROMO_ID = '64b8f0000000000000000001'
+	const PLAIN_ID = '64b8f0000000000000000002'
+	const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+
+	const variant = (id: string, over: Record<string, unknown> = {}) => ({
+		_id: new Types.ObjectId(id),
+		product_id: new Types.ObjectId('64b8f0000000000000000009'),
+		name: 'PLA',
+		sku: `SKU-${id.slice(-1)}`,
+		vendor_product_sku: 'V-1',
+		price: 500,
+		stock: 10,
+		status: ProductStatus.ACTIVE,
+		images: [],
+		promo_percent: null,
+		promo_ends_at: null,
+		...over
+	})
+	const onSale = variant(PROMO_ID, { price: 600, promo_percent: 10, promo_ends_at: FUTURE })
+	const plain = variant(PLAIN_ID)
+
+	const coupon = { _id: 'c1', code: 'TEN', discount_percent: 10, is_reusable: true }
+
+	const build = (variants: unknown[], withCoupon = false) => {
+		const orderRepository = {
+			create: jest
+				.fn<Promise<unknown>, [Record<string, unknown>]>()
+				.mockImplementation(payload => {
+					const doc = { _id: 'o1', ...payload }
+					return Promise.resolve({ ...doc, toObject: () => doc })
+				})
+		}
+		const discountCouponRepository = {
+			findActiveByCode: jest.fn().mockResolvedValue(withCoupon ? coupon : null),
+			update: jest.fn().mockResolvedValue(null)
+		}
+		const service = new OrderService(
+			orderRepository as never,
+			{ increment: jest.fn().mockResolvedValue(7) } as never,
+			{ findByIds: jest.fn().mockResolvedValue(variants) } as never,
+			discountCouponRepository as never,
+			{ sendOrderIbanConfirmation: jest.fn().mockResolvedValue(undefined) } as never,
+			{} as never,
+			{} as never
+		)
+		return { service, orderRepository }
+	}
+
+	const dto = (items: Array<{ variant_id: string; quantity: number }>, coupon_code?: string) => ({
+		items,
+		customer: { name: 'Тест', phone: '+380000000000', email: 'buyer@example.com' },
+		payment_method: PaymentMethod.IBAN,
+		delivery_method: DeliveryMethod.PICKUP,
+		...(coupon_code ? { coupon_code } : {})
+	})
+
+	const created = (orderRepository: {
+		create: jest.Mock<Promise<unknown>, [Record<string, unknown>]>
+	}) =>
+		orderRepository.create.mock.calls[0][0] as unknown as {
+			items: Array<Record<string, unknown>>
+			subtotal_price: number
+			total_price: number
+			applied_discount: { discount_amount: number } | null
+		}
+
+	it('snapshots the sale price as the line price and keeps the regular one beside it', async () => {
+		const { service, orderRepository } = build([onSale, plain])
+
+		await service.create(
+			dto([
+				{ variant_id: PROMO_ID, quantity: 2 },
+				{ variant_id: PLAIN_ID, quantity: 1 }
+			])
+		)
+
+		const order = created(orderRepository)
+		expect(order.items[0]).toMatchObject({ price: 540, list_price: 600, promo_percent: 10 })
+		expect(order.items[1]).toMatchObject({ price: 500, list_price: 500, promo_percent: null })
+		expect(order.subtotal_price).toBe(1580)
+		expect(order.total_price).toBe(1580)
+	})
+
+	it('applies the coupon to the lines without a promotion only', async () => {
+		const { service, orderRepository } = build([onSale, plain], true)
+
+		await service.create(
+			dto(
+				[
+					{ variant_id: PROMO_ID, quantity: 2 },
+					{ variant_id: PLAIN_ID, quantity: 1 }
+				],
+				'TEN'
+			)
+		)
+
+		const order = created(orderRepository)
+		// 10 % of the plain line (500), not of the whole subtotal (1580).
+		expect(order.applied_discount).toMatchObject({ discount_amount: 50 })
+		expect(order.total_price).toBe(1530)
+	})
+
+	it('refuses a coupon when every line is on promotion, so a single-use code is not burned', async () => {
+		const { service, orderRepository } = build([onSale], true)
+
+		await expect(
+			service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
+		).rejects.toMatchObject({ response: { code: 'COUPON_NOT_APPLICABLE' } })
+		expect(orderRepository.create).not.toHaveBeenCalled()
+	})
+
+	it('treats an expired promotion as no promotion at all', async () => {
+		const expired = variant(PROMO_ID, {
+			price: 600,
+			promo_percent: 10,
+			promo_ends_at: new Date('2020-01-01T00:00:00Z')
+		})
+		const { service, orderRepository } = build([expired], true)
+
+		await service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
+
+		const order = created(orderRepository)
+		expect(order.items[0]).toMatchObject({ price: 600, list_price: 600, promo_percent: null })
+		expect(order.applied_discount).toMatchObject({ discount_amount: 60 })
 	})
 })

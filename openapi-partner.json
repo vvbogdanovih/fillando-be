@@ -533,6 +533,12 @@
             "example": 599.5,
             "description": "Поточна роздрібна ціна одиниці товару у гривнях. Довідкова; не фіксується до оформлення замовлення."
           },
+          "sale_price": {
+            "type": "object",
+            "example": 425,
+            "nullable": true,
+            "description": "Роздрібна ціна за акцією магазину, якщо вона зараз діє (TD-0012); null — акції немає. `price` лишається регулярною ціною."
+          },
           "currency": {
             "type": "string",
             "enum": [
@@ -592,6 +598,7 @@
         },
         "required": [
           "price",
+          "sale_price",
           "currency",
           "sku",
           "name",

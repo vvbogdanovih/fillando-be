@@ -3,6 +3,7 @@ import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { Color } from 'src/database/mongoose/schemas/color.schema'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import type { AttrLike } from './product-attribute.helpers'
+import { publicPromoFields, publicPromoProjection } from './promo-pricing'
 
 /**
  * PUBLIC SURFACE — the only variant fields allowed to leave the backend through an
@@ -13,6 +14,11 @@ import type { AttrLike } from './product-attribute.helpers'
  * absent: the shop resells at supplier price + margin, so any of them lets a visitor look
  * up the supplier's price and derive the margin. Adding a field here needs a security
  * review (plan-0003, TD-0005).
+ *
+ * `sale_price`, `promo_percent`, `promo_ends_at` are the shop's own promotion (TD-0012) — what
+ * the shopper is told anyway — and say nothing about the supplier. All three are null outside
+ * an active promo; they are derived from the stored percent by `promo-pricing.ts`, never read
+ * off the document.
  */
 export const PUBLIC_VARIANT_FIELDS = [
 	'id',
@@ -26,7 +32,10 @@ export const PUBLIC_VARIANT_FIELDS = [
 	'v_value',
 	'status',
 	'color',
-	'weight_g'
+	'weight_g',
+	'sale_price',
+	'promo_percent',
+	'promo_ends_at'
 ] as const
 
 export type PublicVariantField = (typeof PUBLIC_VARIANT_FIELDS)[number]
@@ -69,6 +78,9 @@ export type PublicVariant = {
 	status: ProductStatus
 	color: PublicColor | null
 	weight_g: number | null
+	sale_price: number | null
+	promo_percent: number | null
+	promo_ends_at: Date | null
 }
 
 /**
@@ -77,7 +89,9 @@ export type PublicVariant = {
  */
 export function toPublicVariant(
 	variant: ProductVariant & { _id: Types.ObjectId },
-	color?: Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'> | null
+	color?: Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'> | null,
+	/** One instant per response, so a variant and its siblings agree on whether a promo is on. */
+	now: Date = new Date()
 ): PublicVariant {
 	return {
 		id: variant._id.toString(),
@@ -95,7 +109,8 @@ export function toPublicVariant(
 		color: toPublicColor(color),
 		// Shipping weight is public by design: the delivery estimate and the JSON-LD `weight`
 		// are computed from it on the storefront (TD-0006 §5.4).
-		weight_g: variant.weight_g ?? null
+		weight_g: variant.weight_g ?? null,
+		...publicPromoFields(variant, now)
 	}
 }
 
@@ -165,5 +180,7 @@ export const PRICE_SHEET_PUBLIC_PROJECTION = {
 	// $ifNull, not a bare path: a variant with no dictionary colour would otherwise be missing
 	// the keys entirely and the row shape would vary between records.
 	color_name_uk: { $ifNull: ['$color.name_uk', null] },
-	color_name_en: { $ifNull: ['$color.name_en', null] }
+	color_name_en: { $ifNull: ['$color.name_en', null] },
+	// The promotion trio, nulled when inactive — the same rule the JS mapper applies (TD-0012).
+	...publicPromoProjection()
 } as const

@@ -55,7 +55,8 @@ generation is running.
 | `link`                                     | `${FRONTEND_URL}/products/${slug}` — the page's canonical                                                                                                                                                                                        |
 | `g:image_link` / `g:additional_image_link` | `images[0]` / `images[1..10]`, **original URLs** — the same ones Product JSON-LD uses, so feed and page agree                                                                                                                                    |
 | `g:availability`                           | `in_stock` when `stock > 0`, else `out_of_stock` — underscored, as in Google's attribute reference                                                                                                                                               |
-| `g:price`                                  | `"{price.toFixed(2)} UAH"`; no `sale_price` — `price` is already final                                                                                                                                                                           |
+| `g:price`                                  | `"{price.toFixed(2)} UAH"` — the **regular** price. `prom_base_price` is never a «was» price: it is the supplier's figure                                                                                                                         |
+| `g:sale_price` / `g:sale_price_effective_date` | only while the variant's promotion is on (`activePromo`, TD-0012): `"{sale_price.toFixed(2)} UAH"`, and when the promo has an end date the window `"{generatedAt}/{promo_ends_at}"` as `YYYY-MM-DDThh:mm:ss+00:00` (seconds kept — a window that dropped them could read `12:00/12:00` and be refused as a start that is not before its end). Open-ended promos send no window. The page's JSON-LD derives the same pair from the same rule, so Merchant never sees them disagree |
 | `g:brand`                                  | the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`. **Never `Vendor.name`** — the vendor is the supplier                                                                                                                             |
 | `g:google_product_category`                | `category.google_product_category.id`; omitted (+ warning) when null                                                                                                                                                                             |
 | `g:product_type`                           | `"{Category.name} > {Landing.h1}"` for the most specific active landing whose pinned filters the product matches, else the category name                                                                                                         |
@@ -64,7 +65,7 @@ generation is running.
 | `g:material`                               | the `polymer` attribute; `pickAttr(MATERIAL_PATTERNS)` until the taxonomy migration has run                                                                                                                                                      |
 | `g:shipping_weight`                        | `"{weight_g / 1000} kg"`; omitted (+ warning) when null                                                                                                                                                                                          |
 | `g:product_highlight`                      | one bullet per stored spec dimension, `«{label}: {value} {unit}»` — diameter, weight, `polymer`, `finish`, `reinforcement`, `series`, `spool_included`; brand, colour and the legacy «Матеріал» are left out because each has a field of its own |
-| `g:custom_label_0..3`                      | type family (see below) · manufacturer · stock depth (`deep` >10 / `low` 1–10 / `out` 0) · price band (`budget` <500 / `mid` ≤1500 / `premium`)                                                                                                  |
+| `g:custom_label_0..3`                      | type family (see below) · manufacturer · stock depth (`deep` >10 / `low` 1–10 / `out` 0) · price band (`budget` <500 / `mid` ≤1500 / `premium`) — of the price the shopper pays, i.e. the sale price while a promo is on                        |
 | `g:custom_label_4`                         | sales velocity from PAID orders of the last 90 days (`OrderRepository.countSoldByVariantSince`): `bestseller` ≥10 units · `popular` ≥3 · `standard`                                                                                              |
 
 ### Title
@@ -176,6 +177,34 @@ different numbers and summing `count` across kinds is neither of them:
 - `warning_kinds` — distinct kinds present. This is the admin KPI «попереджень» (the mock shows
   four kinds, not the positions behind them).
 - `warned_items` — feed rows carrying at least one warning, counted once each.
+
+## Promotions and freshness (TD-0012)
+
+A promotion changes what the feed must say without any admin touching the feed:
+
+- **An admin write** (`PATCH /products/:id/promotion`, or a variant write that mentions
+  `promo_percent` / `promo_ends_at`) raises `FeedRefreshSignal` (`src/common/services/feed-refresh.signal.ts`).
+  `FeedCronService` subscribes on bootstrap — unconditionally, like the bootstrap run, because the
+  XML cache is per process — and regenerates after a 5 s debounce. The product module never sees
+  `FeedService` (FeedModule imports ProductModule, so it could not); it only says the feed is stale.
+- **A promo that ends on its own date** is caught by `PromoExpiryCronService` (every 10 minutes,
+  gated by `RUN_CRON`): `countPromosEndedBetween(lastTick, now)` > 0 → storefront purge +
+  regeneration. Nothing is written to the database — the sale price is derived on read, so the
+  documents are already right; only the caches were not.
+- Every item in one generation decides its promotion against the same instant (`generatedAt`),
+  which is also the feed's `Last-Modified`.
+- A request that arrives while a generation is running is queued and honoured as soon as that
+  run ends (`FeedService.requestRerun()`, run from `generate()`'s `finally`): the running one read
+  the catalogue before the write and may publish exactly the state the request wanted gone. The
+  queue lives in `FeedService`, not in the cron, because the admin's manual
+  `POST /feeds/google-shopping/regenerate` calls `generate()` directly and the cron never sees it.
+- These are best-effort freshness bounds, not guarantees: the signal is in-process (a replica that
+  did not take the write rebuilds on its own hour), the expiry job runs on the one `RUN_CRON`
+  instance, and Merchant fetches on its own schedule. The hourly run is the floor under all of it.
+- A percent that rounds to no saving (sale price ≥ regular, or 0 — e.g. 1 % off 49 ₴) is no
+  promotion anywhere: no `g:sale_price`, no badge. Merchant rejects a `sale_price` that is not
+  lower than `price`. Rounding is half up on both sides (`floor(x + 0.5)`, not `$round`, which is
+  half-to-even — 212.5 must be 213 on the page and in the catalogue filter alike).
 
 ## Where the numbers come from
 

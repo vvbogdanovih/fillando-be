@@ -5,6 +5,7 @@ import {
 	PartnerCatalogRow
 } from 'src/database/mongoose/repositories/partner-catalog.repository'
 import { PartnerProductDto, PartnerSkuRequestDto, PartnerSkuPageDto } from './partner-catalog.dto'
+import { salePriceOf } from 'src/modules/product/promo-pricing'
 
 @Injectable()
 export class PartnerCatalogService {
@@ -63,19 +64,22 @@ export class PartnerCatalogService {
 		const bySku = new Map(rows.map(row => [row.sku, row]))
 		const items: PartnerProductDto[] = []
 		const not_found: string[] = []
+		const now = new Date()
 		for (const sku of unique) {
 			const row = bySku.get(sku)
-			if (row) items.push(this.toProduct(row))
+			if (row) items.push(this.toProduct(row, now))
 			else not_found.push(sku)
 		}
 		return { items, not_found }
 	}
-	private toProduct(row: PartnerCatalogRow): PartnerProductDto {
+	private toProduct(row: PartnerCatalogRow, now: Date = new Date()): PartnerProductDto {
 		const quantity = Number.isFinite(row.stock) ? Math.max(0, row.stock) : 0
 		return {
 			sku: row.sku,
 			name: row.name,
 			price: row.price,
+			// The shop's current promotion, if any (TD-0012) — the retail figure a shopper sees.
+			sale_price: salePriceOf(row, now),
 			currency: 'UAH',
 			description_html: row.product.description?.html || null,
 			category: {

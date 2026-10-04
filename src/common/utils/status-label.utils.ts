@@ -3,11 +3,12 @@ import { OrderStatus, PaymentStatus } from 'src/common/types/enums'
 export function formatOrderStatus(status: OrderStatus): string {
 	if (status === OrderStatus.NEW) return 'Нове'
 	if (status === OrderStatus.CONFIRMED) return 'Підтверджене'
-	if (status === OrderStatus.PROCESSING) return 'В обробці'
+	if (status === OrderStatus.PROCESSING) return 'Очікує підтвердження'
 	if (status === OrderStatus.SHIPPED) return 'Відправлене'
 	if (status === OrderStatus.DELIVERED) return 'Доставлене'
 	if (status === OrderStatus.COMPLETED) return 'Виконане'
 	if (status === OrderStatus.CANCELLED) return 'Скасоване'
+	if (status === OrderStatus.RETURNING) return 'Повертається'
 	if (status === OrderStatus.RETURNED) return 'Повернене'
 	return '—'
 }

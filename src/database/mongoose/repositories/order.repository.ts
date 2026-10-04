@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
-import { DeliveryMethod, OrderStatus, PaymentStatus } from 'src/common/types/enums'
+import { OrderStatus, PaymentStatus } from 'src/common/types/enums'
 import { Order } from '../schemas/order.schema'
 import { BaseRepository } from './base.repository'
 
@@ -43,19 +43,19 @@ export class OrderRepository extends BaseRepository<Order> {
 	}
 
 	/**
-	 * Orders whose parcel the delivery tracker follows: carrying a TTN, not a pickup, in one of
-	 * `statuses`, and placed after `since`. Lean and narrowed to what the tracker reads.
+	 * Orders whose parcel the delivery tracker follows: carrying a TTN, in one of `statuses`,
+	 * and placed after `since`. The delivery method is not a filter — a pickup order with a TTN
+	 * was posted after all (TD-0011, `shipsOnTtn`). Lean and narrowed to what the tracker reads.
 	 */
 	findTrackable(statuses: OrderStatus[], since: Date) {
 		return this.model
 			.find({
 				order_status: { $in: statuses },
-				delivery_method: { $ne: DeliveryMethod.PICKUP },
 				nova_post_ttn: { $nin: [null, ''] },
 				createdAt: { $gte: since }
 			})
 			.select(
-				'order_number order_status payment_status delivery_method nova_post_ttn nova_post_alerted_code customer'
+				'order_number order_status payment_status payment_method delivery_method nova_post_ttn nova_post_alerted_code customer'
 			)
 			.lean()
 			.exec()

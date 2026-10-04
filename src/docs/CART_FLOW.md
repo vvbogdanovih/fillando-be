@@ -10,7 +10,7 @@ Schema: `src/database/mongoose/schemas/cart.schema.ts`
 - **One cart per user** — enforced via a unique index on `user_id`.
 - **Lazy creation** — no cart document is created at registration. The document is created on the first write (add item or merge) via MongoDB upsert.
 - **No guest cart** — unauthenticated users manage the cart client-side (localStorage). All endpoints require a valid JWT.
-- **References only** — only `variant_id` + `quantity` are stored. Variant data (name, price, stock) is always fetched live when returning the cart. This prevents stale price/stock data.
+- **References only** — only `variant_id` + `quantity` are stored. Variant data (name, price, stock) is always fetched live when returning the cart. This prevents stale price/stock data. Each `variant` carries the regular `price` plus the promotion trio `sale_price` / `promo_percent` / `promo_ends_at` (TD-0012, null outside an active promo); the storefront sums `sale_price ?? price`.
 - **No TTL** — cart documents live indefinitely.
 
 ---
@@ -45,6 +45,9 @@ All endpoints return the same envelope:
 				"name": "Футболка базова — Чорна",
 				"slug": "futbolka-bazova-chorna",
 				"price": 440,
+				"sale_price": null,
+				"promo_percent": null,
+				"promo_ends_at": null,
 				"stock": 10,
 				"thumbnail": "https://cdn.example.com/...",
 				"v_value": "Чорна"

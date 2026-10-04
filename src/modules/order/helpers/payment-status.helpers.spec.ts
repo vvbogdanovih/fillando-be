@@ -47,6 +47,26 @@ describe('resolvePaymentStatusOnOrderStatusChange', () => {
 			).toBeNull()
 		})
 
+		it('voids an unpaid parcel that came back (TD-0011)', () => {
+			expect(
+				resolvePaymentStatusOnOrderStatusChange(
+					PaymentStatus.PENDING,
+					OrderStatus.RETURNING,
+					OrderStatus.RETURNED
+				)
+			).toBe(PaymentStatus.VOIDED)
+		})
+
+		it('leaves a paid parcel that came back for a manual refund', () => {
+			expect(
+				resolvePaymentStatusOnOrderStatusChange(
+					PaymentStatus.PAID,
+					OrderStatus.RETURNING,
+					OrderStatus.RETURNED
+				)
+			).toBeNull()
+		})
+
 		it('heals a legacy cancelled order that was never backfilled', () => {
 			expect(
 				resolvePaymentStatusOnOrderStatusChange(
@@ -107,8 +127,10 @@ describe('canCustomerChangePaymentMethod', () => {
 		[PaymentStatus.PAID, OrderStatus.NEW, false],
 		[PaymentStatus.VOIDED, OrderStatus.CANCELLED, false],
 		[PaymentStatus.REFUNDED, OrderStatus.RETURNED, false],
-		// From PROCESSING on the parcel may already carry a COD invoice.
-		[PaymentStatus.PENDING, OrderStatus.PROCESSING, false],
+		// A TTN ships the order, and from then on the parcel may carry a COD invoice (TD-0011);
+		// PROCESSING (buyer contacted, confirmation awaited) is still before that point.
+		[PaymentStatus.PENDING, OrderStatus.PROCESSING, true],
+		[PaymentStatus.PENDING, OrderStatus.SHIPPED, false],
 		[PaymentStatus.FAILED, OrderStatus.SHIPPED, false]
 	])('%s / %s → %s', (payment_status, order_status, expected) => {
 		expect(canCustomerChangePaymentMethod({ payment_status, order_status })).toBe(expected)

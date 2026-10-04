@@ -155,24 +155,35 @@ export class OrderController {
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.ORDERS.UPDATE_ORDER_STATUS)
-	updateOrderStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
-		return this.orderService.updateOrderStatus(id, dto)
+	@ApiOkResponse({ type: OrderResponseDto })
+	updateOrderStatus(
+		@Req() req: Request,
+		@Param('id') id: string,
+		@Body() dto: UpdateOrderStatusDto
+	) {
+		return this.orderService.updateOrderStatus(id, dto, (req.user as JWTPayload).id)
 	}
 
 	@Patch(ENDPOINTS.ORDERS.UPDATE_PAYMENT_STATUS)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.ORDERS.UPDATE_PAYMENT_STATUS)
-	updatePaymentStatus(@Param('id') id: string, @Body() dto: UpdatePaymentStatusDto) {
-		return this.orderService.updatePaymentStatus(id, dto)
+	@ApiOkResponse({ type: OrderResponseDto })
+	updatePaymentStatus(
+		@Req() req: Request,
+		@Param('id') id: string,
+		@Body() dto: UpdatePaymentStatusDto
+	) {
+		return this.orderService.updatePaymentStatus(id, dto, (req.user as JWTPayload).id)
 	}
 
 	@Patch(ENDPOINTS.ORDERS.SET_TTN)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.ORDERS.SET_TTN)
-	setTtn(@Param('id') id: string, @Body() dto: SetTtnDto) {
-		return this.orderService.setTtn(id, dto)
+	@ApiOkResponse({ type: OrderResponseDto })
+	setTtn(@Req() req: Request, @Param('id') id: string, @Body() dto: SetTtnDto) {
+		return this.orderService.setTtn(id, dto, (req.user as JWTPayload).id)
 	}
 
 	@Post(ENDPOINTS.ORDERS.GENERATE_INVOICE)

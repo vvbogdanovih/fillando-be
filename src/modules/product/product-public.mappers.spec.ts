@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
+import { publicPromoProjection } from './promo-pricing'
 import {
 	PRICE_SHEET_PUBLIC_PROJECTION,
 	PUBLIC_VARIANT_FIELDS,
@@ -61,6 +62,8 @@ const fixture: LeanVariantDoc = {
 	color_id: new Types.ObjectId('000000000000000000000004'),
 	color_family: ColorFamily.RED,
 	weight_g: 1220,
+	promo_percent: null,
+	promo_ends_at: null,
 	createdAt: new Date('2026-01-01T00:00:00Z'),
 	updatedAt: new Date('2026-08-21T09:30:00Z'),
 	__v: 3
@@ -96,8 +99,33 @@ describe('toPublicVariant', () => {
 			v_value: 'Red',
 			status: ProductStatus.ACTIVE,
 			color: null,
-			weight_g: 1220
+			weight_g: 1220,
+			sale_price: null,
+			promo_percent: null,
+			promo_ends_at: null
 		})
+	})
+
+	it('derives the promotion trio from the stored percent and nulls it once the promo is over', () => {
+		const now = new Date('2026-10-04T12:00:00Z')
+		const onSale = {
+			...fixture,
+			promo_percent: 15,
+			promo_ends_at: new Date('2026-11-01T00:00:00Z')
+		}
+		expect(toPublicVariant(onSale, null, now)).toMatchObject({
+			price: 649,
+			sale_price: 552,
+			promo_percent: 15,
+			promo_ends_at: new Date('2026-11-01T00:00:00Z')
+		})
+		expect(
+			toPublicVariant(
+				{ ...onSale, promo_ends_at: new Date('2026-09-01T00:00:00Z') },
+				null,
+				now
+			)
+		).toMatchObject({ price: 649, sale_price: null, promo_percent: null, promo_ends_at: null })
 	})
 
 	it('resolves the dictionary colour into the four public fields', () => {
@@ -229,6 +257,9 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION', () => {
   "image",
   "price",
   "product_name",
+  "promo_ends_at",
+  "promo_percent",
+  "sale_price",
   "sku",
   "slug",
   "stock",
@@ -266,7 +297,11 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION (exact shape)', () => {
 			attributes: '$product.attributes',
 			variant_type: '$product.variant_type',
 			color_name_uk: { $ifNull: ['$color.name_uk', null] },
-			color_name_en: { $ifNull: ['$color.name_en', null] }
+			color_name_en: { $ifNull: ['$color.name_en', null] },
+			// The promotion trio is the one expression shared with the catalogue and search
+			// projections; its own shape and its parity with the JS rule are pinned in
+			// promo-pricing.spec.ts and product-variant-promo.int-spec.ts.
+			...publicPromoProjection()
 		})
 	})
 })

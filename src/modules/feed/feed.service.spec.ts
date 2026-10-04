@@ -9,6 +9,8 @@ const row = (overrides: Partial<FeedRawRow> = {}): FeedRawRow => ({
 	name: 'Kingroon PLA — Чорний (Black)',
 	slug: 'kingroon-pla-black',
 	price: 419,
+	promo_percent: null,
+	promo_ends_at: null,
 	stock: 12,
 	images: ['https://cdn.example.invalid/1.jpg'],
 	v_value: 'Black',
@@ -202,6 +204,35 @@ describe('FeedService', () => {
 		release([row()])
 		await expect(first).resolves.toMatchObject({ item_count: 1 })
 		expect(service.isRunning).toBe(false)
+	})
+
+	it('runs a rebuild requested during a generation once that generation ends — whoever started it (TD-0012)', async () => {
+		let release: (rows: FeedRawRow[]) => void = () => undefined
+		const { service, productVariantRepository } = build([row()])
+		productVariantRepository.findActiveForFeed.mockImplementationOnce(
+			() => new Promise<FeedRawRow[]>(resolve => (release = resolve))
+		)
+
+		// The admin's manual button: a run the cron never sees.
+		const manual = service.generate()
+		expect(service.isRunning).toBe(true)
+		service.requestRerun()
+
+		release([row()])
+		await expect(manual).resolves.toMatchObject({ item_count: 1 })
+		await new Promise<void>(resolve => setImmediate(resolve))
+
+		// The follower read the catalogue after the request, so the published XML is fresh.
+		expect(productVariantRepository.findActiveForFeed).toHaveBeenCalledTimes(2)
+		expect(service.isRunning).toBe(false)
+	})
+
+	it('ignores a rerun request while nothing is running — the caller generates itself', async () => {
+		const { service, productVariantRepository } = build([row()])
+		service.requestRerun()
+		await service.generate()
+		await new Promise<void>(resolve => setImmediate(resolve))
+		expect(productVariantRepository.findActiveForFeed).toHaveBeenCalledTimes(1)
 	})
 
 	it('refuses to publish a zero-item feed and keeps the previous XML', async () => {

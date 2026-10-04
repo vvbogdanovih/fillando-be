@@ -174,6 +174,7 @@ describe('Partner catalogue HTTP', () => {
 					sku: 'A',
 					name: 'PLA Black',
 					price: 123.45,
+					sale_price: null,
 					currency: 'UAH',
 					description_html: '<p>PLA</p>',
 					category: { id: categoryId, name: 'Filament', slug: 'filament' },

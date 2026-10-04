@@ -22,9 +22,9 @@ list of codes.
 | `GET`   | `/orders`                    | Paginated orders list with filters by `order_status` and `payment_status` |
 | `GET`   | `/orders/:id`                | Full order details                                                        |
 | `PATCH` | `/orders/:id`                | Edit order fields (items, customer, delivery, payment method, comment)    |
-| `PATCH` | `/orders/:id/status`         | Update fulfillment status                                                 |
+| `PATCH` | `/orders/:id/status`         | Update fulfillment status — allowed transitions only (TD-0011)            |
 | `PATCH` | `/orders/:id/payment-status` | Update payment status and optional transaction id                         |
-| `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN                                                         |
+| `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN — ships a NOVA_POST/COURIER order not yet shipped       |
 | `POST`  | `/orders/:id/invoice`        | One order's invoice as PDF                                                |
 | `POST`  | `/orders/report`             | Sales report for a period — see _The sales report_ below                  |
 
@@ -33,7 +33,7 @@ list of codes.
 | Method  | Path                                                 | Access                    | Description                                                                                                                                                                                                        |
 | ------- | ---------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET`   | `/orders/lookup/:orderNumber?token=…`                | public, HMAC token        | Payment state of an order (`order_number`, `payment_method`, `payment_status`, `total_price`, `order_status`, `delivery_method`, `can_change_payment_method`) for the checkout success page — see `LIQPAY_FLOW.md` |
-| `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order `NEW`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
+| `PATCH` | `/orders/lookup/:orderNumber/payment-method?token=…` | public, HMAC token, 5/min | Switch an unpaid order (payment `PENDING`/`FAILED`, order not yet shipped: `NEW`/`PROCESSING`/`CONFIRMED`) to `COD`/`IBAN`/`CASH`; `409 PAYMENT_METHOD_LOCKED` otherwise — TD-0009, `LIQPAY_FLOW.md`                                             |
 | `PATCH` | `/orders/me/:id/payment-method`                      | `JwtAuthGuard`, owner     | The same change for a signed-in buyer's own order; returns the customer order shape                                                                                                                                |
 
 ---
@@ -99,6 +99,7 @@ what the storefront pins the message to (Plan-0005, screen «Чекаут: по�
 | `400`  | `COURIER_ADDRESS_REQUIRED`     | —                                                 | `COURIER` without `street` / `building`                    |
 | `400`  | `COUPON_INVALID`               | —                                                 | no active coupon with that code                            |
 | `400`  | `COUPON_EXPIRED`               | —                                                 | the coupon's `valid_until` has passed                      |
+| `400`  | `COUPON_NOT_APPLICABLE`        | —                                                 | every line is on promotion, so the coupon would buy nothing (TD-0012) |
 
 `OUT_OF_STOCK` and `INSUFFICIENT_STOCK` are split because the advice differs: at zero there is
 nothing left to reduce, so the text asks for the line to be removed rather than for a smaller
@@ -121,6 +122,7 @@ Editable fields:
 - `delivery_method`
 - `delivery_address`
 - `comment`
+- `manual_discount` — `{ amount, reason }` or `null` to remove it (see below)
 
 Calculation rules:
 
@@ -128,7 +130,18 @@ Calculation rules:
 - each line total is calculated as `price * quantity`
 - `subtotal_price` is recalculated from all line totals
 - if `applied_discount` exists, its `discount_percent` is preserved and `discount_amount` is recalculated from the new `subtotal_price`
-- `total_price` is recalculated as `subtotal_price - discount_amount` (or equal to `subtotal_price` when no discount is applied)
+- `total_price` is recalculated as `subtotal_price - discount_amount - manual_discount.amount` (each term 0 when absent)
+
+Manual discount (`manual_discount`) — a fixed amount in UAH the admin grants after checkout,
+e.g. the buyer asked for 50 ₴ off by phone:
+
+- `amount` > 0 (2 decimals max), `reason` 1..300 chars (trimmed; blank → 400); stored with `applied_at`
+- stacks on top of the coupon; `amount` greater than `subtotal_price - discount_amount` → `400 MANUAL_DISCOUNT_TOO_LARGE`. An `items` edit keeps it and re-checks the same limit
+- `payment_status` `PAID` / `REFUNDED` → `409 MANUAL_DISCOUNT_ORDER_PAID`: once the money moved it is a refund, handled outside the system
+- an open LiqPay session (`liqpay_retry_after_seconds > 0`) → `409 LIQPAY_SESSION_ACTIVE` with `retry_after_seconds`: that session was built with the old amount, and the callback is checked against `total_price` (±0.01), so the admin waits the cooldown out rather than invite a second charge
+- the buyer projection (`GET /orders/me*`) carries `{ amount }` only — `reason` and `applied_at` are admin-only
+- the invoice prints «Знижка магазину» (reason on the internal copy only); the sales report adds it to the order's discount, spreads it over the lines like the coupon and marks it «ручна»
+- the Nova Post COD amount is set by the admin in the NP cabinet — use the new `total_price` there
 
 Delivery validation:
 
@@ -150,25 +163,83 @@ Payment / delivery combination:
   putting `CASH` on a parcel is now a `400` as well.
 - `IBAN` and `LIQPAY` are unrestricted at the API level.
 
-COD payment status is never automated: it stays `PENDING` until an admin sets
-`PAID` via `PATCH /orders/:id/payment-status` once Nova Post remits the money.
-Setting the TTN does not change it.
+COD payment is confirmed by the parcel being received: the buyer pays at the counter to get it,
+so when the Nova Post tracker sees a «received» code on a COD order whose payment is `PENDING`,
+the same write sets `payment_status = PAID` and the order lands on `COMPLETED` (TD-0011,
+`decideTracking` → `markPaid`). The admin can still set `PAID` by hand first — the tracker then
+leaves the payment alone. For every other payment method the tracker never touches the payment.
+Setting the TTN does not change the payment status (it does ship the order — below).
 
 ---
 
-## `PATCH /orders/:id/status` — payment side effect
+## Order lifecycle (TD-0011)
 
-`order_status` and `payment_status` are otherwise independent, but cancelling an
-order also recalculates the payment status
+Facts move the status; the admin only decides. One module owns the rules —
+`src/modules/order/helpers/order-status.rules.ts` — and every write of either status
+(admin endpoints, TTN, the Nova Post tracker, the LiqPay callback, the buyer's payment-method
+change) goes through its `planStatusChange`, which applies the payment rule below, settles
+`COMPLETED` and builds the `status_history` entries in one place.
+
+```
+NEW ─► PROCESSING ─► CONFIRMED ─ TTN ─► SHIPPED ─ НП «отримано» ─► DELIVERED ─ PAID ─► COMPLETED
+ │  (buyer contacted,   │                   │                            ▲
+ │   confirmation awaited; the three        └ НП відмова ─► RETURNING ───┴─► RETURNED
+ │   move freely; TTN ships any of them; pickup: «Видано» → DELIVERED)
+ └─► CANCELLED ─ «Відновити» ─► NEW
+```
+
+| From | Admin may set (`allowed_status_transitions`) | Automatic |
+|---|---|---|
+| `NEW` / `PROCESSING` / `CONFIRMED` | the other two, `CANCELLED`, `DELIVERED` (pickup only) | TTN → `SHIPPED` (any delivery method — a pickup with a TTN was posted after all) |
+| `SHIPPED` | `DELIVERED` (fallback when the tracker cannot see the parcel), `RETURNING` | tracker: received → `DELIVERED`, refusal → `RETURNING` |
+| `DELIVERED` / `COMPLETED` | `RETURNING` | `DELIVERED` ⇄ `COMPLETED` by `PAID` |
+| `RETURNING` | `RETURNED`, `DELIVERED` (the buyer collected after all) | — |
+| `CANCELLED` | `NEW` | — |
+| `RETURNED` | — (terminal) | — |
+
+- **`COMPLETED` is never set by hand.** It is «delivered and paid»: whichever of the two arrives
+  second settles it in the same write, and losing `PAID` takes it back to `DELIVERED`.
+- **A shipped order cannot be cancelled** — it is returned (`RETURNING → RETURNED`).
+- **`PROCESSING` means «Очікує підтвердження»** — the admin has written to the buyer and waits
+  for the confirmation; it sits before `CONFIRMED`, not after it as the old «В обробці» (packing)
+  did. A one-off migration (run by the owner at release, not kept in the repo) moved legacy rows
+  set under the old meaning to `CONFIRMED` — or `SHIPPED` when they carried a TTN — telling them
+  apart by the absence of a `status_history` entry, and closed `DELIVERED` + `PAID` as `COMPLETED`. The buyer may still change the payment method in it — the lock is the TTN.
+- **Errors:** a move not in the list → `409 { code: 'INVALID_STATUS_TRANSITION', from, to,
+  allowed }`; a status no row targets (`SHIPPED`, `COMPLETED`) → `400` from the DTO
+  (`ADMIN_SETTABLE_ORDER_STATUSES` is derived from the table, so the Swagger enum is the truth);
+  a write whose pinned statuses moved meanwhile (tracker, callback, another tab) →
+  `409 { code: 'ORDER_STATUS_CHANGED' }`. Sending the current status again is a `200` no-op —
+  except that re-applying `CANCELLED` still voids a legacy order that reads `PENDING` (TD-0003).
+- **`status_history[]`** — `{ field, from, to, at, actor, admin_id?, note? }`, `actor ∈ admin |
+  customer | tracker | gateway | system`. Written with `$push` in the same update as the
+  status; the LiqPay retry claim (`FAILED → PENDING` on `POST /liqpay/checkout`) records its move
+  through a pipeline update (`REPOSITORY_PATTERN.md` §7). Admin **detail** only — the admin list
+  drops it, and `/orders/me*` and the public lookup never carry it.
+- **Gateway writes are pinned on the whole state read** (method, order status, payment status):
+  the planned write carries a derived order status, so a callback racing the tracker must miss
+  rather than stamp `COMPLETED` over `RETURNING`. A miss re-reads once and starts over from the
+  fresh state; a second miss is logged and left to the next callback.
+- **`GET /orders/:id`** also answers `ships_on_ttn` — whether `PATCH /orders/:id/ttn` will set
+  `SHIPPED` — so the admin UI's hint comes from the same rule as the write.
+- **A pickup order is not a fact about the parcel.** In practice a «самовивіз» order (a wholesale
+  buyer paying by invoice) is often posted by Нова Пошта anyway, so the TTN, not
+  `delivery_method`, decides: entering one ships the order and the tracker follows it like any
+  other. Only `DELIVERED` straight from the pre-shipment statuses («Видано») stays pickup-only.
+
+## Payment side effect of an order status change
+
+`order_status` and `payment_status` are otherwise independent, but cancelling or receiving back
+an order also recalculates the payment status
 (`resolvePaymentStatusOnOrderStatusChange` in
 `src/modules/order/helpers/payment-status.helpers.ts`):
 
 | Requested `order_status` | Current `payment_status` | New `payment_status` | Why                                                                                    |
 | ------------------------ | ------------------------ | -------------------- | -------------------------------------------------------------------------------------- |
-| `CANCELLED`              | `PENDING` / `FAILED`     | `VOIDED`             | No money arrived — payment is no longer expected                                       |
-| `CANCELLED`              | `PAID`                   | unchanged            | Money really arrived; admin refunds manually and sets `REFUNDED` (logged as a warning) |
-| `CANCELLED`              | `REFUNDED` / `VOIDED`    | unchanged            | Already terminal                                                                       |
-| anything else            | `VOIDED`                 | `PENDING`            | Order reopened — payment is expected again                                             |
+| `CANCELLED` / `RETURNED` | `PENDING` / `FAILED`     | `VOIDED`             | No money arrived — payment is no longer expected                                       |
+| `CANCELLED` / `RETURNED` | `PAID`                   | unchanged            | Money really arrived; admin refunds manually and sets `REFUNDED` (logged as a warning) |
+| `CANCELLED` / `RETURNED` | `REFUNDED` / `VOIDED`    | unchanged            | Already terminal                                                                       |
+| `NEW` (from `CANCELLED`) | `VOIDED`                 | `PENDING`            | Order reopened — payment is expected again                                             |
 | anything else            | other                    | unchanged            | —                                                                                      |
 
 Without this, a cancelled unpaid order kept reading «Очікує оплату» in the
@@ -203,3 +274,21 @@ the checkout success page — is documented in `src/docs/LIQPAY_FLOW.md`.
 
 See `docs/architecture/state-machines.md` and TD-0003 in the `fillando-meta`
 repository.
+
+## Promotions on order lines (TD-0012)
+
+`OrderService.buildOrderItems` prices every line at the moment of the write: `items[].price` is what
+the buyer pays — the variant's sale price while its promotion is on (`activePromo`) — and
+`items[].list_price` the regular price, with `items[].promo_percent` saying which sale it was. Orders
+written before TD-0012 have no `list_price`; `mapOrderResponse` reads it back as `price`.
+
+**A coupon acts on the lines that are not on promotion.** `discount_amount = round2(percent/100 ×
+Σ line totals with promo_percent = null)`; the storefront previews the same figure from the cart.
+When every line is on promotion the order is refused with `400 COUPON_NOT_APPLICABLE` rather than
+recorded with a 0 discount, so a single-use code is not burned for nothing. The admin `PATCH
+/orders/:id` with `items` recomputes the coupon over the same eligible subtotal (no refusal there —
+the admin is editing; if every remaining line is on promotion the coupon simply contributes 0).
+Note that `items` edits have always re-priced every line from the current catalogue — a promotion
+that ended between checkout and the edit therefore raises the unit price the same way a Prom price
+change always has; the admin sees the new total before confirming. LiqPay charges `total_price` as it was at creation: a promotion that starts
+or ends between the cart and `POST /orders` simply prices at creation time.

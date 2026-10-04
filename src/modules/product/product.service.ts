@@ -11,6 +11,11 @@ import {
 	StorefrontRevalidationService,
 	storefrontRevalidation
 } from 'src/common/services/storefront-revalidation.service'
+import {
+	FeedRefreshSignal,
+	feedRefresh as feedRefreshSignal
+} from 'src/common/services/feed-refresh.signal'
+import { supplierPriceOf } from 'src/modules/prom/prom-pricing'
 import { ProductRepository } from 'src/database/mongoose/repositories/product.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
@@ -35,12 +40,35 @@ import {
 	type AttrLike
 } from './product-attribute.helpers'
 import { toPublicAttributes } from './product-public.mappers'
+import { SetProductPromotionDto } from './dto/set-product-promotion.dto'
+import {
+	PromoValidationError,
+	resolvePromoPatch,
+	type PromoPatch,
+	type PromoWriteInput
+} from './promo-pricing'
 
 /** What a `color_id` on the wire resolves to: the pair stored on the variant, plus its label. */
 interface ResolvedColor {
 	stored: { color_id: Types.ObjectId | null; color_family: ColorFamily | null }
 	/** «Чорний (Black)» — the shopper-facing spelling, already formatted. */
 	label: string | null
+}
+
+/**
+ * Fields a variant write carries that are never stored as sent: `color_id` is replaced by the
+ * resolved colour pair, the promo fields go through the promo rules (string date → Date,
+ * cross-field checks). Stripping them by name rather than by destructuring keeps the lint clean of
+ * never-read bindings.
+ */
+const WIRE_ONLY_VARIANT_FIELDS = new Set(['color_id', 'promo_percent', 'promo_ends_at'])
+
+function storableVariantFields<T extends object>(
+	dto: T
+): Omit<T, 'color_id' | 'promo_percent' | 'promo_ends_at'> {
+	return Object.fromEntries(
+		Object.entries(dto).filter(([key]) => !WIRE_ONLY_VARIANT_FIELDS.has(key))
+	) as Omit<T, 'color_id' | 'promo_percent' | 'promo_ends_at'>
 }
 
 /** A stored variant as the rename planner reads it — `_id` is not declared on the schema class. */
@@ -65,6 +93,9 @@ interface PriceSheetRaw {
 	color_name_uk?: string | null
 	color_name_en?: string | null
 	price: number
+	sale_price?: number | null
+	promo_percent?: number | null
+	promo_ends_at?: Date | null
 	stock?: number
 	stock_updated_at?: Date | null
 	image?: string | null
@@ -88,8 +119,75 @@ export class ProductService {
 		 * each owning a copy (see the singleton's own note). A spec passes its own instance.
 		 */
 		@Optional()
-		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation
+		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation,
+		/** Same arrangement: a promo write tells the feed it is stale without seeing FeedService. */
+		@Optional()
+		private readonly feedRefresh: FeedRefreshSignal = feedRefreshSignal
 	) {}
+
+	/**
+	 * The promo fields a write may store (TD-0012), or a 400 the admin can act on. The DTO has
+	 * already checked the percent range and the date format; this adds the cross-field rules.
+	 */
+	private toPromoPatch(
+		input: PromoWriteInput,
+		existing: { promo_percent: number | null } | null
+	): PromoPatch {
+		try {
+			return resolvePromoPatch(input, existing)
+		} catch (err) {
+			if (err instanceof PromoValidationError) {
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: err.code,
+					message: err.message
+				})
+			}
+			throw err
+		}
+	}
+
+	/** Whether a write mentioned the promotion at all — what decides if the feed is told. */
+	private static mentionsPromo(input: PromoWriteInput): boolean {
+		return input.promo_percent !== undefined || input.promo_ends_at !== undefined
+	}
+
+	/**
+	 * Admin view of a variant: the stored document plus what the shop pays for it, so the admin
+	 * sees a promotion that would sell below cost. Admin-only by construction — the public
+	 * mappers never spread a document.
+	 */
+	private withSupplierPrice<T extends { prom_base_price?: number | null }>(variant: T) {
+		return { ...variant, supplier_price: supplierPriceOf(variant) }
+	}
+
+	/**
+	 * One promotion for every variant of a product, or none (TD-0012). A bulk `updateMany` —
+	 * no transaction needed, and a draft variant takes the promo too so it comes up on sale
+	 * when activated.
+	 */
+	async setProductPromotion(productId: string, dto: SetProductPromotionDto) {
+		this.assertObjectId(productId, 'Product not found')
+		const product = await this.productRepository.findById(productId)
+		if (!product) throw new NotFoundException('Product not found')
+
+		const patch = this.toPromoPatch(
+			{ promo_percent: dto.promo_percent, promo_ends_at: dto.promo_ends_at ?? null },
+			null
+		)
+		const { matched, modified } = await this.productVariantRepository.setPromoByProductId(
+			productId,
+			{
+				promo_percent: patch.promo_percent ?? null,
+				promo_ends_at: patch.promo_ends_at ?? null
+			}
+		)
+		this.revalidation.revalidate('products', 'product promotion')
+		this.feedRefresh.request('product promotion')
+		const variants = await this.productVariantRepository.findByProductId(productId)
+		return { matched, modified, variants: variants.map(v => this.withSupplierPrice(v)) }
+	}
 
 	/**
 	 * Resolves an incoming `color_id` into the pair actually stored on a variant.
@@ -192,6 +290,9 @@ export class ProductService {
 					pickColor(item.v_value, attributes, item.variant_type),
 				article: item.sku || null,
 				price: item.price,
+				sale_price: item.sale_price ?? null,
+				promo_percent: item.promo_percent ?? null,
+				promo_ends_at: item.promo_ends_at ?? null,
 				in_stock: (item.stock ?? 0) > 0,
 				stock: item.stock ?? 0,
 				synced_at: item.stock_updated_at ?? null
@@ -300,22 +401,25 @@ export class ProductService {
 		}))
 
 		const { variants, ...productData } = withSanitizedDescription(dto)
+		// Every refusal the promo rules can raise is raised here, before the product document
+		// exists: there is no transaction to roll a half-created product back with.
+		const promoPatches = (variants ?? []).map(variant => this.toPromoPatch(variant, null))
+
 		const product = await this.productRepository.create({ ...productData, attributes } as any)
 
 		const createdVariants = variants?.length
 			? await Promise.all(
-					variants.map(async variant => {
+					variants.map(async (variant, index) => {
 						const systemSku = await this.generateSku()
 						const slug = generateSlug(
 							variant.v_value ? `${product.name} ${variant.v_value}` : product.name
 						)
-						// `color_id` arrives as a string and is replaced by the resolved pair,
-						// so it must not survive the spread.
-						const { color_id: _colorId, ...variantData } = variant
+						const variantData = storableVariantFields(variant)
 						const color = await this.resolveColor(variant.color_id)
 						return this.productVariantRepository.create({
 							...variantData,
 							...(color?.stored ?? {}),
+							...promoPatches[index],
 							sku: systemSku,
 							vendor_product_sku: variant.vendor_product_sku ?? systemSku,
 							product_id: product._id,
@@ -330,6 +434,9 @@ export class ProductService {
 			: []
 
 		this.revalidation.revalidate('products', 'product create')
+		if (variants?.some(v => ProductService.mentionsPromo(v))) {
+			this.feedRefresh.request('product create with promotion')
+		}
 		return { ...product.toObject(), variants: createdVariants.map(v => v.toObject()) }
 	}
 
@@ -496,7 +603,8 @@ export class ProductService {
 		if (!Types.ObjectId.isValid(productId)) throw new NotFoundException('Product not found')
 		const product = await this.productRepository.findById(productId)
 		if (!product) throw new NotFoundException('Product not found')
-		return this.productVariantRepository.findByProductId(productId)
+		const variants = await this.productVariantRepository.findByProductId(productId)
+		return variants.map(v => this.withSupplierPrice(v))
 	}
 
 	/** Admin only — returns the full variant document (incl. supplier fields) for editing. */
@@ -510,7 +618,7 @@ export class ProductService {
 			product_id: new Types.ObjectId(productId)
 		})
 		if (!variant) throw new NotFoundException('Variant not found')
-		return variant
+		return this.withSupplierPrice(variant.toObject())
 	}
 
 	async addVariant(productId: string, dto: AddVariantDto) {
@@ -518,11 +626,12 @@ export class ProductService {
 		if (!product) throw new NotFoundException('Product not found')
 
 		const systemSku = await this.generateSku()
-		const { color_id: _colorId, ...variantData } = dto
+		const variantData = storableVariantFields(dto)
 		const color = await this.resolveColor(dto.color_id)
 		const created = await this.productVariantRepository.create({
 			...variantData,
 			...(color?.stored ?? {}),
+			...this.toPromoPatch(dto, null),
 			sku: systemSku,
 			vendor_product_sku: dto.vendor_product_sku ?? systemSku,
 			product_id: product._id,
@@ -533,6 +642,8 @@ export class ProductService {
 			images: dto.images ?? []
 		})
 		this.revalidation.revalidate('products', 'variant create')
+		if (ProductService.mentionsPromo(dto))
+			this.feedRefresh.request('variant create with promotion')
 		return created
 	}
 
@@ -549,6 +660,11 @@ export class ProductService {
 		if (!existing) throw new NotFoundException('Variant not found')
 
 		const patch: Record<string, any> = { ...dto }
+		// Wire values; the stored ones come from the promo rules (string date → Date, cross-field
+		// checks). `price_updated_at` is deliberately not stamped: the regular price did not move.
+		delete patch.promo_percent
+		delete patch.promo_ends_at
+		Object.assign(patch, this.toPromoPatch(dto, existing))
 		const color = await this.resolveColor(dto.color_id)
 		if (color) Object.assign(patch, color.stored)
 
@@ -581,6 +697,7 @@ export class ProductService {
 		// the page, in the `Product` JSON-LD and in the Merchant feed: an «у наявності» the feed
 		// already contradicts is the worst of the four, so it may not wait out the hour.
 		this.revalidation.revalidate('products', 'variant update')
+		if (ProductService.mentionsPromo(dto)) this.feedRefresh.request('variant promotion')
 		return updated
 	}
 

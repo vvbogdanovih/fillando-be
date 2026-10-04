@@ -61,6 +61,14 @@ export class FeedService {
 
 	/** Guards against two overlapping aggregations — the manual button plus the cron. */
 	private generating = false
+	/**
+	 * A rebuild asked for while one was already running (TD-0012). The running one started from
+	 * a read that predates the request, so it may well publish the very state the request wanted
+	 * gone — the request is kept and honoured as soon as that run ends, whoever started it: the
+	 * cron, the bootstrap, or the admin's manual button. That is why the flag lives here and not
+	 * in the cron service, which never sees the manual run.
+	 */
+	private rerunRequested = false
 	private cachedXml: string | null = null
 	private generatedAt: Date | null = null
 	private lastSummary: FeedGenerationSummary | null = null
@@ -76,6 +84,15 @@ export class FeedService {
 
 	get isRunning(): boolean {
 		return this.generating
+	}
+
+	/**
+	 * "Rebuild once the current generation ends." A no-op when nothing is running — the caller
+	 * then simply calls {@link generate} itself.
+	 */
+	requestRerun(): void {
+		if (!this.generating) return
+		this.rerunRequested = true
 	}
 
 	/** The last good XML, or null before the first generation of this process. */
@@ -116,6 +133,9 @@ export class FeedService {
 				filters: l.filters ?? {}
 			}))
 			const frontendUrl = ENV.FRONTEND_URL.replace(/\/$/, '')
+			// One instant for the whole feed, and the one it is stamped with: every item decides
+			// its promotion against the same clock (TD-0012).
+			const generatedAt = new Date()
 
 			const items: string[] = []
 			const excluded: FeedExclusion[] = []
@@ -138,7 +158,8 @@ export class FeedService {
 				const built = buildItem(row, {
 					frontendUrl,
 					productType: typed.product_type,
-					unitsSold: unitsSold.get(row.id) ?? 0
+					unitsSold: unitsSold.get(row.id) ?? 0,
+					now: generatedAt
 				})
 				if (!built.ok) {
 					excluded.push({ sku: row.sku, name: row.name, reason: built.reason })
@@ -173,7 +194,6 @@ export class FeedService {
 				}
 			}
 
-			const generatedAt = new Date()
 			const warningList = [...warnings.entries()].map(([code, entry]) =>
 				this.toWarning(code, entry)
 			)
@@ -224,7 +244,19 @@ export class FeedService {
 			throw err
 		} finally {
 			this.generating = false
+			this.runRerunIfRequested()
 		}
+	}
+
+	private runRerunIfRequested(): void {
+		if (!this.rerunRequested) return
+		this.rerunRequested = false
+		this.logger.log('Google Shopping feed: running the rebuild requested during the last run')
+		void this.generate().catch((err: Error) => {
+			// Already logged by `generate`; here only so the rerun can never become an unhandled
+			// rejection — the run that is over does not care how its follower ends.
+			this.logger.error(`Queued Google Shopping feed rebuild failed: ${err.message}`)
+		})
 	}
 
 	/** One summary row: `count` in the kind's own unit, `item_count` always in feed rows. */

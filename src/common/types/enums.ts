@@ -57,14 +57,21 @@ export enum WholesaleInquiryStatus {
 
 export enum OrderStatus {
 	NEW = 'NEW',
-	CONFIRMED = 'CONFIRMED',
+	/** The admin has contacted the buyer and waits for the confirmation (TD-0011). */
 	PROCESSING = 'PROCESSING',
+	CONFIRMED = 'CONFIRMED',
 	SHIPPED = 'SHIPPED',
 	DELIVERED = 'DELIVERED',
 	COMPLETED = 'COMPLETED',
 	CANCELLED = 'CANCELLED',
+	/** Refused or unclaimed at Nova Post — the parcel is on its way back to the shop. */
+	RETURNING = 'RETURNING',
 	RETURNED = 'RETURNED'
 }
+
+/** Who changed an order or payment status (TD-0011). `system` is a migration or another job. */
+export const STATUS_ACTORS = ['admin', 'customer', 'tracker', 'gateway', 'system'] as const
+export type StatusActor = (typeof STATUS_ACTORS)[number]
 
 /**
  * Who an order invoice is for. The internal copy carries the supplier article (`vendor_sku`),

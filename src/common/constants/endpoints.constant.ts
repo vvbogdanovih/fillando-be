@@ -82,6 +82,7 @@ export const ENDPOINTS = {
 		UPDATE: '/:id',
 		DELETE: '/:id',
 		VARIANTS: '/:id/variants',
+		PROMOTION: '/:id/promotion',
 		VARIANT: '/:id/variants/:variantId',
 		PATCH_VARIANT_IMAGES: '/:id/variants/:variantId/images'
 	},

@@ -103,6 +103,16 @@ export const API_PROPERTY = {
 		example: 999.99,
 		description: 'Variant price'
 	},
+	PROMO_PERCENT: {
+		example: 15,
+		description:
+			'Promotion («акція», TD-0012): whole-number percent off the regular price, 1..90. Kept beside `price`, never folded into it (the Prom sync rewrites `price`); the public `sale_price` is derived from it. null clears the promotion'
+	},
+	PROMO_ENDS_AT: {
+		example: '2026-11-01T00:00:00.000Z',
+		description:
+			'When the promotion ends (ISO 8601, must be in the future). null = open-ended. Requires a percent — alone it is a 400 PROMO_PERCENT_REQUIRED'
+	},
 	S3_KEY: {
 		example: 'products/abc123/550e8400-e29b-41d4-a716-446655440000.webp',
 		description: 'S3 object key identifying the file in the bucket'

@@ -1236,7 +1236,7 @@
         ]
       },
       "patch": {
-        "description": "Partially update a product variant (price, stock, status, etc.).",
+        "description": "Partially update a product variant (price, stock, status, etc.). `promo_percent` / `promo_ends_at` set or clear the variant's promotion (TD-0012): the sale price is derived, never stored; a date without a percent is 400 PROMO_PERCENT_REQUIRED, a date in the past 400 PROMO_ENDS_IN_PAST. A promo write purges the storefront and rebuilds the Merchant feed.",
         "operationId": "ProductController_updateVariant",
         "parameters": [
           {
@@ -1303,6 +1303,41 @@
           }
         },
         "summary": "Delete variant",
+        "tags": [
+          "/products"
+        ]
+      }
+    },
+    "/products/{id}/promotion": {
+      "patch": {
+        "description": "Admin only (TD-0012). Writes `promo_percent` / `promo_ends_at` to all variants of the product in one update, whatever their status (a draft activated later inherits it). `promo_percent: null` clears the promotion on all of them. Answers `{ matched, modified, variants }` with the full admin variant documents; a product with no variants answers matched 0. Purges the storefront and rebuilds the Merchant feed.",
+        "operationId": "ProductController_setPromotion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProductPromotionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Set or clear a promotion on every variant of a product",
         "tags": [
           "/products"
         ]
@@ -3766,6 +3801,12 @@
             "example": 599.5,
             "description": "Поточна роздрібна ціна одиниці товару у гривнях. Довідкова; не фіксується до оформлення замовлення."
           },
+          "sale_price": {
+            "type": "object",
+            "example": 425,
+            "nullable": true,
+            "description": "Роздрібна ціна за акцією магазину, якщо вона зараз діє (TD-0012); null — акції немає. `price` лишається регулярною ціною."
+          },
           "currency": {
             "type": "string",
             "enum": [
@@ -3825,6 +3866,7 @@
         },
         "required": [
           "price",
+          "sale_price",
           "currency",
           "sku",
           "name",
@@ -4358,6 +4400,18 @@
             "example": 1220,
             "description": "Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it",
             "nullable": true
+          },
+          "promo_percent": {
+            "type": "object",
+            "example": 15,
+            "description": "Promotion («акція», TD-0012): whole-number percent off the regular price, 1..90. Kept beside `price`, never folded into it (the Prom sync rewrites `price`); the public `sale_price` is derived from it. null clears the promotion",
+            "nullable": true
+          },
+          "promo_ends_at": {
+            "type": "object",
+            "example": "2026-11-01T00:00:00.000Z",
+            "description": "When the promotion ends (ISO 8601, must be in the future). null = open-ended. Requires a percent — alone it is a 400 PROMO_PERCENT_REQUIRED",
+            "nullable": true
           }
         },
         "required": [
@@ -4459,10 +4513,41 @@
             "example": 1220,
             "description": "Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it",
             "nullable": true
+          },
+          "promo_percent": {
+            "type": "object",
+            "example": 15,
+            "description": "Promotion («акція», TD-0012): whole-number percent off the regular price, 1..90. Kept beside `price`, never folded into it (the Prom sync rewrites `price`); the public `sale_price` is derived from it. null clears the promotion",
+            "nullable": true
+          },
+          "promo_ends_at": {
+            "type": "object",
+            "example": "2026-11-01T00:00:00.000Z",
+            "description": "When the promotion ends (ISO 8601, must be in the future). null = open-ended. Requires a percent — alone it is a 400 PROMO_PERCENT_REQUIRED",
+            "nullable": true
           }
         },
         "required": [
           "price"
+        ]
+      },
+      "SetProductPromotionDto": {
+        "type": "object",
+        "properties": {
+          "promo_percent": {
+            "type": "object",
+            "example": 15,
+            "description": "Promotion («акція», TD-0012): whole-number percent off the regular price, 1..90. Kept beside `price`, never folded into it (the Prom sync rewrites `price`); the public `sale_price` is derived from it. null clears the promotion",
+            "nullable": true
+          },
+          "promo_ends_at": {
+            "type": "object",
+            "example": "2026-11-01T00:00:00.000Z",
+            "description": "When the promotion ends (ISO 8601, must be in the future). null = open-ended. Requires a percent — alone it is a 400 PROMO_PERCENT_REQUIRED"
+          }
+        },
+        "required": [
+          "promo_percent"
         ]
       },
       "UpdateVariantDto": {
@@ -4517,6 +4602,18 @@
             "type": "object",
             "example": 1220,
             "description": "Shipping weight in grams — filament plus the spool when one is included. Feeds the delivery estimate and the Google Shopping feed; null clears it",
+            "nullable": true
+          },
+          "promo_percent": {
+            "type": "object",
+            "example": 15,
+            "description": "Promotion («акція», TD-0012): whole-number percent off the regular price, 1..90. Kept beside `price`, never folded into it (the Prom sync rewrites `price`); the public `sale_price` is derived from it. null clears the promotion",
+            "nullable": true
+          },
+          "promo_ends_at": {
+            "type": "object",
+            "example": "2026-11-01T00:00:00.000Z",
+            "description": "When the promotion ends (ISO 8601, must be in the future). null = open-ended. Requires a percent — alone it is a 400 PROMO_PERCENT_REQUIRED",
             "nullable": true
           }
         }
@@ -5376,7 +5473,19 @@
           },
           "price": {
             "type": "number",
-            "example": 1299
+            "example": 1299,
+            "description": "Unit price the buyer pays (the sale price under a promotion)"
+          },
+          "list_price": {
+            "type": "number",
+            "example": 1529,
+            "description": "Regular unit price at order time (TD-0012); equals `price` without a promotion"
+          },
+          "promo_percent": {
+            "type": "object",
+            "example": 15,
+            "nullable": true,
+            "description": "Promotion percent the line was sold under"
           },
           "quantity": {
             "type": "number",
@@ -5399,6 +5508,8 @@
           "sku",
           "vendor_sku",
           "price",
+          "list_price",
+          "promo_percent",
           "quantity",
           "line_total",
           "image"

@@ -25,6 +25,7 @@ import { UpdateProductDto } from './dto/update-product.dto'
 import { ValidateProductDto } from './dto/validate-product.dto'
 import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
+import { SetProductPromotionDto } from './dto/set-product-promotion.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
 import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
 import { GeneratePriceListDto } from './dto/generate-price-list.dto'
@@ -161,6 +162,14 @@ export class ProductController {
 	@ApiOperation(API_OPERATION.PRODUCTS.ADD_VARIANT)
 	addVariant(@Param('id') id: string, @Body() dto: AddVariantDto) {
 		return this.productService.addVariant(id, dto)
+	}
+
+	@Patch(ENDPOINTS.PRODUCTS.PROMOTION)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.PRODUCTS.SET_PROMOTION)
+	setPromotion(@Param('id') id: string, @Body() dto: SetProductPromotionDto) {
+		return this.productService.setProductPromotion(id, dto)
 	}
 
 	@Patch(ENDPOINTS.PRODUCTS.VARIANT)

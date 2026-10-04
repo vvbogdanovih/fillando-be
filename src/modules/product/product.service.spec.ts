@@ -190,3 +190,151 @@ describe('ProductService.getVariantBySlug — attribute units', () => {
 		expect(Object.keys(result.product.attributes[0]).sort()).toEqual(['k', 'l', 'unit', 'v'])
 	})
 })
+
+describe('ProductService — promotions (TD-0012)', () => {
+	const PRODUCT_ID = '000000000000000000000011'
+	const VARIANT_ID = '000000000000000000000012'
+	const product = { _id: PRODUCT_ID, name: 'PLA Basic', category_id: '000000000000000000000013' }
+
+	const build = (existing: Record<string, unknown> | null = null) => {
+		const productRepository = { findById: jest.fn().mockResolvedValue(product) }
+		const variants = [
+			{ _id: VARIANT_ID, price: 500, prom_base_price: 400, prom_discount_ratio: 0.1 }
+		]
+		const productVariantRepository = {
+			findOne: jest.fn().mockResolvedValue(existing),
+			findByProductId: jest.fn().mockResolvedValue(variants),
+			setPromoByProductId: jest.fn().mockResolvedValue({ matched: 1, modified: 1 }),
+			update: jest
+				.fn<Promise<unknown>, [unknown, Record<string, unknown>]>()
+				.mockImplementation((_f, patch) => Promise.resolve({ ...existing, ...patch }))
+		}
+		const revalidation = { revalidate: jest.fn() }
+		const feedRefresh = { request: jest.fn() }
+		const service = new ProductService(
+			productRepository as never,
+			productVariantRepository as never,
+			{ increment: jest.fn() } as never,
+			{ findById: jest.fn().mockResolvedValue(null) } as never,
+			{ findById: jest.fn().mockResolvedValue(null) } as never,
+			revalidation as never,
+			feedRefresh as never
+		)
+		return { service, productRepository, productVariantRepository, revalidation, feedRefresh }
+	}
+
+	const variant = (over: Record<string, unknown> = {}) => ({
+		_id: VARIANT_ID,
+		product_id: PRODUCT_ID,
+		name: 'PLA Basic',
+		slug: 'pla-basic',
+		v_value: null,
+		color_id: null,
+		price: 500,
+		promo_percent: null,
+		promo_ends_at: null,
+		...over
+	})
+
+	describe('setProductPromotion', () => {
+		it('writes the promotion to every variant, purges the storefront and asks for the feed', async () => {
+			const { service, productVariantRepository, revalidation, feedRefresh } = build()
+			const ends = '2099-01-01T00:00:00.000Z'
+
+			const result = await service.setProductPromotion(PRODUCT_ID, {
+				promo_percent: 15,
+				promo_ends_at: ends
+			})
+
+			expect(productVariantRepository.setPromoByProductId).toHaveBeenCalledWith(PRODUCT_ID, {
+				promo_percent: 15,
+				promo_ends_at: new Date(ends)
+			})
+			expect(revalidation.revalidate).toHaveBeenCalledWith('products', 'product promotion')
+			expect(feedRefresh.request).toHaveBeenCalledWith('product promotion')
+			expect(result).toMatchObject({ matched: 1, modified: 1 })
+			// Admin view: the stored document plus what the shop pays for it.
+			expect(result.variants[0]).toMatchObject({ price: 500, supplier_price: 360 })
+		})
+
+		it('clears both fields on promo_percent: null', async () => {
+			const { service, productVariantRepository } = build()
+			await service.setProductPromotion(PRODUCT_ID, { promo_percent: null })
+			expect(productVariantRepository.setPromoByProductId).toHaveBeenCalledWith(PRODUCT_ID, {
+				promo_percent: null,
+				promo_ends_at: null
+			})
+		})
+
+		it('refuses an end date in the past with a coded 400 and writes nothing', async () => {
+			const { service, productVariantRepository } = build()
+			await expect(
+				service.setProductPromotion(PRODUCT_ID, {
+					promo_percent: 15,
+					promo_ends_at: '2020-01-01T00:00:00.000Z'
+				})
+			).rejects.toMatchObject({ response: { code: 'PROMO_ENDS_IN_PAST' } })
+			expect(productVariantRepository.setPromoByProductId).not.toHaveBeenCalled()
+		})
+
+		it('is a 404 for a product that does not exist', async () => {
+			const { service, productRepository } = build()
+			productRepository.findById.mockResolvedValue(null)
+			await expect(
+				service.setProductPromotion(PRODUCT_ID, { promo_percent: 10 })
+			).rejects.toBeInstanceOf(NotFoundException)
+		})
+	})
+
+	describe('updateVariant', () => {
+		it('turns the wire date into a Date, leaves price_updated_at alone and tells the feed', async () => {
+			const { service, productVariantRepository, feedRefresh } = build(variant())
+			const ends = '2099-01-01T00:00:00.000Z'
+
+			await service.updateVariant(PRODUCT_ID, VARIANT_ID, {
+				promo_percent: 20,
+				promo_ends_at: ends
+			})
+
+			const patch = productVariantRepository.update.mock.calls[0][1]
+			expect(patch).toEqual({ promo_percent: 20, promo_ends_at: new Date(ends) })
+			expect(feedRefresh.request).toHaveBeenCalledWith('variant promotion')
+		})
+
+		it('keeps the stored percent when only the date is sent', async () => {
+			const { service, productVariantRepository } = build(variant({ promo_percent: 10 }))
+			await service.updateVariant(PRODUCT_ID, VARIANT_ID, {
+				promo_ends_at: '2099-01-01T00:00:00.000Z'
+			})
+			expect(productVariantRepository.update.mock.calls[0][1]).toEqual({
+				promo_ends_at: new Date('2099-01-01T00:00:00.000Z')
+			})
+		})
+
+		it('refuses a date on a variant with no percent to apply it to', async () => {
+			const { service, productVariantRepository } = build(variant())
+			await expect(
+				service.updateVariant(PRODUCT_ID, VARIANT_ID, {
+					promo_ends_at: '2099-01-01T00:00:00.000Z'
+				})
+			).rejects.toMatchObject({ response: { code: 'PROMO_PERCENT_REQUIRED' } })
+			expect(productVariantRepository.update).not.toHaveBeenCalled()
+		})
+
+		it('does not bother the feed for a write that says nothing about the promo', async () => {
+			const { service, feedRefresh } = build(variant())
+			await service.updateVariant(PRODUCT_ID, VARIANT_ID, { stock: 3 })
+			expect(feedRefresh.request).not.toHaveBeenCalled()
+		})
+	})
+
+	it('getVariants adds the supplier price for the admin and nothing for a variant never priced from Prom', async () => {
+		const { service, productVariantRepository } = build()
+		productVariantRepository.findByProductId.mockResolvedValue([
+			{ _id: 'a', price: 500, prom_base_price: 400, prom_discount_ratio: 0.1 },
+			{ _id: 'b', price: 500, prom_base_price: null, prom_discount_ratio: null }
+		])
+		const result = await service.getVariants(PRODUCT_ID)
+		expect(result.map(v => v.supplier_price)).toEqual([360, null])
+	})
+})

@@ -56,6 +56,18 @@ export class ProductVariant {
 	@Prop({ type: Date, default: null })
 	price_updated_at: Date | null
 
+	/**
+	 * Shop promotion («акція», TD-0012): a whole-number percent off `price`, 1..90. Never folded
+	 * into `price` — the Prom sync rewrites that every 30 minutes — the sale price is derived on
+	 * read by `modules/product/promo-pricing.ts`. Null = no promotion.
+	 */
+	@Prop({ type: Number, default: null })
+	promo_percent: number | null
+
+	/** When the promotion ends; null = open-ended. A promo starts the moment it is written. */
+	@Prop({ type: Date, default: null })
+	promo_ends_at: Date | null
+
 	@Prop({ type: Date, default: null })
 	stock_updated_at: Date | null
 

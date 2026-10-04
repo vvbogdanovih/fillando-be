@@ -3,14 +3,19 @@ import {
 	IsArray,
 	IsEnum,
 	IsInt,
+	IsISO8601,
 	IsMongoId,
 	IsNumber,
 	IsOptional,
 	IsString,
+	Matches,
+	Max,
 	Min,
 	ValidateIf
 } from 'class-validator'
+import { API_PROPERTY } from 'src/common/constants/docs'
 import { ProductStatus } from 'src/common/types/enums'
+import { PROMO_PERCENT_MAX, PROMO_PERCENT_MIN } from '../promo-pricing'
 
 export class UpdateVariantDto {
 	@ApiProperty({ example: 'Футболка базова — Чорна', required: false })
@@ -77,6 +82,21 @@ export class UpdateVariantDto {
 	@IsInt()
 	@Min(0)
 	weight_g?: number | null
+
+	@ApiProperty({ ...API_PROPERTY.PROMO_PERCENT, nullable: true, required: false })
+	@IsOptional()
+	@IsInt()
+	@Min(PROMO_PERCENT_MIN)
+	@Max(PROMO_PERCENT_MAX)
+	promo_percent?: number | null
+
+	@ApiProperty({ ...API_PROPERTY.PROMO_ENDS_AT, nullable: true, required: false })
+	@IsOptional()
+	@IsISO8601()
+	// A date-only value would be read as UTC midnight — 02:00 in Kyiv — and end the sale almost a
+	// day early; the admin form always sends a full timestamp, so the API insists on one.
+	@Matches(/^\d{4}-\d{2}-\d{2}T/, { message: 'promo_ends_at must be an ISO 8601 date-time' })
+	promo_ends_at?: string | null
 }
 
 export class AddVariantDto {
@@ -143,4 +163,19 @@ export class AddVariantDto {
 	@IsInt()
 	@Min(0)
 	weight_g?: number | null
+
+	@ApiProperty({ ...API_PROPERTY.PROMO_PERCENT, nullable: true, required: false })
+	@IsOptional()
+	@IsInt()
+	@Min(PROMO_PERCENT_MIN)
+	@Max(PROMO_PERCENT_MAX)
+	promo_percent?: number | null
+
+	@ApiProperty({ ...API_PROPERTY.PROMO_ENDS_AT, nullable: true, required: false })
+	@IsOptional()
+	@IsISO8601()
+	// A date-only value would be read as UTC midnight — 02:00 in Kyiv — and end the sale almost a
+	// day early; the admin form always sends a full timestamp, so the API insists on one.
+	@Matches(/^\d{4}-\d{2}-\d{2}T/, { message: 'promo_ends_at must be an ISO 8601 date-time' })
+	promo_ends_at?: string | null
 }

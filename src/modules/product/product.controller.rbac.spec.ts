@@ -25,6 +25,7 @@ const productService = {
 	getVariant: resolved(),
 	addVariant: resolved(),
 	updateVariant: resolved(),
+	setProductPromotion: resolved(),
 	deleteVariant: resolved(),
 	setVariantImages: resolved(),
 	update: resolved(),
@@ -55,6 +56,12 @@ const ADMIN_ENDPOINTS: AdminRow[] = [
 	['post', '/products', {}, productService.create],
 	['post', `/products/${PRODUCT_ID}/variants`, {}, productService.addVariant],
 	['patch', `/products/${PRODUCT_ID}/variants/${VARIANT_ID}`, {}, productService.updateVariant],
+	[
+		'patch',
+		`/products/${PRODUCT_ID}/promotion`,
+		{ promo_percent: 10 },
+		productService.setProductPromotion
+	],
 	[
 		'delete',
 		`/products/${PRODUCT_ID}/variants/${VARIANT_ID}`,

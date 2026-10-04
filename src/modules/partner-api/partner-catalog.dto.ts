@@ -77,6 +77,13 @@ export class PartnerProductDto {
 			'Поточна роздрібна ціна одиниці товару у гривнях. Довідкова; не фіксується до оформлення замовлення.'
 	})
 	price: number
+	@ApiProperty({
+		example: 425,
+		nullable: true,
+		description:
+			'Роздрібна ціна за акцією магазину, якщо вона зараз діє (TD-0012); null — акції немає. `price` лишається регулярною ціною.'
+	})
+	sale_price: number | null
 	@ApiProperty({ enum: ['UAH'], example: 'UAH' })
 	currency: 'UAH'
 

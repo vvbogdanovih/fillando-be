@@ -7,6 +7,7 @@ import { ProductModule } from '../product/product.module'
 import { FeedController } from './feed.controller'
 import { FeedCronService } from './feed-cron.service'
 import { FeedService } from './feed.service'
+import { PromoExpiryCronService } from './promo-expiry-cron.service'
 
 /**
  * Google Shopping feed (TD-0006 §5.3). Owns no collection: it reads variants through
@@ -22,6 +23,6 @@ import { FeedService } from './feed.service'
 		MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }])
 	],
 	controllers: [FeedController],
-	providers: [FeedService, FeedCronService, OrderRepository]
+	providers: [FeedService, FeedCronService, PromoExpiryCronService, OrderRepository]
 })
 export class FeedModule {}

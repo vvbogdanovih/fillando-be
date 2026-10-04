@@ -124,3 +124,12 @@ shop to the old one-hour staleness, it never breaks a save.**
 
 One storefront replica only: the tag manifest is a per-process in-memory map. Cloudflare's edge
 cache is not touched by this call.
+
+## A sibling: the Merchant feed signal (TD-0012)
+
+`src/common/services/feed-refresh.signal.ts` is built the same way — a module singleton taken
+through an `@Optional()` constructor default, fire-and-forget, debounced (5 s) — but it tells the
+process's own `FeedCronService` to rebuild the Google Shopping feed rather than the storefront to
+drop a tag. `ProductService` raises it after a promotion write; `FeedModule` imports `ProductModule`,
+so an injection in the other direction would be a cycle. Promotions that end on their own date are
+handled by `PromoExpiryCronService` in `FeedModule`, which calls both this service and the feed.

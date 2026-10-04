@@ -41,18 +41,22 @@ const buildService = () => {
 		}),
 		findByProductId: jest.fn().mockResolvedValue([]),
 		findBySlugs: jest.fn().mockResolvedValue([]),
-		updateCategoryByProductId: jest.fn().mockResolvedValue(undefined)
+		updateCategoryByProductId: jest.fn().mockResolvedValue(undefined),
+		setPromoByProductId: jest.fn().mockResolvedValue({ matched: 2, modified: 2 })
 	}
 	const revalidation = { revalidate: jest.fn() }
+	// A stub for the same reason as `revalidation`: a unit test must not rebuild a feed.
+	const feedRefresh = { request: jest.fn() }
 	const service = new ProductService(
 		productRepository as never,
 		productVariantRepository as never,
 		{ increment: jest.fn().mockResolvedValue(42) } as never,
 		{ findById: jest.fn().mockResolvedValue(null) } as never,
 		{ findById: jest.fn().mockResolvedValue(null) } as never,
-		revalidation as never
+		revalidation as never,
+		feedRefresh as never
 	)
-	return { service, productRepository, productVariantRepository, revalidation }
+	return { service, productRepository, productVariantRepository, revalidation, feedRefresh }
 }
 
 describe('every product write purges the storefront exactly once', () => {
@@ -74,6 +78,10 @@ describe('every product write purges the storefront exactly once', () => {
 		[
 			'setVariantImages',
 			(s: ProductService) => s.setVariantImages(PRODUCT_ID, VARIANT_ID, { images: ['a.jpg'] })
+		],
+		[
+			'setProductPromotion',
+			(s: ProductService) => s.setProductPromotion(PRODUCT_ID, { promo_percent: 10 })
 		]
 	])('%s', async (_name, call) => {
 		const { service, revalidation } = buildService()
@@ -82,6 +90,52 @@ describe('every product write purges the storefront exactly once', () => {
 
 		expect(revalidation.revalidate).toHaveBeenCalledTimes(1)
 		expect(revalidation.revalidate).toHaveBeenCalledWith('products', expect.any(String))
+	})
+
+	describe('the Merchant feed is told about promotions and about nothing else (TD-0012)', () => {
+		it.each([
+			[
+				'setProductPromotion',
+				(s: ProductService) => s.setProductPromotion(PRODUCT_ID, { promo_percent: 10 })
+			],
+			[
+				'updateVariant with a promo',
+				(s: ProductService) =>
+					s.updateVariant(PRODUCT_ID, VARIANT_ID, { promo_percent: 10 })
+			],
+			[
+				'updateVariant clearing a promo',
+				(s: ProductService) =>
+					s.updateVariant(PRODUCT_ID, VARIANT_ID, { promo_percent: null })
+			],
+			[
+				'addVariant with a promo',
+				(s: ProductService) => s.addVariant(PRODUCT_ID, { price: 100, promo_percent: 10 })
+			]
+		])('%s asks for a rebuild', async (_name, call) => {
+			const { service, feedRefresh } = buildService()
+			await call(service)
+			expect(feedRefresh.request).toHaveBeenCalledTimes(1)
+		})
+
+		it.each([
+			[
+				'a stock-only PATCH',
+				(s: ProductService) => s.updateVariant(PRODUCT_ID, VARIANT_ID, { stock: 0 })
+			],
+			[
+				'a price PATCH',
+				(s: ProductService) => s.updateVariant(PRODUCT_ID, VARIANT_ID, { price: 120 })
+			],
+			[
+				'addVariant without a promo',
+				(s: ProductService) => s.addVariant(PRODUCT_ID, { price: 100 })
+			]
+		])('%s does not — the hourly job covers it', async (_name, call) => {
+			const { service, feedRefresh } = buildService()
+			await call(service)
+			expect(feedRefresh.request).not.toHaveBeenCalled()
+		})
 	})
 
 	it('archiving a variant purges too — the noindex must not wait out the hour', async () => {

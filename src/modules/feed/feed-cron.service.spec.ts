@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { ENV } from 'src/common/constants'
+import { FeedRefreshSignal } from 'src/common/services/feed-refresh.signal'
 import { FeedCronService } from './feed-cron.service'
 import type { FeedGenerationSummary } from './feed.types'
 
@@ -39,15 +40,21 @@ const refused = () =>
 const flush = () => new Promise<void>(resolve => setImmediate(resolve))
 
 /**
- * A stand-in for `FeedService` that keeps the one promise the cron reads: `isRunning` is up for
- * exactly as long as a generation is in flight, so the overlap guard being tested is the cron's.
+ * A stand-in for `FeedService` that keeps the two promises the cron reads: `isRunning` is up for
+ * exactly as long as a generation is in flight, and `requestRerun` makes the next generation
+ * follow the current one — the real service's queue (`feed.service.spec.ts`), reduced to a flag.
  */
 const build = () => {
 	let inFlight = 0
+	let rerunRequested = false
 	const track = (result: Promise<FeedGenerationSummary>) => {
 		inFlight++
 		return result.finally(() => {
 			inFlight--
+			if (rerunRequested) {
+				rerunRequested = false
+				void feedService.generate()
+			}
 		})
 	}
 	const feedService = {
@@ -55,11 +62,15 @@ const build = () => {
 		get isRunning() {
 			return inFlight > 0
 		},
+		requestRerun: jest.fn(() => {
+			rerunRequested = true
+		}),
 		generate: jest.fn(() => track(Promise.resolve(summary())))
 	}
 	const schedulerRegistry = new SchedulerRegistry()
-	const service = new FeedCronService(feedService as never, schedulerRegistry)
-	return { service, feedService, schedulerRegistry, track }
+	const refresh = new FeedRefreshSignal()
+	const service = new FeedCronService(feedService as never, schedulerRegistry, refresh)
+	return { service, feedService, schedulerRegistry, track, refresh }
 }
 
 describe('FeedCronService', () => {
@@ -187,7 +198,7 @@ describe('FeedCronService', () => {
 		expect(logged).not.toContain('Google Shopping feed ready at startup: 0 items')
 	})
 
-	it('skips a scheduled run while a generation is still in flight', async () => {
+	it('queues a scheduled run while a generation is still in flight and runs it afterwards', async () => {
 		withRunCron(true)
 		const { service, feedService, schedulerRegistry, track } = build()
 		registry = schedulerRegistry
@@ -205,13 +216,19 @@ describe('FeedCronService', () => {
 		await flush()
 
 		expect(feedService.generate).toHaveBeenCalledTimes(1)
+		// Queued with the service, not kept here: the service also sees the admin's manual run,
+		// which this cron never does.
+		expect(feedService.requestRerun).toHaveBeenCalledTimes(1)
 		expect(logged).toContain(
-			'Scheduled feed regeneration skipped — a generation is already running'
+			'Feed regeneration (scheduled run) queued — a generation is already running'
 		)
 		expect(errors).toEqual([])
 
 		release(summary())
 		await flush()
+		// The queued run goes out once the bootstrap generation has ended: it read the catalogue
+		// before whatever prompted the request and may have published the stale state.
+		expect(feedService.generate).toHaveBeenCalledTimes(2)
 	})
 
 	it('runs on the tick once the previous generation has finished', async () => {
@@ -239,7 +256,7 @@ describe('FeedCronService', () => {
 		await schedulerRegistry.getCronJob(JOB_NAME).fireOnTick()
 		await flush()
 
-		expect(errors).toEqual(['Scheduled feed regeneration failed: boom'])
+		expect(errors).toEqual(['Feed regeneration (scheduled run) failed: boom'])
 		expect(rejections).toEqual([])
 		expect(schedulerRegistry.getCronJob(JOB_NAME).isActive).toBe(true)
 		// The flag is back down, so the next hour is not locked out by the failure.
@@ -258,7 +275,26 @@ describe('FeedCronService', () => {
 		await flush()
 
 		expect(errors).toEqual([
-			`Scheduled feed regeneration published nothing: ${refused().error}`
+			`Feed regeneration (scheduled run) published nothing: ${refused().error}`
 		])
+	})
+
+	it('rebuilds the feed when a promotion write asks for it, hourly job or not (TD-0012)', async () => {
+		withRunCron(false)
+		const { service, feedService, refresh } = build()
+		// `flush` drains with setImmediate, so only the debounce timer may be faked.
+		jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
+		try {
+			service.onModuleInit()
+			await flush()
+			expect(feedService.generate).toHaveBeenCalledTimes(1) // bootstrap
+
+			refresh.request('product promotion')
+			jest.advanceTimersByTime(5000)
+			await flush()
+			expect(feedService.generate).toHaveBeenCalledTimes(2)
+		} finally {
+			jest.useRealTimers()
+		}
 	})
 })

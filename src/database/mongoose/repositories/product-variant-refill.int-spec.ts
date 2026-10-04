@@ -126,6 +126,7 @@ describe('ProductVariantRepository — spooled counterpart of a refill (MongoDB 
 			slug: 'petg-natural',
 			name: 'petg-natural',
 			price: 579,
+			sale_price: null,
 			matched_colour: true
 		})
 	})

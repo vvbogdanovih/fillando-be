@@ -2007,3 +2007,131 @@ describe('OrderService.update — manual discount', () => {
 		expect(result.manual_discount).toEqual({ amount: 50 })
 	})
 })
+
+describe('OrderService.create — promotions and coupons (TD-0012)', () => {
+	const PROMO_ID = '64b8f0000000000000000001'
+	const PLAIN_ID = '64b8f0000000000000000002'
+	const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+
+	const variant = (id: string, over: Record<string, unknown> = {}) => ({
+		_id: new Types.ObjectId(id),
+		product_id: new Types.ObjectId('64b8f0000000000000000009'),
+		name: 'PLA',
+		sku: `SKU-${id.slice(-1)}`,
+		vendor_product_sku: 'V-1',
+		price: 500,
+		stock: 10,
+		status: ProductStatus.ACTIVE,
+		images: [],
+		promo_percent: null,
+		promo_ends_at: null,
+		...over
+	})
+	const onSale = variant(PROMO_ID, { price: 600, promo_percent: 10, promo_ends_at: FUTURE })
+	const plain = variant(PLAIN_ID)
+
+	const coupon = { _id: 'c1', code: 'TEN', discount_percent: 10, is_reusable: true }
+
+	const build = (variants: unknown[], withCoupon = false) => {
+		const orderRepository = {
+			create: jest
+				.fn<Promise<unknown>, [Record<string, unknown>]>()
+				.mockImplementation(payload => {
+					const doc = { _id: 'o1', ...payload }
+					return Promise.resolve({ ...doc, toObject: () => doc })
+				})
+		}
+		const discountCouponRepository = {
+			findActiveByCode: jest.fn().mockResolvedValue(withCoupon ? coupon : null),
+			update: jest.fn().mockResolvedValue(null)
+		}
+		const service = new OrderService(
+			orderRepository as never,
+			{ increment: jest.fn().mockResolvedValue(7) } as never,
+			{ findByIds: jest.fn().mockResolvedValue(variants) } as never,
+			discountCouponRepository as never,
+			{ sendOrderIbanConfirmation: jest.fn().mockResolvedValue(undefined) } as never,
+			{} as never,
+			{} as never
+		)
+		return { service, orderRepository }
+	}
+
+	const dto = (items: Array<{ variant_id: string; quantity: number }>, coupon_code?: string) => ({
+		items,
+		customer: { name: 'Тест', phone: '+380000000000', email: 'buyer@example.com' },
+		payment_method: PaymentMethod.IBAN,
+		delivery_method: DeliveryMethod.PICKUP,
+		...(coupon_code ? { coupon_code } : {})
+	})
+
+	const created = (orderRepository: {
+		create: jest.Mock<Promise<unknown>, [Record<string, unknown>]>
+	}) =>
+		orderRepository.create.mock.calls[0][0] as unknown as {
+			items: Array<Record<string, unknown>>
+			subtotal_price: number
+			total_price: number
+			applied_discount: { discount_amount: number } | null
+		}
+
+	it('snapshots the sale price as the line price and keeps the regular one beside it', async () => {
+		const { service, orderRepository } = build([onSale, plain])
+
+		await service.create(
+			dto([
+				{ variant_id: PROMO_ID, quantity: 2 },
+				{ variant_id: PLAIN_ID, quantity: 1 }
+			])
+		)
+
+		const order = created(orderRepository)
+		expect(order.items[0]).toMatchObject({ price: 540, list_price: 600, promo_percent: 10 })
+		expect(order.items[1]).toMatchObject({ price: 500, list_price: 500, promo_percent: null })
+		expect(order.subtotal_price).toBe(1580)
+		expect(order.total_price).toBe(1580)
+	})
+
+	it('applies the coupon to the lines without a promotion only', async () => {
+		const { service, orderRepository } = build([onSale, plain], true)
+
+		await service.create(
+			dto(
+				[
+					{ variant_id: PROMO_ID, quantity: 2 },
+					{ variant_id: PLAIN_ID, quantity: 1 }
+				],
+				'TEN'
+			)
+		)
+
+		const order = created(orderRepository)
+		// 10 % of the plain line (500), not of the whole subtotal (1580).
+		expect(order.applied_discount).toMatchObject({ discount_amount: 50 })
+		expect(order.total_price).toBe(1530)
+	})
+
+	it('refuses a coupon when every line is on promotion, so a single-use code is not burned', async () => {
+		const { service, orderRepository } = build([onSale], true)
+
+		await expect(
+			service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
+		).rejects.toMatchObject({ response: { code: 'COUPON_NOT_APPLICABLE' } })
+		expect(orderRepository.create).not.toHaveBeenCalled()
+	})
+
+	it('treats an expired promotion as no promotion at all', async () => {
+		const expired = variant(PROMO_ID, {
+			price: 600,
+			promo_percent: 10,
+			promo_ends_at: new Date('2020-01-01T00:00:00Z')
+		})
+		const { service, orderRepository } = build([expired], true)
+
+		await service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
+
+		const order = created(orderRepository)
+		expect(order.items[0]).toMatchObject({ price: 600, list_price: 600, promo_percent: null })
+		expect(order.applied_discount).toMatchObject({ discount_amount: 60 })
+	})
+})

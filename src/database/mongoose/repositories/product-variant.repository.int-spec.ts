@@ -48,7 +48,11 @@ const PRICE_SHEET_PUBLIC_KEYS = [
 	'attributes',
 	'variant_type',
 	'color_name_uk',
-	'color_name_en'
+	'color_name_en',
+	// The shop's own promotion (TD-0012) — public by design, says nothing about the supplier.
+	'sale_price',
+	'promo_percent',
+	'promo_ends_at'
 ] as const
 
 const PRODUCT_NAME = 'PLA Filament Test Product'

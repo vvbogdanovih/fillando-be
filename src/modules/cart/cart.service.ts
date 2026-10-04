@@ -7,6 +7,7 @@ import { ProductVariantRepository } from 'src/database/mongoose/repositories/pro
 import { AddCartItemDto } from './dto/add-cart-item.dto'
 import { UpdateCartItemDto } from './dto/update-cart-item.dto'
 import { MergeCartDto } from './dto/merge-cart.dto'
+import { publicPromoFields } from 'src/modules/product/promo-pricing'
 
 @Injectable()
 export class CartService {
@@ -22,6 +23,7 @@ export class CartService {
 		const variantIds = items.map(i => i.variant_id)
 		const variants = await this.productVariantRepository.findByIds(variantIds)
 		const variantMap = new Map(variants.map((v: any) => [v._id.toString(), v]))
+		const now = new Date()
 
 		return items.map(item => {
 			const v = variantMap.get(item.variant_id.toString())
@@ -34,6 +36,9 @@ export class CartService {
 							name: v.name,
 							slug: v.slug,
 							price: v.price,
+							// Regular price above, the promotion trio here (TD-0012): the
+							// storefront sums `sale_price ?? price`.
+							...publicPromoFields(v, now),
 							stock: v.stock,
 							thumbnail: v.images?.[0] ?? null,
 							v_value: v.v_value

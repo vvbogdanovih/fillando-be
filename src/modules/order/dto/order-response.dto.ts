@@ -111,8 +111,25 @@ class OrderResponseItemDto {
 	@ApiProperty({ example: 'VEND-CH-42', nullable: true })
 	vendor_sku: string | null
 
-	@ApiProperty({ example: 1299 })
+	@ApiProperty({
+		example: 1299,
+		description: 'Unit price the buyer pays (the sale price under a promotion)'
+	})
 	price: number
+
+	@ApiProperty({
+		example: 1529,
+		description:
+			'Regular unit price at order time (TD-0012); equals `price` without a promotion'
+	})
+	list_price: number
+
+	@ApiProperty({
+		example: 15,
+		nullable: true,
+		description: 'Promotion percent the line was sold under'
+	})
+	promo_percent: number | null
 
 	@ApiProperty({ example: 2 })
 	quantity: number

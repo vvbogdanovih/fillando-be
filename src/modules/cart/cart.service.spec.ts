@@ -118,3 +118,52 @@ describe('CartService — non-active variants are unavailable', () => {
 		expect(result.items.map(i => i.variant_id)).toEqual([ACTIVE_ID])
 	})
 })
+
+describe('CartService — promotion fields on cart lines (TD-0012)', () => {
+	it('carries the regular price and the derived sale trio for the storefront to sum', async () => {
+		const promo = buildVariant(ACTIVE_ID, {
+			price: 600,
+			promo_percent: 10,
+			promo_ends_at: new Date('2027-01-01T00:00:00Z')
+		})
+		const cartRepository = {
+			findByUserId: jest.fn().mockResolvedValue(cartWith(ACTIVE_ID)),
+			update: jest.fn()
+		}
+		const productVariantRepository = {
+			findByIds: jest.fn().mockResolvedValue([promo])
+		}
+		const service = new CartService(cartRepository as never, productVariantRepository as never)
+
+		const cart = await service.getCart(USER_ID)
+
+		expect(cart.items[0].variant).toMatchObject({
+			price: 600,
+			sale_price: 540,
+			promo_percent: 10,
+			promo_ends_at: new Date('2027-01-01T00:00:00Z')
+		})
+	})
+
+	it('nulls the trio for a variant whose promo has ended', async () => {
+		const ended = buildVariant(ACTIVE_ID, {
+			price: 600,
+			promo_percent: 10,
+			promo_ends_at: new Date('2020-01-01T00:00:00Z')
+		})
+		const service = new CartService(
+			{
+				findByUserId: jest.fn().mockResolvedValue(cartWith(ACTIVE_ID)),
+				update: jest.fn()
+			} as never,
+			{ findByIds: jest.fn().mockResolvedValue([ended]) } as never
+		)
+		const cart = await service.getCart(USER_ID)
+		expect(cart.items[0].variant).toMatchObject({
+			price: 600,
+			sale_price: null,
+			promo_percent: null,
+			promo_ends_at: null
+		})
+	})
+})

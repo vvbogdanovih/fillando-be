@@ -18,7 +18,9 @@ availability/price scripts were retired on 2026-09-11; the active price algorith
 - Source field: `ProductVariant.prom_id` — the Prom product id (the digits in a product URL such as
   `https://npshop.com.ua/ua/p3012625429-...` → `3012625429`). Editable from the admin product form.
 - Target fields: `ProductVariant.stock`, `stock_updated_at`, `price`, `price_updated_at`,
-  `prom_base_price`, `prom_discount_ratio`, `prom_discount_seen_at`.
+  `prom_base_price`, `prom_discount_ratio`, `prom_discount_seen_at`. The sync never touches
+  `promo_percent` / `promo_ends_at`: the shop's own promotion (TD-0012) is applied on read on top of
+  whatever `price` the sync writes, which is exactly why it is not folded into `price`.
 - `prom_discount_ratio` is the last discount Prom reported for the variant, held as a **fraction of
   the pre-discount price** rather than an absolute ₴ amount: the vendor's base price moves, so a
   stale ₴ figure would misprice while a stale ratio would not. `prom_base_price` is the last

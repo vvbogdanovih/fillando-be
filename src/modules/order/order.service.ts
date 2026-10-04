@@ -53,6 +53,7 @@ import {
 	liqpaySessionExpiredBefore
 } from './helpers/liqpay-session.helpers'
 import { GenerateReportDto } from './dto/generate-report.dto'
+import { activePromo } from 'src/modules/product/promo-pricing'
 
 /**
  * The variant fields an order line is built from. `ProductVariantRepository.findByIds` answers
@@ -66,6 +67,8 @@ interface OrderableVariant {
 	sku: string
 	vendor_product_sku?: string | null
 	price: number
+	promo_percent?: number | null
+	promo_ends_at?: Date | null
 	stock: number
 	status: ProductStatus
 	images?: string[] | null
@@ -208,6 +211,12 @@ export class OrderService {
 		)
 	}
 
+	/**
+	 * Prices every line at the moment of the write (TD-0012): `price` is what the buyer pays —
+	 * the sale price while the variant's promotion is on — `list_price` the regular price, so the
+	 * snapshot can still say what the sale was. `couponEligibleSubtotal` is the part of the
+	 * subtotal a coupon may act on: promo lines are already discounted and are left out.
+	 */
 	private async buildOrderItems(items: Array<{ variant_id: string; quantity: number }>): Promise<{
 		orderItems: Array<{
 			variant_id: Types.ObjectId
@@ -216,10 +225,13 @@ export class OrderService {
 			sku: string
 			vendor_sku: string | null
 			price: number
+			list_price: number
+			promo_percent: number | null
 			quantity: number
 			image: string | null
 		}>
 		subtotalPrice: number
+		couponEligibleSubtotal: number
 	}> {
 		const variantIds = items.map(i => new Types.ObjectId(i.variant_id))
 		const variants = await this.productVariantRepository.findByIds(variantIds)
@@ -231,10 +243,15 @@ export class OrderService {
 			sku: string
 			vendor_sku: string | null
 			price: number
+			list_price: number
+			promo_percent: number | null
 			quantity: number
 			image: string | null
 		}> = []
 		let subtotalPrice = 0
+		let couponEligibleSubtotal = 0
+		// One instant for the whole order: two lines of one variant must not straddle an expiry.
+		const now = new Date()
 
 		for (const item of items) {
 			const variant = variantMap.get(item.variant_id) as OrderableVariant | undefined
@@ -284,15 +301,20 @@ export class OrderService {
 				})
 			}
 
-			const linePrice = this.toLineTotal(variant.price, item.quantity)
+			const promo = activePromo(variant, now)
+			const unitPrice = promo?.sale_price ?? variant.price
+			const linePrice = this.toLineTotal(unitPrice, item.quantity)
 			subtotalPrice += linePrice
+			if (!promo) couponEligibleSubtotal += linePrice
 			orderItems.push({
 				variant_id: new Types.ObjectId(item.variant_id),
 				product_id: variant.product_id,
 				name: variant.name,
 				sku: variant.sku,
 				vendor_sku: variant.vendor_product_sku ?? null,
-				price: variant.price,
+				price: unitPrice,
+				list_price: variant.price,
+				promo_percent: promo?.percent ?? null,
 				quantity: item.quantity,
 				image: variant.images?.[0] ?? null
 			})
@@ -300,16 +322,26 @@ export class OrderService {
 
 		return {
 			orderItems,
-			subtotalPrice: Number(subtotalPrice.toFixed(2))
+			subtotalPrice: Number(subtotalPrice.toFixed(2)),
+			couponEligibleSubtotal: Number(couponEligibleSubtotal.toFixed(2))
 		}
 	}
 
 	private mapOrderResponse(order: any) {
 		const plainOrder = typeof order?.toObject === 'function' ? order.toObject() : order
+		type StoredItem = {
+			price: number
+			quantity: number
+			list_price?: number | null
+			promo_percent?: number | null
+		}
 		return {
 			...plainOrder,
-			items: plainOrder.items.map((item: any) => ({
+			items: plainOrder.items.map((item: StoredItem) => ({
 				...item,
+				// Orders written before TD-0012 carry no list price: the regular price was the price.
+				list_price: item.list_price ?? item.price,
+				promo_percent: item.promo_percent ?? null,
 				line_total: this.toLineTotal(item.price, item.quantity)
 			}))
 		}
@@ -374,7 +406,9 @@ export class OrderService {
 	async create(dto: CreateOrderDto, userId?: string) {
 		this.validateDeliveryData(dto.delivery_method, dto.delivery_address)
 		this.validatePaymentDeliveryCombination(dto.payment_method, dto.delivery_method)
-		const { orderItems, subtotalPrice } = await this.buildOrderItems(dto.items)
+		const { orderItems, subtotalPrice, couponEligibleSubtotal } = await this.buildOrderItems(
+			dto.items
+		)
 
 		let applied_discount: {
 			coupon_id: Types.ObjectId
@@ -405,8 +439,21 @@ export class OrderService {
 				})
 			}
 
+			// A coupon acts on the lines that are not already on promotion (TD-0012). When every
+			// line is, the coupon would buy nothing — refused rather than recorded at 0, so a
+			// single-use code is not burned for it.
+			if (couponEligibleSubtotal <= 0) {
+				throw new BadRequestException({
+					statusCode: 400,
+					error: 'Bad Request',
+					code: 'COUPON_NOT_APPLICABLE',
+					message: `Купон «${formattedCouponCode}» не діє на акційні товари, а в замовленні лише вони — оформіть його без купона`
+				})
+			}
 			const discountPercent = coupon.discount_percent
-			const discountAmount = Number(((subtotalPrice * discountPercent) / 100).toFixed(2))
+			const discountAmount = Number(
+				((couponEligibleSubtotal * discountPercent) / 100).toFixed(2)
+			)
 			total_price = Number((subtotalPrice - discountAmount).toFixed(2))
 			applied_discount = {
 				coupon_id: coupon._id,
@@ -813,7 +860,11 @@ export class OrderService {
 				updateSet.subtotal_price = subtotalPrice
 				if (order.applied_discount) {
 					couponAmount = Number(
-						((subtotalPrice * order.applied_discount.discount_percent) / 100).toFixed(2)
+						(
+							(built.couponEligibleSubtotal *
+								order.applied_discount.discount_percent) /
+							100
+						).toFixed(2)
 					)
 					updateSet.applied_discount = {
 						coupon_id: order.applied_discount.coupon_id,

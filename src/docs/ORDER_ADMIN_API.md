@@ -99,6 +99,7 @@ what the storefront pins the message to (Plan-0005, screen «Чекаут: по�
 | `400`  | `COURIER_ADDRESS_REQUIRED`     | —                                                 | `COURIER` without `street` / `building`                    |
 | `400`  | `COUPON_INVALID`               | —                                                 | no active coupon with that code                            |
 | `400`  | `COUPON_EXPIRED`               | —                                                 | the coupon's `valid_until` has passed                      |
+| `400`  | `COUPON_NOT_APPLICABLE`        | —                                                 | every line is on promotion, so the coupon would buy nothing (TD-0012) |
 
 `OUT_OF_STOCK` and `INSUFFICIENT_STOCK` are split because the advice differs: at zero there is
 nothing left to reduce, so the text asks for the line to be removed rather than for a smaller
@@ -269,3 +270,21 @@ the checkout success page — is documented in `src/docs/LIQPAY_FLOW.md`.
 
 See `docs/architecture/state-machines.md` and TD-0003 in the `fillando-meta`
 repository.
+
+## Promotions on order lines (TD-0012)
+
+`OrderService.buildOrderItems` prices every line at the moment of the write: `items[].price` is what
+the buyer pays — the variant's sale price while its promotion is on (`activePromo`) — and
+`items[].list_price` the regular price, with `items[].promo_percent` saying which sale it was. Orders
+written before TD-0012 have no `list_price`; `mapOrderResponse` reads it back as `price`.
+
+**A coupon acts on the lines that are not on promotion.** `discount_amount = round2(percent/100 ×
+Σ line totals with promo_percent = null)`; the storefront previews the same figure from the cart.
+When every line is on promotion the order is refused with `400 COUPON_NOT_APPLICABLE` rather than
+recorded with a 0 discount, so a single-use code is not burned for nothing. The admin `PATCH
+/orders/:id` with `items` recomputes the coupon over the same eligible subtotal (no refusal there —
+the admin is editing; if every remaining line is on promotion the coupon simply contributes 0).
+Note that `items` edits have always re-priced every line from the current catalogue — a promotion
+that ended between checkout and the edit therefore raises the unit price the same way a Prom price
+change always has; the admin sees the new total before confirming. LiqPay charges `total_price` as it was at creation: a promotion that starts
+or ends between the cart and `POST /orders` simply prices at creation time.

@@ -50,6 +50,9 @@ field itself is never returned.
 			"color": "Червоний | null",
 			"article": "FL-000123 | null", // internal system sku
 			"price": 1235,
+			"sale_price": null,
+			"promo_percent": null,
+			"promo_ends_at": null,
 			"in_stock": true,
 			"stock": 48, // available quantity
 			"synced_at": "ISO | null" // stock_updated_at

@@ -25,6 +25,8 @@ const row = (): FeedRawRow => ({
 	name: 'Sunlu PLA Silk — Золотий (Gold)',
 	slug: 'sunlu-pla-silk-gold',
 	price: 549,
+	promo_percent: null,
+	promo_ends_at: null,
 	stock: 7,
 	images: ['https://cdn.example.invalid/gold-1.jpg', 'https://cdn.example.invalid/gold-2.jpg'],
 	v_value: 'Gold',
@@ -160,6 +162,56 @@ describe('buildItem', () => {
 		expect(xml).toContain('<g:custom_label_3>mid</g:custom_label_3>')
 		expect(xml).toContain('<g:custom_label_4>standard</g:custom_label_4>')
 		expect(built.ok && built.warnings).toEqual([])
+	})
+
+	describe('promotions (TD-0012)', () => {
+		const NOW = new Date('2026-10-04T12:00:00.000Z')
+		const ENDS = new Date('2026-11-01T00:00:00.000Z')
+		const onSale = (over: Partial<FeedRawRow> = {}): FeedRawRow => ({
+			...row(),
+			promo_percent: 15,
+			promo_ends_at: ENDS,
+			...over
+		})
+
+		it('sends the regular price as price and the sale price with its window', () => {
+			const xml = xmlOf(buildItem(onSale(), { ...CTX, now: NOW }))
+			expect(xml).toContain('<g:price>549.00 UAH</g:price>')
+			expect(xml).toContain('<g:sale_price>467.00 UAH</g:sale_price>')
+			expect(xml).toContain(
+				'<g:sale_price_effective_date>2026-10-04T12:00:00+00:00/2026-11-01T00:00:00+00:00</g:sale_price_effective_date>'
+			)
+		})
+
+		it('bands by what the shopper pays: 549 is mid, 467 on sale is budget', () => {
+			expect(xmlOf(buildItem(row(), CTX))).toContain(
+				'<g:custom_label_3>mid</g:custom_label_3>'
+			)
+			expect(xmlOf(buildItem(onSale(), { ...CTX, now: NOW }))).toContain(
+				'<g:custom_label_3>budget</g:custom_label_3>'
+			)
+		})
+
+		it('sends an open-ended promo without an effective date', () => {
+			const xml = xmlOf(buildItem(onSale({ promo_ends_at: null }), { ...CTX, now: NOW }))
+			expect(xml).toContain('<g:sale_price>467.00 UAH</g:sale_price>')
+			expect(xml).not.toContain('g:sale_price_effective_date')
+		})
+
+		it('sends neither tag once the promo has ended, and bands by the regular price again', () => {
+			const xml = xmlOf(
+				buildItem(onSale(), { ...CTX, now: new Date('2026-12-01T00:00:00Z') })
+			)
+			expect(xml).not.toContain('g:sale_price')
+			expect(xml).toContain('<g:custom_label_3>mid</g:custom_label_3>')
+		})
+
+		it('still excludes a variant without a regular price, promo or not', () => {
+			expect(buildItem(onSale({ price: 0 }), { ...CTX, now: NOW })).toEqual({
+				ok: false,
+				reason: 'no_price'
+			})
+		})
 	})
 
 	it('marks a variant with enough recent sales as a bestseller', () => {

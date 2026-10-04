@@ -11,6 +11,11 @@ import {
 import type { Color } from '../schemas/color.schema'
 import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
 import { mergeFacetValues, type CatalogFacetValue } from 'src/common/utils/facet.utils'
+import {
+	effectivePriceExpr,
+	publicPromoProjection,
+	salePriceOf
+} from 'src/modules/product/promo-pricing'
 
 /**
  * One swatch in the catalogue colour filter: what to paint, and how many variants of the current
@@ -31,6 +36,8 @@ export interface SpooledCounterpart {
 	slug: string
 	name: string
 	price: number
+	/** The spool's own promotion, if any — the refill page quotes what the spool really costs. */
+	sale_price: number | null
 	matched_colour: boolean
 }
 
@@ -58,6 +65,9 @@ export interface FeedVariantRow {
 	name: string
 	slug: string
 	price: number
+	/** Stored promo fields as they are; the builder derives the sale price at generation time. */
+	promo_percent: number | null
+	promo_ends_at: Date | null
 	stock: number
 	images: string[]
 	v_value: string | null
@@ -316,6 +326,30 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			.exec()
 	}
 
+	/**
+	 * One promotion for every variant of a product (TD-0012). All statuses on purpose: a draft
+	 * the admin activates later should come up with the product's promo, not without it.
+	 */
+	async setPromoByProductId(
+		productId: string,
+		promo: { promo_percent: number | null; promo_ends_at: Date | null }
+	): Promise<{ matched: number; modified: number }> {
+		const result = await this.model
+			.updateMany({ product_id: new Types.ObjectId(productId) }, { $set: promo })
+			.exec()
+		return { matched: result.matchedCount, modified: result.modifiedCount }
+	}
+
+	/** Promotions whose end date fell inside `(from, to]` — what the expiry cron refreshes for. */
+	countPromosEndedBetween(from: Date, to: Date): Promise<number> {
+		return this.model
+			.countDocuments({
+				promo_percent: { $ne: null },
+				promo_ends_at: { $gt: from, $lte: to }
+			})
+			.exec()
+	}
+
 	findAllWithPromId(): Promise<ProductVariant[]> {
 		return this.findAll({ prom_id: { $exists: true, $nin: [null, ''] } })
 	}
@@ -372,6 +406,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						slug: 1,
 						sku: 1,
 						price: 1,
+						promo_percent: 1,
+						promo_ends_at: 1,
 						v_value: 1,
 						images: 1,
 						stock: 1,
@@ -396,13 +432,15 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			.filter((id): id is Types.ObjectId => Boolean(id))
 		const colorsById = await this.loadColorsById(colorIds)
 
+		const now = new Date()
 		const spooledCounterpart = await this.findSpooledCounterpart(
 			(product as any).spooled_product_id,
-			variant.color_id
+			variant.color_id,
+			now
 		)
 
 		return {
-			variant: toPublicVariant(variant, colorsById.get(String(variant.color_id))),
+			variant: toPublicVariant(variant, colorsById.get(String(variant.color_id)), now),
 			product: {
 				id: String((product as any)._id),
 				name: (product as any).name,
@@ -411,7 +449,9 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 				variant_type: (product as any).variant_type
 			},
 			// Same public allowlist as `variant` — one projection for the whole public page.
-			siblings: siblings.map(s => toPublicVariant(s, colorsById.get(String(s.color_id)))),
+			siblings: siblings.map(s =>
+				toPublicVariant(s, colorsById.get(String(s.color_id)), now)
+			),
 			category_slug: (category as any)?.slug ?? null,
 			category_name: (category as any)?.name ?? null,
 			spooled_counterpart: spooledCounterpart
@@ -428,11 +468,33 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	 */
 	private async findSpooledCounterpart(
 		spooledProductId: Types.ObjectId | null | undefined,
-		colorId: Types.ObjectId | null | undefined
+		colorId: Types.ObjectId | null | undefined,
+		now: Date = new Date()
 	): Promise<SpooledCounterpart | null> {
 		if (!spooledProductId) return null
 
-		const projection = { _id: 0, slug: 1, name: 1, price: 1 }
+		type SpoolRow = {
+			slug: string
+			name: string
+			price: number
+			promo_percent?: number | null
+			promo_ends_at?: Date | null
+		}
+		const projection = {
+			_id: 0,
+			slug: 1,
+			name: 1,
+			price: 1,
+			promo_percent: 1,
+			promo_ends_at: 1
+		}
+		const toCounterpart = (row: SpoolRow, matched_colour: boolean): SpooledCounterpart => ({
+			slug: row.slug,
+			name: row.name,
+			price: row.price,
+			sale_price: salePriceOf(row, now),
+			matched_colour
+		})
 		const sameColour = colorId
 			? await this.model
 					.findOne(
@@ -443,19 +505,20 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						},
 						projection
 					)
-					.lean<{ slug: string; name: string; price: number }>()
+					.lean<SpoolRow>()
 					.exec()
 			: null
-		if (sameColour) return { ...sameColour, matched_colour: true }
+		if (sameColour) return toCounterpart(sameColour, true)
 
 		// A refill whose own colour has no spool left is not the same offer, so this is the
 		// cheapest one — the page words it as "from" rather than as the price of this filament.
+		// Cheapest by regular price: a sale on one spool colour does not make it "the" spool.
 		const cheapest = await this.model
 			.findOne({ product_id: spooledProductId, status: ProductStatus.ACTIVE }, projection)
 			.sort({ price: 1 })
-			.lean<{ slug: string; name: string; price: number }>()
+			.lean<SpoolRow>()
 			.exec()
-		return cheapest ? { ...cheapest, matched_colour: false } : null
+		return cheapest ? toCounterpart(cheapest, false) : null
 	}
 
 	/** Dictionary rows for the given colour ids, keyed by id string. */
@@ -548,7 +611,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 								price_updated_at: 1,
 								v_value: 1,
 								attributes: '$product.attributes',
-								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] }
+								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
+								...publicPromoProjection()
 							}
 						}
 					],
@@ -774,6 +838,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						name: 1,
 						slug: 1,
 						price: 1,
+						promo_percent: { $ifNull: ['$promo_percent', null] },
+						promo_ends_at: { $ifNull: ['$promo_ends_at', null] },
 						stock: { $ifNull: ['$stock', 0] },
 						images: { $ifNull: ['$images', []] },
 						v_value: { $ifNull: ['$v_value', null] },
@@ -826,12 +892,17 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		const priceMatch: { $gte?: number; $lte?: number } = {}
 		if (price_min !== undefined) priceMatch.$gte = price_min
 		if (price_max !== undefined) priceMatch.$lte = price_max
-		if (price_min !== undefined || price_max !== undefined) {
-			variantMatch.price = priceMatch
-		}
+		const hasPriceFilter = price_min !== undefined || price_max !== undefined
+
+		// The shopper filters and sorts by what they would pay (TD-0012): the sale price while a
+		// promotion is on, the regular price otherwise. Computed right after the indexed match
+		// and before the joins, so the price `$match` still trims the set the lookups work on.
+		const effectivePriceStage = { $addFields: { _effective_price: effectivePriceExpr() } }
 
 		const pipeline: any[] = [
 			{ $match: variantMatch },
+			effectivePriceStage,
+			...(hasPriceFilter ? [{ $match: { _effective_price: priceMatch } }] : []),
 			{
 				$lookup: {
 					from: 'products',
@@ -866,9 +937,9 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 
 		const userSort: Record<string, 1 | -1> =
 			sort === 'price_asc'
-				? { price: 1 }
+				? { _effective_price: 1 }
 				: sort === 'price_desc'
-					? { price: -1 }
+					? { _effective_price: -1 }
 					: { _id: -1 }
 
 		pipeline.push(
@@ -892,6 +963,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 								v_value: 1,
 								attributes: '$product.attributes',
 								main_image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
+								...publicPromoProjection(),
 								// Same four fields as PublicColor; null for variants with no
 								// dictionary colour, so the card falls back to `v_value`.
 								color: {
@@ -920,7 +992,14 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		// jump after every click make the control unusable (TD-0008 §4 F7).
 		const priceRangePipeline: any[] = [
 			{ $match: { category_id: categoryObjectId, status: ProductStatus.ACTIVE } },
-			{ $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' } } }
+			effectivePriceStage,
+			{
+				$group: {
+					_id: null,
+					min: { $min: '$_effective_price' },
+					max: { $max: '$_effective_price' }
+				}
+			}
 		]
 
 		/**
@@ -934,7 +1013,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		 */
 		const narrowingMatch = (exclude: string | typeof COLOR_DIMENSION): Record<string, any> => {
 			const match: Record<string, any> = {}
-			if (price_min !== undefined || price_max !== undefined) match.price = priceMatch
+			if (hasPriceFilter) match._effective_price = priceMatch
 			if (exclude !== COLOR_DIMENSION && colorFamilies.length > 0) {
 				match.color_family = { $in: colorFamilies }
 			}
@@ -1033,7 +1112,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			{ $unwind: '$product' },
 			{
 				$project: {
-					price: 1,
+					_effective_price: effectivePriceExpr(),
 					color_id: 1,
 					color_family: 1,
 					attributes: '$product.attributes'

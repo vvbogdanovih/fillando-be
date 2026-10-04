@@ -26,8 +26,20 @@ export class OrderItem {
 	@Prop({ type: String, default: null })
 	vendor_sku: string | null
 
+	/** Unit price the buyer pays — the sale price while a promotion was on (TD-0012). */
 	@Prop({ required: true })
 	price: number
+
+	/**
+	 * Regular unit price at order time. Equal to `price` without a promotion; orders written
+	 * before TD-0012 have no value and are read back as `price`.
+	 */
+	@Prop({ type: Number, default: null })
+	list_price: number | null
+
+	/** The promotion percent the line was sold under; null when there was none. */
+	@Prop({ type: Number, default: null })
+	promo_percent: number | null
 
 	@Prop({ required: true, min: 1 })
 	quantity: number

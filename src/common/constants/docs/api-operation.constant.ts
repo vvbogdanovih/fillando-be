@@ -248,7 +248,13 @@ export const API_OPERATION = {
 		},
 		UPDATE_VARIANT: {
 			summary: 'Update variant',
-			description: 'Partially update a product variant (price, stock, status, etc.).'
+			description:
+				"Partially update a product variant (price, stock, status, etc.). `promo_percent` / `promo_ends_at` set or clear the variant's promotion (TD-0012): the sale price is derived, never stored; a date without a percent is 400 PROMO_PERCENT_REQUIRED, a date in the past 400 PROMO_ENDS_IN_PAST. A promo write purges the storefront and rebuilds the Merchant feed."
+		},
+		SET_PROMOTION: {
+			summary: 'Set or clear a promotion on every variant of a product',
+			description:
+				'Admin only (TD-0012). Writes `promo_percent` / `promo_ends_at` to all variants of the product in one update, whatever their status (a draft activated later inherits it). `promo_percent: null` clears the promotion on all of them. Answers `{ matched, modified, variants }` with the full admin variant documents; a product with no variants answers matched 0. Purges the storefront and rebuilds the Merchant feed.'
 		},
 		DELETE_VARIANT: {
 			summary: 'Delete variant',

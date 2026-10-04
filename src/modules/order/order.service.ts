@@ -1045,9 +1045,10 @@ export class OrderService {
 	}
 
 	/**
-	 * A TTN is the parcel leaving: a carrier order that has not shipped yet becomes `SHIPPED` in
-	 * the same write (TD-0011). Pickup orders and orders past that point keep their status — a
-	 * replaced TTN on a shipped order is just a new parcel number.
+	 * A TTN is the parcel leaving: an order that has not shipped yet becomes `SHIPPED` in the
+	 * same write (TD-0011) — a pickup order included, since a TTN on it means it was posted after
+	 * all. Orders past that point keep their status: a replaced TTN on a shipped order is just a
+	 * new parcel number.
 	 */
 	async setTtn(id: string, dto: SetTtnDto, adminId?: string) {
 		const current = await this.findOrderOrThrow(id)

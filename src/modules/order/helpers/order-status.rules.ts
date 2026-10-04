@@ -92,12 +92,15 @@ export function adminStatusTransitions(order: {
 	)
 }
 
-/** Whether entering this TTN ships the order: a carrier delivery that has not left yet. */
-export function shipsOnTtn(order: {
-	order_status: OrderStatus
-	delivery_method: DeliveryMethod
-}): boolean {
-	return order.delivery_method !== DeliveryMethod.PICKUP && isPreShipment(order.order_status)
+/**
+ * Whether entering this TTN ships the order: any order that has not left yet, whatever the
+ * checkout said about delivery. A TTN *is* the parcel leaving — and in practice a «самовивіз»
+ * order often ends up posted anyway (a wholesale buyer paying by invoice, the owner shipping it
+ * by Нова Пошта), so judging by `delivery_method` left those orders untracked and never closed.
+ * A pickup without a TTN is still handed over by hand («Доставлено» from the dropdown).
+ */
+export function shipsOnTtn(order: { order_status: OrderStatus }): boolean {
+	return isPreShipment(order.order_status)
 }
 
 /**

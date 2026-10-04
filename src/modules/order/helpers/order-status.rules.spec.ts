@@ -67,18 +67,17 @@ describe('adminStatusTransitions — the TD-0011 §5.1 table', () => {
 })
 
 describe('shipsOnTtn', () => {
-	it.each([NEW, CONFIRMED, PROCESSING])('ships a carrier order in %s', order_status => {
-		expect(shipsOnTtn({ order_status, delivery_method: DeliveryMethod.NOVA_POST })).toBe(true)
+	it.each([NEW, CONFIRMED, PROCESSING])('ships an order still in %s', order_status => {
+		expect(shipsOnTtn({ order_status })).toBe(true)
 	})
 
 	it.each([SHIPPED, DELIVERED, CANCELLED, RETURNING])('keeps %s as it is', order_status => {
-		expect(shipsOnTtn({ order_status, delivery_method: DeliveryMethod.NOVA_POST })).toBe(false)
+		expect(shipsOnTtn({ order_status })).toBe(false)
 	})
 
-	it('never ships a pickup', () => {
-		expect(shipsOnTtn({ order_status: NEW, delivery_method: DeliveryMethod.PICKUP })).toBe(
-			false
-		)
+	it('does not look at the delivery method — a TTN on a pickup means it was posted after all', () => {
+		// The rule takes no `delivery_method` at all, so a pickup cannot be told apart here.
+		expect(shipsOnTtn({ order_status: NEW })).toBe(true)
 	})
 })
 

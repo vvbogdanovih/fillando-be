@@ -1,8 +1,10 @@
 /**
  * Migration: bring stored orders onto the TD-0011 lifecycle.
  *
- *   1. A NOVA_POST / COURIER order that already has a TTN but still reads NEW, PROCESSING or
- *      CONFIRMED has shipped — a TTN is what ships an order now → SHIPPED.
+ *   1. An order that already has a TTN but still reads NEW, PROCESSING or CONFIRMED has shipped
+ *      — a TTN is what ships an order now → SHIPPED. Whatever the delivery method: a PICKUP
+ *      order with a TTN was posted after all (23 of 39 in the production dump), and the tracker
+ *      follows it from here.
  *   2. A *legacy* PROCESSING without a shipment → CONFIRMED. Before TD-0011 «В обробці» meant
  *      «confirmed, being packed»; now it means «buyer contacted, confirmation awaited» and sits
  *      before CONFIRMED. Legacy rows are told apart by their history: the new code records every
@@ -39,7 +41,6 @@ const DRY_RUN = process.argv.includes('--dry-run')
 const NOTE = 'TD-0011 migration'
 
 const HAS_TTN = { nova_post_ttn: { $nin: [null, ''] } }
-const CARRIER = { delivery_method: { $ne: 'PICKUP' } }
 
 /** Each step: one source status, one target, the filter that still needs it. */
 const STEPS = [
@@ -47,7 +48,7 @@ const STEPS = [
 		label: `${from} with a TTN → SHIPPED`,
 		from,
 		to: 'SHIPPED',
-		filter: { order_status: from, ...CARRIER, ...HAS_TTN }
+		filter: { order_status: from, ...HAS_TTN }
 	})),
 	{
 		label: 'legacy PROCESSING (old meaning, no history) without a shipment → CONFIRMED',
@@ -56,7 +57,7 @@ const STEPS = [
 		// Disjoint from step 1, so the dry-run counts add up to what the real run changes.
 		filter: {
 			order_status: 'PROCESSING',
-			$nor: [{ ...CARRIER, ...HAS_TTN }],
+			$nor: [HAS_TTN],
 			status_history: { $not: { $elemMatch: { field: 'order_status', to: 'PROCESSING' } } }
 		}
 	},

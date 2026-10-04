@@ -190,7 +190,7 @@ NEW ─► PROCESSING ─► CONFIRMED ─ TTN ─► SHIPPED ─ НП «отр�
 
 | From | Admin may set (`allowed_status_transitions`) | Automatic |
 |---|---|---|
-| `NEW` / `PROCESSING` / `CONFIRMED` | the other two, `CANCELLED`, `DELIVERED` (pickup only) | TTN → `SHIPPED` |
+| `NEW` / `PROCESSING` / `CONFIRMED` | the other two, `CANCELLED`, `DELIVERED` (pickup only) | TTN → `SHIPPED` (any delivery method — a pickup with a TTN was posted after all) |
 | `SHIPPED` | `DELIVERED` (fallback when the tracker cannot see the parcel), `RETURNING` | tracker: received → `DELIVERED`, refusal → `RETURNING` |
 | `DELIVERED` / `COMPLETED` | `RETURNING` | `DELIVERED` ⇄ `COMPLETED` by `PAID` |
 | `RETURNING` | `RETURNED`, `DELIVERED` (the buyer collected after all) | — |
@@ -222,6 +222,10 @@ NEW ─► PROCESSING ─► CONFIRMED ─ TTN ─► SHIPPED ─ НП «отр�
   fresh state; a second miss is logged and left to the next callback.
 - **`GET /orders/:id`** also answers `ships_on_ttn` — whether `PATCH /orders/:id/ttn` will set
   `SHIPPED` — so the admin UI's hint comes from the same rule as the write.
+- **A pickup order is not a fact about the parcel.** In practice a «самовивіз» order (a wholesale
+  buyer paying by invoice) is often posted by Нова Пошта anyway, so the TTN, not
+  `delivery_method`, decides: entering one ships the order and the tracker follows it like any
+  other. Only `DELIVERED` straight from the pre-shipment statuses («Видано») stays pickup-only.
 
 ## Payment side effect of an order status change
 

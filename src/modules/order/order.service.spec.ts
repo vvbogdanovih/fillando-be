@@ -439,7 +439,7 @@ describe('OrderService — admin status writes (TD-0011)', () => {
 			})
 		})
 
-		it('never ships a pickup order', async () => {
+		it('ships a pickup order as well — the TTN says it was posted after all', async () => {
 			const order = buildOrder({
 				order_status: OrderStatus.CONFIRMED,
 				delivery_method: DeliveryMethod.PICKUP
@@ -448,7 +448,7 @@ describe('OrderService — admin status writes (TD-0011)', () => {
 
 			await buildService(order, update).setTtn(ORDER_ID, { nova_post_ttn: '3' })
 
-			expect(update.mock.calls[0][1].$set.order_status).toBeUndefined()
+			expect(update.mock.calls[0][1].$set.order_status).toBe(OrderStatus.SHIPPED)
 		})
 	})
 })

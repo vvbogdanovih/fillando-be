@@ -440,7 +440,7 @@ export const API_OPERATION = {
 		SET_TTN: {
 			summary: 'Set Nova Post TTN',
 			description:
-				'Attach the Nova Post tracking number (ТТН) to an order. For a NOVA_POST / COURIER order that has not shipped yet (NEW, PROCESSING, CONFIRMED) the same write sets `order_status = SHIPPED` and records it in `status_history` (TD-0011); a pickup order or one past shipping keeps its status. Resets the tracker fields. Returns the admin order shape. Admin only.'
+				'Attach the Nova Post tracking number (ТТН) to an order. For an order that has not shipped yet (NEW, PROCESSING, CONFIRMED) — whatever its delivery method, a pickup order with a TTN was posted after all — the same write sets `order_status = SHIPPED` and records it in `status_history` (TD-0011); an order past shipping keeps its status. Resets the tracker fields. Returns the admin order shape. Admin only.'
 		},
 		GENERATE_INVOICE: {
 			summary: 'Generate order invoice PDF',

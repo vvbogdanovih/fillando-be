@@ -117,7 +117,7 @@ so nothing about it lives in this collection. See `src/docs/LIQPAY_FLOW.md`.
 | `vendor_sku` | string \| null                | nullable — supplier article snapshot (`vendor_product_sku`) for the admin invoice / vendor e-mail; must not appear in customer-facing responses (`POST /orders`, `GET /orders/me*`) — stripped by the order module's customer projection |
 | `price`      | number                        | required — price at checkout time                                                                                                                                                                                                        |
 | `list_price` | number \| null                | regular unit price at order time (TD-0012); equals `price` without a promotion — orders written before TD-0012 have none and are read back as `price`                                                                                          |
-| `promo_percent` | number \| null             | the promotion percent the line was sold under; null when there was none. A coupon's `discount_amount` is computed over the lines where this is null                                                                                             |
+| `promo_percent` | number \| null             | the promotion percent the line was sold under; null when there was none. A coupon never stacks on it: per line the coupon adds `max(0, list_price × qty × percent/100 − (list_price − price) × qty)`, so the larger discount wins (`coupon-pricing.ts`)                                                                                             |
 | `quantity`   | number                        | required, min: 1                                                                                                                                                                                                                         |
 | `image`      | string \| null                | nullable                                                                                                                                                                                                                                 |
 
@@ -134,7 +134,7 @@ Admin update behavior (`PATCH /orders/:id`, ADMIN only):
 
 - `items` are rebuilt from the current product-variant catalog (`name`, `sku`, `vendor_sku`, `price`, first `image`)
 - `subtotal_price` is recalculated as the sum of line totals (`price * quantity`)
-- if `applied_discount` exists, `discount_percent` stays unchanged and `discount_amount` is recalculated from the new subtotal
+- if `applied_discount` exists, `discount_percent` stays unchanged and `discount_amount` is recalculated over the new lines by the checkout rule (`couponDiscountAmount`: the larger of sale and coupon per line)
 - `manual_discount` is kept as is and subtracted after the coupon
 - `total_price` is recalculated accordingly
 

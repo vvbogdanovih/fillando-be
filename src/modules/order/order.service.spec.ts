@@ -1928,6 +1928,56 @@ describe('OrderService.update — manual discount', () => {
 		expect(set).not.toHaveProperty('manual_discount')
 	})
 
+	it('re-prices the coupon over the edited lines with the same promo rule as checkout', async () => {
+		const SALE_ID = '64b8f0000000000000000002'
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 850,
+				applied_discount: {
+					coupon_id: 'c',
+					code: 'FIFTEEN',
+					discount_percent: 15,
+					discount_amount: 150
+				}
+			}),
+			[
+				{
+					_id: new Types.ObjectId(VARIANT_ID),
+					product_id: new Types.ObjectId(),
+					name: 'PLA',
+					sku: 'SKU-1',
+					price: 500,
+					stock: 10,
+					status: ProductStatus.ACTIVE
+				},
+				{
+					_id: new Types.ObjectId(SALE_ID),
+					product_id: new Types.ObjectId(),
+					name: 'PETG',
+					sku: 'SKU-2',
+					price: 600,
+					promo_percent: 10,
+					promo_ends_at: null,
+					stock: 10,
+					status: ProductStatus.ACTIVE
+				}
+			]
+		)
+
+		await service.update(ORDER_ID, {
+			items: [
+				{ variant_id: VARIANT_ID, quantity: 1 },
+				{ variant_id: SALE_ID, quantity: 1 }
+			]
+		})
+
+		const set = setOf(update)
+		// 500 + 540 = 1040; coupon: 75 on the plain line, 15 % of 600 minus the sale's 60 = 30 on the other.
+		expect(set.subtotal_price).toBe(1040)
+		expect(set.applied_discount).toMatchObject({ discount_percent: 15, discount_amount: 105 })
+		expect(set.total_price).toBe(935)
+	})
+
 	it('refuses a discount larger than what is left to pay', async () => {
 		const { service, update } = buildService(unpaid())
 
@@ -2032,7 +2082,8 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 
 	const coupon = { _id: 'c1', code: 'TEN', discount_percent: 10, is_reusable: true }
 
-	const build = (variants: unknown[], withCoupon = false) => {
+	/** `withCoupon` is the percent the active coupon carries; `false` means no coupon exists. */
+	const build = (variants: unknown[], withCoupon: number | false = false) => {
 		const orderRepository = {
 			create: jest
 				.fn<Promise<unknown>, [Record<string, unknown>]>()
@@ -2042,7 +2093,11 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 				})
 		}
 		const discountCouponRepository = {
-			findActiveByCode: jest.fn().mockResolvedValue(withCoupon ? coupon : null),
+			findActiveByCode: jest
+				.fn()
+				.mockResolvedValue(
+					withCoupon === false ? null : { ...coupon, discount_percent: withCoupon }
+				),
 			update: jest.fn().mockResolvedValue(null)
 		}
 		const service = new OrderService(
@@ -2092,33 +2147,57 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 		expect(order.total_price).toBe(1580)
 	})
 
-	it('applies the coupon to the lines without a promotion only', async () => {
-		const { service, orderRepository } = build([onSale, plain], true)
+	const mixed = [
+		{ variant_id: PROMO_ID, quantity: 2 },
+		{ variant_id: PLAIN_ID, quantity: 1 }
+	]
 
-		await service.create(
-			dto(
-				[
-					{ variant_id: PROMO_ID, quantity: 2 },
-					{ variant_id: PLAIN_ID, quantity: 1 }
-				],
-				'TEN'
-			)
-		)
+	it('leaves a promo line the coupon does not beat at its sale price and discounts the rest', async () => {
+		const { service, orderRepository } = build([onSale, plain], 10)
+
+		await service.create(dto(mixed, 'TEN'))
 
 		const order = created(orderRepository)
-		// 10 % of the plain line (500), not of the whole subtotal (1580).
+		// 10 % of the plain line (500); the sale line already saves 10 %, so the coupon adds nothing.
 		expect(order.applied_discount).toMatchObject({ discount_amount: 50 })
 		expect(order.total_price).toBe(1530)
 	})
 
-	it('refuses a coupon when every line is on promotion, so a single-use code is not burned', async () => {
-		const { service, orderRepository } = build([onSale], true)
+	it('lifts a promo line to the coupon percent of the regular price when the coupon is larger', async () => {
+		const { service, orderRepository } = build([onSale, plain], 15)
 
-		await expect(
-			service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
-		).rejects.toMatchObject({ response: { code: 'COUPON_NOT_APPLICABLE' } })
-		expect(orderRepository.create).not.toHaveBeenCalled()
+		await service.create(dto(mixed, 'TEN'))
+
+		const order = created(orderRepository)
+		// Sale line: 15 % of 2 × 600 is 180, the sale gave 120 → 60 more. Plain line: 75. Not stacked.
+		expect(order.items[0]).toMatchObject({ price: 540, list_price: 600, promo_percent: 10 })
+		expect(order.subtotal_price).toBe(1580)
+		expect(order.applied_discount).toMatchObject({ discount_percent: 15, discount_amount: 135 })
+		expect(order.total_price).toBe(1445)
 	})
+
+	it('applies a larger coupon to an all-promo order, measured from the regular price', async () => {
+		const { service, orderRepository } = build([onSale], 15)
+
+		await service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
+
+		const order = created(orderRepository)
+		// 600 − 15 % = 510: the sale price 540 minus the coupon's extra 30.
+		expect(order.applied_discount).toMatchObject({ discount_amount: 30 })
+		expect(order.total_price).toBe(510)
+	})
+
+	it.each([10, 5])(
+		'refuses a %i %% coupon when every line is on a sale at least as large, so a single-use code is not burned',
+		async percent => {
+			const { service, orderRepository } = build([onSale], percent)
+
+			await expect(
+				service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
+			).rejects.toMatchObject({ response: { code: 'COUPON_NOT_APPLICABLE' } })
+			expect(orderRepository.create).not.toHaveBeenCalled()
+		}
+	)
 
 	it('treats an expired promotion as no promotion at all', async () => {
 		const expired = variant(PROMO_ID, {
@@ -2126,7 +2205,7 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 			promo_percent: 10,
 			promo_ends_at: new Date('2020-01-01T00:00:00Z')
 		})
-		const { service, orderRepository } = build([expired], true)
+		const { service, orderRepository } = build([expired], 10)
 
 		await service.create(dto([{ variant_id: PROMO_ID, quantity: 1 }], 'TEN'))
 

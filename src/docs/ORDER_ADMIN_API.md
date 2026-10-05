@@ -99,7 +99,7 @@ what the storefront pins the message to (Plan-0005, screen «Чекаут: по�
 | `400`  | `COURIER_ADDRESS_REQUIRED`     | —                                                 | `COURIER` without `street` / `building`                    |
 | `400`  | `COUPON_INVALID`               | —                                                 | no active coupon with that code                            |
 | `400`  | `COUPON_EXPIRED`               | —                                                 | the coupon's `valid_until` has passed                      |
-| `400`  | `COUPON_NOT_APPLICABLE`        | —                                                 | every line is on promotion, so the coupon would buy nothing (TD-0012) |
+| `400`  | `COUPON_NOT_APPLICABLE`        | —                                                 | every line is on a sale at least as large as the coupon, so it would buy nothing (TD-0012) |
 
 `OUT_OF_STOCK` and `INSUFFICIENT_STOCK` are split because the advice differs: at zero there is
 nothing left to reduce, so the text asks for the line to be removed rather than for a smaller
@@ -129,7 +129,7 @@ Calculation rules:
 - if `items` are provided, the backend reloads variants from the current catalog and rebuilds order item snapshots
 - each line total is calculated as `price * quantity`
 - `subtotal_price` is recalculated from all line totals
-- if `applied_discount` exists, its `discount_percent` is preserved and `discount_amount` is recalculated from the new `subtotal_price`
+- if `applied_discount` exists, its `discount_percent` is preserved and `discount_amount` is recalculated over the new lines by the same rule as checkout (`couponDiscountAmount`, see «Promotions on order lines»)
 - `total_price` is recalculated as `subtotal_price - discount_amount - manual_discount.amount` (each term 0 when absent)
 
 Manual discount (`manual_discount`) — a fixed amount in UAH the admin grants after checkout,
@@ -282,12 +282,18 @@ the buyer pays — the variant's sale price while its promotion is on (`activePr
 `items[].list_price` the regular price, with `items[].promo_percent` saying which sale it was. Orders
 written before TD-0012 have no `list_price`; `mapOrderResponse` reads it back as `price`.
 
-**A coupon acts on the lines that are not on promotion.** `discount_amount = round2(percent/100 ×
-Σ line totals with promo_percent = null)`; the storefront previews the same figure from the cart.
-When every line is on promotion the order is refused with `400 COUPON_NOT_APPLICABLE` rather than
-recorded with a 0 discount, so a single-use code is not burned for nothing. The admin `PATCH
-/orders/:id` with `items` recomputes the coupon over the same eligible subtotal (no refusal there —
-the admin is editing; if every remaining line is on promotion the coupon simply contributes 0).
+**A coupon never stacks on a promotion — the larger discount wins on each line** (rule revised by
+the owner 2026-10-05; `src/modules/order/coupon-pricing.ts`). Both are measured from the regular
+price: per line `extra = max(0, list_price × qty × percent/100 − (list_price − price) × qty)` and
+`discount_amount = round2(Σ extra)`. A line without a promotion takes the full coupon percent; a
+−10 % sale met by a −15 % coupon ends at exactly 15 % off `list_price` (the coupon adds the 5 %
+the sale did not give); a coupon no larger than the sale adds nothing and the line keeps its sale
+price. `items[].price` and `subtotal_price` keep the sale prices — the coupon stays an order-level
+amount. The storefront previews the same figure from the cart. When the sum is 0 the order is
+refused with `400 COUPON_NOT_APPLICABLE` rather than recorded with a 0 discount, so a single-use
+code is not burned for nothing. The admin `PATCH /orders/:id` with `items` recomputes the coupon
+over the new lines by the same rule (no refusal there — the admin is editing; if nothing is left
+for the coupon to add it simply contributes 0).
 Note that `items` edits have always re-priced every line from the current catalogue — a promotion
 that ended between checkout and the edit therefore raises the unit price the same way a Prom price
 change always has; the admin sees the new total before confirming. LiqPay charges `total_price` as it was at creation: a promotion that starts

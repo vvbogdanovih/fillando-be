@@ -4,8 +4,8 @@ import { buildSalesReport, type ReportFilters, type ReportSourceOrder } from './
 const FILTERS: ReportFilters = {
 	dateFrom: '2026-09-01',
 	dateTo: '2026-09-30',
-	orderStatus: null,
-	paymentStatus: null
+	orderStatuses: null,
+	paymentStatuses: null
 }
 
 function makeOrder(overrides: Partial<ReportSourceOrder> = {}): ReportSourceOrder {

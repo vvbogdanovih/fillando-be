@@ -29,8 +29,9 @@ export interface ReportSourceOrder {
 export interface ReportFilters {
 	dateFrom: string
 	dateTo: string
-	orderStatus: OrderStatus | null
-	paymentStatus: PaymentStatus | null
+	/** `null` is «every status»; a list is the statuses the selection was limited to. */
+	orderStatuses: OrderStatus[] | null
+	paymentStatuses: PaymentStatus[] | null
 }
 
 /** One SKU, summed across every order in the selection. */

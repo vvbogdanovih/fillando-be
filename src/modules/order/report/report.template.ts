@@ -161,11 +161,15 @@ function daysTables(rows: DayRow[]): string {
 }
 
 function filtersLine(data: SalesReportData): string {
-	const { orderStatus, paymentStatus } = data.filters
+	const { orderStatuses, paymentStatuses } = data.filters
 
 	const parts = [
-		`Статус замовлення: ${orderStatus ? formatOrderStatus(orderStatus) : 'усі'}`,
-		`Статус оплати: ${paymentStatus ? formatPaymentStatus(paymentStatus) : 'усі'}`
+		`Статус замовлення: ${
+			orderStatuses ? orderStatuses.map(formatOrderStatus).join(', ') : 'усі'
+		}`,
+		`Статус оплати: ${
+			paymentStatuses ? paymentStatuses.map(formatPaymentStatus).join(', ') : 'усі'
+		}`
 	]
 
 	return parts.join(' &nbsp;·&nbsp; ')

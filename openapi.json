@@ -6041,28 +6041,36 @@
             "example": "2025-12-31"
           },
           "order_status": {
-            "type": "string",
-            "enum": [
-              "NEW",
-              "PROCESSING",
-              "CONFIRMED",
-              "SHIPPED",
-              "DELIVERED",
-              "COMPLETED",
-              "CANCELLED",
-              "RETURNING",
-              "RETURNED"
-            ]
+            "type": "array",
+            "description": "Order statuses to include; absent or empty means every status",
+            "items": {
+              "type": "string",
+              "enum": [
+                "NEW",
+                "PROCESSING",
+                "CONFIRMED",
+                "SHIPPED",
+                "DELIVERED",
+                "COMPLETED",
+                "CANCELLED",
+                "RETURNING",
+                "RETURNED"
+              ]
+            }
           },
           "payment_status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "PAID",
-              "FAILED",
-              "REFUNDED",
-              "VOIDED"
-            ]
+            "type": "array",
+            "description": "Payment statuses to include; absent or empty means every status",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "PAID",
+                "FAILED",
+                "REFUNDED",
+                "VOIDED"
+              ]
+            }
           }
         },
         "required": [

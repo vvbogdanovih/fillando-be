@@ -33,8 +33,8 @@ const render = (orders: ReportSourceOrder[]) =>
 		buildSalesReport(orders, {
 			dateFrom: '2026-09-01',
 			dateTo: '2026-09-30',
-			orderStatus: null,
-			paymentStatus: null
+			orderStatuses: null,
+			paymentStatuses: null
 		})
 	)
 
@@ -104,5 +104,30 @@ describe('salesReportTemplate — реєстр замовлень', () => {
 		)
 		expect(html).toContain('&lt;b&gt;x&lt;/b&gt;')
 		expect(html).not.toContain('<b>x</b>')
+	})
+})
+
+describe('salesReportTemplate — рядок фільтрів', () => {
+	const header = (html: string) => html.slice(0, html.indexOf('1. Продані товари'))
+
+	it('names every selected status, in the order chosen', () => {
+		const html = header(
+			salesReportTemplate(
+				buildSalesReport([makeOrder()], {
+					dateFrom: '2026-09-01',
+					dateTo: '2026-09-30',
+					orderStatuses: [OrderStatus.COMPLETED, OrderStatus.DELIVERED],
+					paymentStatuses: [PaymentStatus.PAID]
+				})
+			)
+		)
+		expect(html).toContain('Статус замовлення: Виконане, Доставлене')
+		expect(html).toContain('Статус оплати: Оплачено')
+	})
+
+	it('says «усі» when a dimension was not limited', () => {
+		const html = header(render([makeOrder()]))
+		expect(html).toContain('Статус замовлення: усі')
+		expect(html).toContain('Статус оплати: усі')
 	})
 })

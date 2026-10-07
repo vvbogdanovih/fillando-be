@@ -1392,9 +1392,12 @@ export class OrderService {
 	 * answer «what does this one buyer owe» rather than «what did the period bring in».
 	 */
 	async generateReport(dto: GenerateReportDto): Promise<{ buffer: Buffer; filename: string }> {
+		// An empty list is the same as no filter: the checkboxes' «all» sends nothing.
+		const orderStatuses = dto.order_status?.length ? dto.order_status : null
+		const paymentStatuses = dto.payment_status?.length ? dto.payment_status : null
 		const filter: Record<string, unknown> = {}
-		if (dto.order_status) filter.order_status = dto.order_status
-		if (dto.payment_status) filter.payment_status = dto.payment_status
+		if (orderStatuses) filter.order_status = { $in: orderStatuses }
+		if (paymentStatuses) filter.payment_status = { $in: paymentStatuses }
 
 		// The picker hands over plain calendar days, and finance reads them as Kyiv days.
 		const dayFrom = dto.date_from.slice(0, 10)
@@ -1413,8 +1416,8 @@ export class OrderService {
 		const report = buildSalesReport(orders as unknown as ReportSourceOrder[], {
 			dateFrom: dayFrom,
 			dateTo: dayTo,
-			orderStatus: dto.order_status ?? null,
-			paymentStatus: dto.payment_status ?? null
+			orderStatuses,
+			paymentStatuses
 		})
 
 		const buffer = await this.reportProvider.generateSalesReportPdf(report)

@@ -27,6 +27,7 @@ list of codes.
 | `PATCH` | `/orders/:id/ttn`            | Set Nova Post TTN — ships a NOVA_POST/COURIER order not yet shipped       |
 | `POST`  | `/orders/:id/invoice`        | One order's invoice as PDF                                                |
 | `POST`  | `/orders/report`             | Sales report for a period — see _The sales report_ below                  |
+| `GET`   | `/orders/stats`              | Dashboard figures for a period — see _Dashboard statistics_ below         |
 
 ### Public endpoints
 
@@ -78,6 +79,77 @@ The report dates a sale by `createdAt`, the moment the order was placed. There i
 in the schema, so for a prepaid order the report's date is not the date the money arrived; the
 note under the register says so. Adding `paid_at` (written on the `PAID` transition, backfilled
 from `createdAt`) is what would close that gap.
+
+---
+
+## Dashboard statistics — `GET /orders/stats`
+
+The admin dashboard (`/admin` in the storefront repo) reads one JSON document per period and
+draws everything from it. The owner's question is «on which days, and at which hours, do orders
+come in» — the ad budget is set per weekday — so the weekday profile is the centre of the answer
+and the rest is context around it.
+
+Query: `date_from`, `date_to` (`YYYY-MM-DD`, Kyiv calendar days, both optional). Omitted: the
+last 30 days ending today in Kyiv. One given: a 30-day window anchored on it. Reversed, longer
+than 366 days or not a real day → `400`. An empty period is **not** an error (the report's 400
+would be wrong here): every structure comes back zero-filled.
+
+Response (`OrderStatsResponseDto`):
+
+| Field | What it is |
+| --- | --- |
+| `period`, `previous_period` | `{ date_from, date_to, days }` — the previous period has the same length and ends the day before `date_from` |
+| `totals`, `previous_period_totals` | `{ orders, cancelled, paid, revenue, avg_order_value, units }` |
+| `by_day[]` | one row per calendar day of the period, zero days included: `{ day, weekday, orders, cancelled, paid, revenue, units }` |
+| `by_weekday[]` | always 7 rows, Monday (1) to Sunday (7): `{ weekday, days_in_range, orders, revenue, avg_orders, avg_revenue }` |
+| `by_hour[]` | always 24 rows, Kyiv hour: `{ hour, orders, revenue }` |
+| `heatmap[]` | always 168 cells, weekday-major: `{ weekday, hour, orders }` |
+| `by_payment_method[]`, `by_delivery_method[]`, `by_order_status[]`, `by_payment_status[]` | every enum value, zero or not, busiest first: `{ key, orders, revenue }` |
+| `top_products_by_revenue[]`, `top_products_by_quantity[]` | at most 10 each: `{ variant_id, product_id, sku, name, quantity, orders, revenue, avg_price }` |
+
+### Definitions
+
+- **`orders`** — every order placed in the period, whatever became of it.
+- **`cancelled`** — the shared «not revenue» rule of `helpers/revenue.helpers.ts`, the same one
+  the sales report prints its non-revenue note from: `order_status` CANCELLED / RETURNING /
+  RETURNED, **or** `payment_status` VOIDED / REFUNDED. Such an order stays in `orders`, in
+  `by_hour` and in the heatmap (it was placed — those answer «when do people order»), but
+  contributes 0 to `revenue` and `units`.
+- **`paid`** — `payment_status === PAID`, independent of `cancelled`: a paid order that was then
+  cancelled is a refund still owed and is counted in both.
+- **`revenue`** — Σ `total_price` over orders that are not cancelled; `total_price` is after
+  coupons and the manual discount, without shipping — the same figure the report calls «До
+  сплати».
+- **`avg_order_value`** — `revenue / (orders − cancelled)`, 0 when there is nothing to divide.
+- **`by_weekday[].avg_*`** — divided by `days_in_range`, the number of such weekdays the period
+  holds **including days with no orders** (2 in a 14-day window, 4 or 5 in a 30-day one). Derived
+  from `by_day`, not from the orders, so a Monday with nothing on it still counts as a Monday.
+- **Top products** — line values (`price × quantity`) over orders that are not cancelled,
+  pre-coupon like the report's product table; the rows therefore do not add up to
+  `totals.revenue`. `name` is the one on the newest order. The key is `variant_id`, falling back
+  to the SKU for a line without one.
+
+### Dates and hours are Kyiv
+
+The period boundaries are `storeDayStart` / `storeDayEnd` of `report/report.period.ts` (see
+_Dates are Kyiv days_ above); day and hour bucketing use `storeDayKey` / `storeHour` from the
+same module, so the 25-hour day of the autumn switch is one day and its repeated 03:xx hour is
+read twice. Calendar arithmetic on the day strings (`stats/stats.period.ts`) runs in `Date.UTC`
+and never builds an instant, so DST cannot move a day. Sale date is `createdAt` — the same caveat
+as the report: a prepaid order is dated by when it was placed, not when the money came.
+
+### How it is computed
+
+`OrderService.getStats` fetches two narrow windows in parallel (`OrderRepository.findStatsSource`:
+the dashboard's columns only, no customer, address or history, newest first, capped at
+`STATS_SOURCE_LIMIT` = 20 000 with a warning in the log when hit) and hands them to the pure
+`stats/stats.builder.ts`, which is tested like the report builder. The `orders` collection
+carries a `createdAt: -1` index for these range reads (and for every list sorted by it).
+
+Should the shop ever outgrow the in-process builder (tens of thousands of orders a year), the
+totals, breakdowns and top products can move into one `$facet` aggregation with
+`$dateToString` / `$dateToParts` in `timezone: 'Europe/Kyiv'` (MongoDB 7 and 8 both support it),
+keeping only the zero-filling and the weekday denominators in JS.
 
 ---
 

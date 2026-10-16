@@ -45,6 +45,7 @@ const orderService = {
 	generateReport: jest
 		.fn()
 		.mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'report.pdf' }),
+	getStats: resolved(),
 	findMyOrders: resolved(),
 	findMyOrderById: resolved(),
 	getPaymentStatusPublic: resolved(),
@@ -75,6 +76,7 @@ type Row = [method: HttpMethod, path: string, body: object | undefined, handler:
 const ADMIN_ENDPOINTS: Row[] = [
 	['get', '/orders', undefined, orderService.findAll],
 	['post', '/orders/report', {}, orderService.generateReport],
+	['get', '/orders/stats', undefined, orderService.getStats],
 	['get', `/orders/${ORDER_ID}`, undefined, orderService.findById],
 	['patch', `/orders/${ORDER_ID}`, {}, orderService.update],
 	['patch', `/orders/${ORDER_ID}/status`, {}, orderService.updateOrderStatus],
@@ -290,6 +292,13 @@ describe('OrderController RBAC', () => {
 			await send(app, 'get', `/orders/lookup/${ORDER_NUMBER}?token=${LOOKUP_TOKEN}`)
 
 			expect(orderService.getPaymentStatusPublic).toHaveBeenCalledTimes(1)
+			expect(orderService.findById).not.toHaveBeenCalled()
+		})
+
+		it("resolves '/orders/stats' to the dashboard, not to an order with id «stats»", async () => {
+			await send(app, 'get', '/orders/stats', { role: Role.ADMIN })
+
+			expect(orderService.getStats).toHaveBeenCalledTimes(1)
 			expect(orderService.findById).not.toHaveBeenCalled()
 		})
 	})

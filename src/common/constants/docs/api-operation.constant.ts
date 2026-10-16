@@ -455,6 +455,11 @@ export const API_OPERATION = {
 			summary: 'Generate sales report',
 			description:
 				'Generates the finance sales report for a date range with optional status filters: goods sold over the period aggregated by SKU, the register of the orders they came from, and the reconciliation totals (paid vs awaited, breakdowns by payment and delivery, sales per day). Landscape PDF. The date range is read as Kyiv calendar days. Admin only.'
+		},
+		STATS: {
+			summary: 'Orders dashboard statistics',
+			description:
+				'Figures for the admin dashboard over a period of Kyiv calendar days (`date_from`/`date_to`, default the last 30 days, at most 366): totals and the same for the period of equal length just before it, every day of the period (zero days included), the weekday profile with its per-weekday averages, orders per hour and a weekday × hour heatmap, breakdowns by payment method, delivery method, order status and payment status, and the top 10 variants by revenue and by quantity. `cancelled` is CANCELLED / RETURNING / RETURNED or payment VOIDED / REFUNDED — such an order is counted in `orders` and in the hour/heatmap figures (it was placed) but contributes no revenue and no units. Sale date is the order\'s `createdAt`. Admin only.'
 		}
 	},
 	PAYMENT_DETAILS: {

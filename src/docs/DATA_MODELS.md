@@ -90,7 +90,7 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 | `comment`                    | string \| null             | optional                                                                                                                                                                                                                                                                                                                                                                   |
 | `createdAt` / `updatedAt`    | Date                       | auto-managed (timestamps)                                                                                                                                                                                                                                                                                                                                                  |
 
-Indexes: `user_id`, `order_status`, `payment_status` (plus the unique `order_number`).
+Indexes: `user_id`, `order_status`, `payment_status`, `createdAt: -1` (every list sorts by it; the report, the tracker and the dashboard range over it) — plus the unique `order_number`.
 
 Two fields of the customer-facing reads (`POST /orders`, `GET /orders/me`, `GET /orders/me/:id`,
 `PATCH /orders/me/:id/payment-method`) are **not** stored: `can_change_payment_method` and

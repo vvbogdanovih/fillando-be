@@ -247,4 +247,7 @@ export const OrderSchema = SchemaFactory.createForClass(Order)
 OrderSchema.index({ user_id: 1 })
 OrderSchema.index({ order_status: 1 })
 OrderSchema.index({ payment_status: 1 })
+// Every list sorts by it and the report, the tracker and the dashboard range over it; without
+// the index each of those is a collection scan.
+OrderSchema.index({ createdAt: -1 })
 export type OrderDocument = HydratedDocument<Order>

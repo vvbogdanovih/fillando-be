@@ -180,6 +180,17 @@ describe('buildSalesReport — підсумки', () => {
 		expect(report.nonRevenue).toEqual({ orders: 2, amount: 2400 })
 	})
 
+	it('treats a voided payment as non-revenue even when the order status was reopened', () => {
+		// The rule is shared with the dashboard (`revenue.helpers.ts`): VOIDED is written only on
+		// cancel/return, so this pins the payment side of it independently of the status side.
+		const report = buildSalesReport(
+			[makeOrder({ order_status: OrderStatus.NEW, payment_status: PaymentStatus.VOIDED })],
+			FILTERS
+		)
+
+		expect(report.nonRevenue).toEqual({ orders: 1, amount: 1200 })
+	})
+
 	it('reports no mismatch when the stored subtotal matches the line values', () => {
 		expect(buildSalesReport([makeOrder()], FILTERS).subtotalMismatch).toBeNull()
 	})

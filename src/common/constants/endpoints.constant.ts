@@ -134,7 +134,8 @@ export const ENDPOINTS = {
 		SET_TTN: '/:id/ttn',
 		GENERATE_INVOICE: '/:id/invoice',
 		SEND_VENDOR_EMAIL: '/:id/vendor-email',
-		GENERATE_REPORT: '/report'
+		GENERATE_REPORT: '/report',
+		STATS: '/stats'
 	},
 	PAYMENT_DETAILS: {
 		BASE: '/payment-details',

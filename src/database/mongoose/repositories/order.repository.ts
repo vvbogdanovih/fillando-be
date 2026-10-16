@@ -5,6 +5,9 @@ import { OrderStatus, PaymentStatus } from 'src/common/types/enums'
 import { Order } from '../schemas/order.schema'
 import { BaseRepository } from './base.repository'
 
+/** Orders one dashboard window may read; past it the figures would be silently short. */
+export const STATS_SOURCE_LIMIT = 20_000
+
 @Injectable()
 export class OrderRepository extends BaseRepository<Order> {
 	constructor(@InjectModel(Order.name) model: Model<Order>) {
@@ -82,6 +85,24 @@ export class OrderRepository extends BaseRepository<Order> {
 			])
 			.exec()
 		return new Map(rows.map(r => [String(r._id), r.units]))
+	}
+
+	/**
+	 * The columns the orders dashboard reads (`stats.builder.ts`), newest first so the first
+	 * name seen per variant is the current one. Narrow on purpose: the dashboard fetches two
+	 * windows per request, and `findAllByDateRange` drags addresses and status history along.
+	 * The cap is a safety net, not a page — the service logs when it is hit.
+	 */
+	findStatsSource(dateFrom: Date, dateTo: Date) {
+		return this.model
+			.find({ createdAt: { $gte: dateFrom, $lte: dateTo } })
+			.select(
+				'createdAt order_status payment_status payment_method delivery_method total_price items.variant_id items.product_id items.sku items.name items.price items.quantity'
+			)
+			.sort({ createdAt: -1 })
+			.limit(STATS_SOURCE_LIMIT)
+			.lean()
+			.exec()
 	}
 
 	findAllByDateRange(filter: Record<string, unknown>, dateFrom: Date, dateTo: Date) {

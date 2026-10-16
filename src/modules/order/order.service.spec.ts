@@ -2214,3 +2214,49 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 		expect(order.applied_discount).toMatchObject({ discount_amount: 60 })
 	})
 })
+
+describe('OrderService.getStats — the dashboard reads two Kyiv-day windows', () => {
+	const buildService = (findStatsSource: jest.Mock) =>
+		new OrderService(
+			{ findStatsSource } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+
+	it('fetches the period and the one before it by Kyiv-day instants, in parallel', async () => {
+		const findStatsSource = jest.fn().mockResolvedValue([])
+		const service = buildService(findStatsSource)
+
+		const result = await service.getStats({ date_from: '2026-09-01', date_to: '2026-09-30' })
+
+		expect(findStatsSource).toHaveBeenCalledTimes(2)
+		expect(findStatsSource.mock.calls[0][0].toISOString()).toBe('2026-08-31T21:00:00.000Z')
+		expect(findStatsSource.mock.calls[0][1].toISOString()).toBe('2026-09-30T20:59:59.999Z')
+		expect(findStatsSource.mock.calls[1][0].toISOString()).toBe('2026-08-01T21:00:00.000Z')
+		expect(findStatsSource.mock.calls[1][1].toISOString()).toBe('2026-08-31T20:59:59.999Z')
+		expect(result.period).toEqual({ date_from: '2026-09-01', date_to: '2026-09-30', days: 30 })
+		expect(result.by_day).toHaveLength(30)
+	})
+
+	it('answers zeros for an empty period instead of the report’s 400', async () => {
+		const service = buildService(jest.fn().mockResolvedValue([]))
+
+		const result = await service.getStats({})
+
+		expect(result.totals.orders).toBe(0)
+	})
+
+	it('refuses a reversed range before touching the database', async () => {
+		const findStatsSource = jest.fn()
+		const service = buildService(findStatsSource)
+
+		await expect(
+			service.getStats({ date_from: '2026-09-30', date_to: '2026-09-01' })
+		).rejects.toBeInstanceOf(BadRequestException)
+		expect(findStatsSource).not.toHaveBeenCalled()
+	})
+})

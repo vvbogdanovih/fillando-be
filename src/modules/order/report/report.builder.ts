@@ -1,4 +1,5 @@
 import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
+import { isNonRevenueOrder, round2, sum } from '../helpers/revenue.helpers'
 import { storeDayKey } from './report.period'
 
 /** An order as it comes out of the repository, narrowed to what the report actually reads. */
@@ -134,20 +135,6 @@ export interface SalesReportData {
 	 * fail to reconcile.
 	 */
 	subtotalMismatch: number | null
-}
-
-const NON_REVENUE_STATUSES = new Set<OrderStatus>([
-	OrderStatus.CANCELLED,
-	OrderStatus.RETURNING,
-	OrderStatus.RETURNED
-])
-
-function round2(value: number): number {
-	return Math.round((value + Number.EPSILON) * 100) / 100
-}
-
-function sum(values: number[]): number {
-	return round2(values.reduce((acc, value) => acc + value, 0))
 }
 
 function toBreakdown<Key extends string>(
@@ -324,10 +311,10 @@ export function buildSalesReport(
 	const subtotal = sum(orders.map(order => order.subtotal))
 	// Before coupons on both sides: the product table's own discount column is what carries them.
 	const lineValue = sum(products.map(product => product.grossAmount))
-	const nonRevenueOrders = orders.filter(
-		order =>
-			NON_REVENUE_STATUSES.has(order.orderStatus) ||
-			order.paymentStatus === PaymentStatus.REFUNDED
+	// The same rule the dashboard applies (`revenue.helpers.ts`), so the two never disagree on
+	// what a cancelled order is.
+	const nonRevenueOrders = orders.filter(order =>
+		isNonRevenueOrder({ order_status: order.orderStatus, payment_status: order.paymentStatus })
 	)
 
 	return {

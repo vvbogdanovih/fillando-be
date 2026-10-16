@@ -53,6 +53,10 @@ import {
 	liqpaySessionExpiredBefore
 } from './helpers/liqpay-session.helpers'
 import { GenerateReportDto } from './dto/generate-report.dto'
+import { GetOrderStatsQueryDto } from './dto/get-order-stats-query.dto'
+import { buildOrderStats, type OrderStatsData, type StatsSourceOrder } from './stats/stats.builder'
+import { resolveStatsPeriod } from './stats/stats.period'
+import { STATS_SOURCE_LIMIT } from 'src/database/mongoose/repositories/order.repository'
 import { activePromo } from 'src/modules/product/promo-pricing'
 import { couponDiscountAmount } from './coupon-pricing'
 
@@ -1424,5 +1428,39 @@ export class OrderService {
 		const filename = `sales-report_${dayFrom.replace(/-/g, '')}_${dayTo.replace(/-/g, '')}.pdf`
 
 		return { buffer, filename }
+	}
+
+	/**
+	 * The admin dashboard's figures for a period and the period before it, in Kyiv days like the
+	 * report. Unlike the report an empty period is not an error — a dashboard shows zeros.
+	 */
+	async getStats(query: GetOrderStatsQueryDto): Promise<OrderStatsData> {
+		const period = resolveStatsPeriod(query)
+		const windows = [period, period.previous]
+
+		const [current, previous] = await Promise.all(
+			windows.map(window =>
+				this.orderRepository.findStatsSource(
+					storeDayStart(window.dateFrom),
+					storeDayEnd(window.dateTo)
+				)
+			)
+		)
+
+		for (const [index, orders] of [current, previous].entries()) {
+			if (orders.length >= STATS_SOURCE_LIMIT) {
+				const { dateFrom, dateTo } = windows[index]
+				this.logger.warn(
+					`Order stats for ${dateFrom}..${dateTo} hit the ${STATS_SOURCE_LIMIT}-order cap; figures are short`
+				)
+			}
+		}
+
+		// Lean docs: `Order` does not declare the `timestamps: true` fields — same cast as the report.
+		return buildOrderStats(
+			current as unknown as StatsSourceOrder[],
+			previous as unknown as StatsSourceOrder[],
+			period
+		)
 	}
 }

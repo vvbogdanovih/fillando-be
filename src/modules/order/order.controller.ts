@@ -29,6 +29,8 @@ import { GetOrdersQueryDto } from './dto/get-orders-query.dto'
 import { AdminUpdateOrderDto } from './dto/admin-update-order.dto'
 import { GenerateInvoiceDto } from './dto/generate-invoice.dto'
 import { GenerateReportDto } from './dto/generate-report.dto'
+import { GetOrderStatsQueryDto } from './dto/get-order-stats-query.dto'
+import { OrderStatsResponseDto } from './dto/order-stats-response.dto'
 import { SendVendorEmailDto } from './dto/send-vendor-email.dto'
 import { OrderListResponseDto, OrderResponseDto } from './dto/order-response.dto'
 import { CreateOrderResponseDto } from './dto/create-order-response.dto'
@@ -73,6 +75,16 @@ export class OrderController {
 			'Content-Length': buffer.length.toString()
 		})
 		res.end(buffer)
+	}
+
+	// Declared before `/:id`, or «stats» is read as an order id (`order.controller.rbac.spec.ts`).
+	@Get(ENDPOINTS.ORDERS.STATS)
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles(Role.ADMIN)
+	@ApiOperation(API_OPERATION.ORDERS.STATS)
+	@ApiOkResponse({ type: OrderStatsResponseDto })
+	getStats(@Query() query: GetOrderStatsQueryDto) {
+		return this.orderService.getStats(query)
 	}
 
 	@Get(ENDPOINTS.ORDERS.MY)

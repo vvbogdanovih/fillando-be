@@ -2465,6 +2465,50 @@
         ]
       }
     },
+    "/orders/stats": {
+      "get": {
+        "description": "Figures for the admin dashboard over a period of Kyiv calendar days (`date_from`/`date_to`, default the last 30 days, at most 366): totals and the same for the period of equal length just before it, every day of the period (zero days included), the weekday profile with its per-weekday averages, orders per hour and a weekday × hour heatmap, breakdowns by payment method, delivery method, order status and payment status, and the top 10 variants by revenue and by quantity. `cancelled` is CANCELLED / RETURNING / RETURNED or payment VOIDED / REFUNDED — such an order is counted in `orders` and in the hour/heatmap figures (it was placed) but contributes no revenue and no units. Sale date is the order's `createdAt`. Admin only.",
+        "operationId": "OrderController_getStats",
+        "parameters": [
+          {
+            "name": "date_from",
+            "required": false,
+            "in": "query",
+            "description": "First day of the period, a Kyiv calendar day (`YYYY-MM-DD`). Omitted: 29 days before `date_to`.",
+            "schema": {
+              "example": "2026-09-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date_to",
+            "required": false,
+            "in": "query",
+            "description": "Last day of the period, a Kyiv calendar day (`YYYY-MM-DD`). Omitted: today in Kyiv, or 29 days after `date_from`.",
+            "schema": {
+              "example": "2026-09-30",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatsResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Orders dashboard statistics",
+        "tags": [
+          "/orders"
+        ]
+      }
+    },
     "/orders/me": {
       "get": {
         "description": "Paginated list of orders for the authenticated user with optional filters by order_status and payment_status.",
@@ -6076,6 +6120,363 @@
         "required": [
           "date_from",
           "date_to"
+        ]
+      },
+      "OrderStatsPeriodDto": {
+        "type": "object",
+        "properties": {
+          "date_from": {
+            "type": "string",
+            "example": "2026-09-01",
+            "description": "Kyiv calendar day"
+          },
+          "date_to": {
+            "type": "string",
+            "example": "2026-09-30",
+            "description": "Kyiv calendar day"
+          },
+          "days": {
+            "type": "number",
+            "example": 30,
+            "description": "Inclusive day count"
+          }
+        },
+        "required": [
+          "date_from",
+          "date_to",
+          "days"
+        ]
+      },
+      "OrderStatsTotalsDto": {
+        "type": "object",
+        "properties": {
+          "orders": {
+            "type": "number",
+            "description": "Every order placed in the period, whatever became of it"
+          },
+          "cancelled": {
+            "type": "number",
+            "description": "Orders that are not revenue: CANCELLED / RETURNING / RETURNED, or payment VOIDED / REFUNDED"
+          },
+          "paid": {
+            "type": "number",
+            "description": "Orders whose payment_status is PAID"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "Sum of total_price over orders that are not cancelled, UAH"
+          },
+          "avg_order_value": {
+            "type": "number",
+            "description": "revenue / (orders − cancelled); 0 when there is none"
+          },
+          "units": {
+            "type": "number",
+            "description": "Units over orders that are not cancelled"
+          }
+        },
+        "required": [
+          "orders",
+          "cancelled",
+          "paid",
+          "revenue",
+          "avg_order_value",
+          "units"
+        ]
+      },
+      "OrderStatsDayDto": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "example": "2026-09-01"
+          },
+          "weekday": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO weekday: 1 Monday … 7 Sunday"
+          },
+          "orders": {
+            "type": "number"
+          },
+          "cancelled": {
+            "type": "number"
+          },
+          "paid": {
+            "type": "number"
+          },
+          "revenue": {
+            "type": "number"
+          },
+          "units": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "day",
+          "weekday",
+          "orders",
+          "cancelled",
+          "paid",
+          "revenue",
+          "units"
+        ]
+      },
+      "OrderStatsWeekdayDto": {
+        "type": "object",
+        "properties": {
+          "weekday": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO weekday: 1 Monday … 7 Sunday"
+          },
+          "days_in_range": {
+            "type": "number",
+            "description": "How many such weekdays the period contains, zero days included"
+          },
+          "orders": {
+            "type": "number"
+          },
+          "revenue": {
+            "type": "number"
+          },
+          "avg_orders": {
+            "type": "number",
+            "description": "orders / days_in_range"
+          },
+          "avg_revenue": {
+            "type": "number",
+            "description": "revenue / days_in_range"
+          }
+        },
+        "required": [
+          "weekday",
+          "days_in_range",
+          "orders",
+          "revenue",
+          "avg_orders",
+          "avg_revenue"
+        ]
+      },
+      "OrderStatsHourDto": {
+        "type": "object",
+        "properties": {
+          "hour": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Hour of the day in Kyiv"
+          },
+          "orders": {
+            "type": "number",
+            "description": "Every order placed in that hour, cancelled ones included"
+          },
+          "revenue": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "hour",
+          "orders",
+          "revenue"
+        ]
+      },
+      "OrderStatsHeatmapCellDto": {
+        "type": "object",
+        "properties": {
+          "weekday": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "hour": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "orders": {
+            "type": "number",
+            "description": "Every order placed in that slot, cancelled ones included"
+          }
+        },
+        "required": [
+          "weekday",
+          "hour",
+          "orders"
+        ]
+      },
+      "OrderStatsBreakdownDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The enum value of the dimension (every value is listed)"
+          },
+          "orders": {
+            "type": "number",
+            "description": "Every order with that value"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "Revenue of those orders — cancelled ones contribute 0"
+          }
+        },
+        "required": [
+          "key",
+          "orders",
+          "revenue"
+        ]
+      },
+      "OrderStatsProductDto": {
+        "type": "object",
+        "properties": {
+          "variant_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "product_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name as last ordered"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Units over orders that are not cancelled"
+          },
+          "orders": {
+            "type": "number",
+            "description": "Distinct orders the variant appeared in"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "Σ price × quantity before coupons, like the sales report"
+          },
+          "avg_price": {
+            "type": "number",
+            "description": "revenue / quantity"
+          }
+        },
+        "required": [
+          "variant_id",
+          "product_id",
+          "sku",
+          "name",
+          "quantity",
+          "orders",
+          "revenue",
+          "avg_price"
+        ]
+      },
+      "OrderStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/OrderStatsPeriodDto"
+          },
+          "previous_period": {
+            "$ref": "#/components/schemas/OrderStatsPeriodDto"
+          },
+          "generated_at": {
+            "type": "string",
+            "example": "2026-10-16T09:00:00.000Z"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/OrderStatsTotalsDto"
+          },
+          "previous_period_totals": {
+            "$ref": "#/components/schemas/OrderStatsTotalsDto"
+          },
+          "by_day": {
+            "description": "Every day of the period, zero days included",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsDayDto"
+            }
+          },
+          "by_weekday": {
+            "description": "Always 7 rows, Monday first",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsWeekdayDto"
+            }
+          },
+          "by_hour": {
+            "description": "Always 24 rows",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsHourDto"
+            }
+          },
+          "heatmap": {
+            "description": "Always 168 cells, weekday-major",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsHeatmapCellDto"
+            }
+          },
+          "by_payment_method": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsBreakdownDto"
+            }
+          },
+          "by_delivery_method": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsBreakdownDto"
+            }
+          },
+          "by_order_status": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsBreakdownDto"
+            }
+          },
+          "by_payment_status": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsBreakdownDto"
+            }
+          },
+          "top_products_by_revenue": {
+            "description": "At most 10",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsProductDto"
+            }
+          },
+          "top_products_by_quantity": {
+            "description": "At most 10",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderStatsProductDto"
+            }
+          }
+        },
+        "required": [
+          "period",
+          "previous_period",
+          "generated_at",
+          "totals",
+          "previous_period_totals",
+          "by_day",
+          "by_weekday",
+          "by_hour",
+          "heatmap",
+          "by_payment_method",
+          "by_delivery_method",
+          "by_order_status",
+          "by_payment_status",
+          "top_products_by_revenue",
+          "top_products_by_quantity"
         ]
       },
       "OrderPaymentStatusResponseDto": {

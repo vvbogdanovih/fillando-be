@@ -70,3 +70,13 @@ export function storeDayEnd(day: string): Date {
 export function storeDayKey(at: Date): string {
 	return dayFormat.format(new Date(at))
 }
+
+/**
+ * The hour of the day (0–23) an instant falls on in the store's zone. Some ICU builds print
+ * midnight as `24` under `hour12: false`, hence the modulo — the same guard `zoneOffsetMinutes`
+ * applies.
+ */
+export function storeHour(at: Date): number {
+	const hour = wallClockParts.formatToParts(new Date(at)).find(p => p.type === 'hour')?.value
+	return Number(hour ?? 0) % 24
+}

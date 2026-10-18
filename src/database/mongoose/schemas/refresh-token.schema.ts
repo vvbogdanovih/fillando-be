@@ -17,6 +17,14 @@ export class RefreshToken {
 
 	@Prop({ required: true })
 	expiresAt: Date
+
+	/**
+	 * Set when the token is consumed by `POST /auth/refresh`. The record outlives its use for
+	 * `REFRESH_REUSE_GRACE_MS` so a second tab racing the same cookie is served rather than
+	 * logged out; records without this field (written before the window existed) are unused.
+	 */
+	@Prop()
+	usedAt?: Date
 }
 
 export const RefreshTokenSchema = SchemaFactory.createForClass(RefreshToken)

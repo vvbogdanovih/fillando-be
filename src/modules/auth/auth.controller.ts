@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common'
+import {
+	Body,
+	Controller,
+	Get,
+	Post,
+	Req,
+	Res,
+	UnauthorizedException,
+	UseGuards
+} from '@nestjs/common'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { API_OPERATION, ENDPOINTS, ENV, RefreshTokenLifetime } from 'src/common/constants'
@@ -143,7 +152,20 @@ export class AuthController {
 	@ApiOperation(API_OPERATION.AUTH.REFRESH)
 	async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
 		const refreshToken = req.cookies?.[ENV.REFRESH_TOKEN_NAME]
-		const tokens = await this.authService.refresh(refreshToken, this.getClientContext(req))
+		let tokens: { access_token: string; refresh_token: string }
+		try {
+			tokens = await this.authService.refresh(refreshToken, this.getClientContext(req))
+		} catch (error) {
+			// A rejected refresh means the cookies in the jar cannot open a session any more, so
+			// drop them here. The storefront used to do this by calling `POST /auth/logout`, and
+			// that call carried whatever cookie the jar held at the time — in a two-tab race, the
+			// other tab's freshly rotated token, which the logout then revoked for everyone.
+			if (error instanceof UnauthorizedException) {
+				res.clearCookie(ENV.ACCSESS_TOKEN_NAME)
+				res.clearCookie(ENV.REFRESH_TOKEN_NAME)
+			}
+			throw error
+		}
 
 		this.setJwtCookie(res, tokens.access_token)
 		this.setRefreshCookie(res, tokens.refresh_token)

@@ -449,6 +449,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "401": {
+            "description": "Refresh token missing, unknown, expired or reused after the 30 s grace window; both cookies are cleared"
           }
         },
         "summary": "Refresh access token",
@@ -459,12 +462,15 @@
     },
     "/auth/me": {
       "get": {
-        "description": "Get user",
+        "description": "Get the caller. No access cookie → 200 with `user: null` (a guest). An access cookie that fails verification (expired, bad signature) → 401, so the client can refresh.",
         "operationId": "AuthController_me",
         "parameters": [],
         "responses": {
           "200": {
             "description": ""
+          },
+          "401": {
+            "description": "Access token present but invalid or expired"
           }
         },
         "summary": "Get me",

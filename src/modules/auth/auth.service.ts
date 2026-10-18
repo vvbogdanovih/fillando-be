@@ -2,10 +2,15 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt'
 import { RegisterDto } from './dto/register.dto'
 import * as argon2 from 'argon2'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { LoginDto } from './dto/login.dto'
 import { JWTPayload } from 'src/common/types/jwt-payload'
-import { AccessTokenLifetime, ENV, RefreshTokenLifetime } from 'src/common/constants'
+import {
+	AccessTokenLifetime,
+	ENV,
+	REFRESH_REUSE_GRACE_MS,
+	RefreshTokenLifetime
+} from 'src/common/constants'
 import { AuthMethod, Role } from 'src/common/types/enums'
 import { UserRepository } from 'src/database/mongoose/repositories/user.repository'
 import { RefreshTokenRepository } from 'src/database/mongoose/repositories/refresh-token.repository'
@@ -119,9 +124,13 @@ export class AuthService {
 	}
 
 	issueRefreshToken(data: JWTPayload) {
+		// `jti` makes every refresh token distinct. Without it two tokens signed for one user in
+		// the same second are byte-identical, so the second insert hits the unique index on the
+		// hash and the refresh answers 500 — exactly the moment two tabs race a refresh.
 		return this.jwtService.sign(data, {
 			secret: ENV.REFRESH_JWT_SECRET,
-			expiresIn: RefreshTokenLifetime.sec
+			expiresIn: RefreshTokenLifetime.sec,
+			jwtid: randomUUID()
 		})
 	}
 
@@ -159,6 +168,13 @@ export class AuthService {
 		}
 	}
 
+	/**
+	 * Rotation with a reuse window (`REFRESH_REUSE_GRACE_MS`): the first use marks the stored
+	 * token consumed and issues a new pair; a repeat inside the window issues another fresh pair
+	 * without touching the record (two tabs racing one cookie); a repeat after the window is read
+	 * as a stolen token and rejected. Every rejection leaves the caller without a session, so the
+	 * controller clears the cookies on it.
+	 */
 	async refresh(refreshToken: string, context?: { ipAddress?: string; userAgent?: string }) {
 		if (!refreshToken) throw new UnauthorizedException('Refresh token відсутній.')
 
@@ -168,13 +184,21 @@ export class AuthService {
 		if (!stored)
 			throw new UnauthorizedException('Refresh token не знайдено або вже використано.')
 
-		if (new Date() > stored.expiresAt) {
+		const now = new Date()
+		if (now > stored.expiresAt) {
 			await this.refreshTokenRepository.deleteById(stored._id)
 			throw new UnauthorizedException('Refresh token протерміновано.')
 		}
 
+		if (stored.usedAt && now.getTime() - stored.usedAt.getTime() > REFRESH_REUSE_GRACE_MS) {
+			await this.refreshTokenRepository.deleteById(stored._id)
+			throw new UnauthorizedException('Refresh token вже використано.')
+		}
+
 		const decoded = await this.verifyRefreshToken(refreshToken)
-		await this.refreshTokenRepository.deleteById(stored._id)
+		if (!stored.usedAt) {
+			await this.refreshTokenRepository.markUsed(stored._id, now)
+		}
 
 		const payload: JWTPayload = {
 			id: decoded.id,

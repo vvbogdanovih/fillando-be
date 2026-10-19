@@ -198,7 +198,23 @@ Editable fields:
 
 Calculation rules:
 
-- if `items` are provided, the backend reloads variants from the current catalog and rebuilds order item snapshots
+- `items` is a **full replacement** of the lines (a line left out is removed; `[]` → 400; the same
+  variant twice → `400 DUPLICATE_ORDER_LINE`). A line whose `variant_id` is already in the order
+  **keeps its stored snapshot** — name, SKU, `price`, `list_price`, `promo_percent`, image — and only
+  takes the new `quantity`; the catalogue is consulted for it only when the quantity grows (the usual
+  `OUT_OF_STOCK` / `INSUFFICIENT_STOCK` / `VARIANT_UNAVAILABLE` refusals). A line that is new to the
+  order is loaded, validated and priced exactly as at checkout (`activePromo`, TD-0012). So a paid
+  order never changes its total because a promotion ended or a Prom sync moved a price in between,
+  and a variant that sold out after the order does not block its own replacement
+- allowed on a `PAID` order (replacing a variant that sold out after the buyer paid is the point);
+  refused with `409 LIQPAY_SESSION_ACTIVE` + `retry_after_seconds` while a card session is open —
+  that session was built with the old total and the callback checks the amount against it
+- when the set of lines or a quantity really changed, the same write pushes a `status_history`
+  entry `{ field: 'items', from: <total before>, to: <total after>, actor: 'admin', admin_id, note }`;
+  `note` lists the change («−PLA чорний ×1; +PETG червоний ×1; ABS: 2 → 3 шт.») and, for a `PAID`
+  order whose total moved, what is left to settle outside the system («— оплачено 1 000,00 ₴,
+  доплата 200,00 ₴» / «повернути …»). That entry is the only record of the sum the buyer actually
+  paid once `total_price` has been recalculated (`src/modules/order/helpers/order-items-edit.ts`)
 - each line total is calculated as `price * quantity`
 - `subtotal_price` is recalculated from all line totals
 - if `applied_discount` exists, its `discount_percent` is preserved and `discount_amount` is recalculated over the new lines by the same rule as checkout (`couponDiscountAmount`, see «Promotions on order lines»)
@@ -366,7 +382,7 @@ refused with `400 COUPON_NOT_APPLICABLE` rather than recorded with a 0 discount,
 code is not burned for nothing. The admin `PATCH /orders/:id` with `items` recomputes the coupon
 over the new lines by the same rule (no refusal there — the admin is editing; if nothing is left
 for the coupon to add it simply contributes 0).
-Note that `items` edits have always re-priced every line from the current catalogue — a promotion
-that ended between checkout and the edit therefore raises the unit price the same way a Prom price
-change always has; the admin sees the new total before confirming. LiqPay charges `total_price` as it was at creation: a promotion that starts
+An `items` edit prices only the lines that are new to the order at the moment of the edit; a line
+that stays keeps the unit price, list price and promo percent it was sold under (see «Admin `PATCH
+/orders/:id` rules»). LiqPay charges `total_price` as it was at creation: a promotion that starts
 or ends between the cart and `POST /orders` simply prices at creation time.

@@ -141,11 +141,15 @@ export class NovaPostTrackingStatus {
 
 export const NovaPostTrackingStatusSchema = SchemaFactory.createForClass(NovaPostTrackingStatus)
 
-/** One status change (TD-0011). Written in the same update as the status it records. */
+/**
+ * One status change (TD-0011), written in the same update as the status it records — or, since
+ * the admin can replace lines of an order (FRD §9.2), one `items` edit: there `from`/`to` are the
+ * totals before and after and `note` says which lines left, came or changed quantity.
+ */
 @Schema({ _id: false })
 export class StatusHistoryEntry {
-	@Prop({ type: String, enum: ['order_status', 'payment_status'], required: true })
-	field: 'order_status' | 'payment_status'
+	@Prop({ type: String, enum: ['order_status', 'payment_status', 'items'], required: true })
+	field: 'order_status' | 'payment_status' | 'items'
 
 	/** `null` only for the two entries written with the order itself. */
 	@Prop({ type: String, default: null })

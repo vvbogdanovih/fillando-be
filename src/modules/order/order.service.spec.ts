@@ -2260,3 +2260,288 @@ describe('OrderService.getStats — the dashboard reads two Kyiv-day windows', (
 		expect(findStatsSource).not.toHaveBeenCalled()
 	})
 })
+
+describe('OrderService.update — items (replacing a line, FRD §9.2)', () => {
+	const ORDER_ID = '64b8f0000000000000000000'
+	const KEPT_ID = '64b8f0000000000000000001'
+	const NEW_ID = '64b8f0000000000000000002'
+	const GONE_ID = '64b8f0000000000000000003'
+	const ADMIN_ID = '64b8f00000000000000000aa'
+
+	/** A line as the order stored it at checkout: sold at 500 under a −17 % promotion. */
+	const storedLine = (overrides: Record<string, unknown> = {}) => ({
+		variant_id: new Types.ObjectId(KEPT_ID),
+		product_id: new Types.ObjectId(),
+		name: 'PLA чорний',
+		sku: 'SKU-1',
+		vendor_sku: 'V-1',
+		price: 500,
+		list_price: 600,
+		promo_percent: 17,
+		quantity: 2,
+		image: null,
+		...overrides
+	})
+
+	const catalogueVariant = (id: string, overrides: Record<string, unknown> = {}) => ({
+		_id: new Types.ObjectId(id),
+		product_id: new Types.ObjectId(),
+		name: 'PETG червоний',
+		sku: 'SKU-2',
+		vendor_product_sku: 'V-2',
+		price: 700,
+		stock: 5,
+		status: ProductStatus.ACTIVE,
+		images: ['petg.jpg'],
+		...overrides
+	})
+
+	const unpaid = (overrides: Record<string, unknown> = {}) =>
+		buildOrder({
+			order_status: OrderStatus.NEW,
+			payment_status: PaymentStatus.PENDING,
+			items: [storedLine()],
+			subtotal_price: 1000,
+			total_price: 1000,
+			manual_discount: null,
+			liqpay_checkout_started_at: null,
+			...overrides
+		})
+
+	type HistoryEntry = {
+		field: string
+		from: string | null
+		to: string
+		actor: string
+		admin_id?: Types.ObjectId
+		note?: string
+	}
+	type Write = { $set: Record<string, unknown>; $push?: { status_history: HistoryEntry } }
+
+	const buildService = (order: OrderFixture, variants: unknown[] = []) => {
+		const findByIds = jest.fn().mockResolvedValue(variants)
+		const update = jest
+			.fn<Promise<OrderFixture>, [unknown, Write]>()
+			.mockImplementation((_filter, payload) =>
+				Promise.resolve({ ...order, ...payload.$set })
+			)
+		const service = new OrderService(
+			{ findById: jest.fn().mockResolvedValue(order), update } as never,
+			{} as never,
+			{ findByIds } as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never
+		)
+		return { service, update, findByIds }
+	}
+
+	const writeOf = (update: jest.Mock<Promise<OrderFixture>, [unknown, Write]>): Write =>
+		update.mock.calls[0][1]
+
+	it('replaces a sold-out line with one priced from the catalogue and keeps the other line as sold', async () => {
+		const { service, update, findByIds } = buildService(
+			unpaid({
+				items: [
+					storedLine(),
+					storedLine({
+						variant_id: new Types.ObjectId(GONE_ID),
+						name: 'ABS синій',
+						sku: 'SKU-3',
+						price: 400,
+						list_price: 400,
+						promo_percent: null,
+						quantity: 1
+					})
+				],
+				subtotal_price: 1400,
+				total_price: 1400
+			}),
+			[catalogueVariant(NEW_ID)]
+		)
+
+		await service.update(ORDER_ID, {
+			items: [
+				{ variant_id: KEPT_ID, quantity: 2 },
+				{ variant_id: NEW_ID, quantity: 1 }
+			]
+		})
+
+		// Only the new line is looked up — the kept one is not re-validated or re-priced.
+		expect(findByIds).toHaveBeenCalledTimes(1)
+		expect(findByIds.mock.calls[0][0].map(String)).toEqual([NEW_ID])
+
+		const { $set, $push } = writeOf(update)
+		const items = $set.items as Array<Record<string, unknown>>
+		expect(items).toHaveLength(2)
+		expect(items[0]).toMatchObject({
+			name: 'PLA чорний',
+			sku: 'SKU-1',
+			price: 500,
+			list_price: 600,
+			promo_percent: 17,
+			quantity: 2
+		})
+		expect(items[1]).toMatchObject({
+			name: 'PETG червоний',
+			sku: 'SKU-2',
+			vendor_sku: 'V-2',
+			price: 700,
+			list_price: 700,
+			promo_percent: null,
+			quantity: 1,
+			image: 'petg.jpg'
+		})
+		expect($set.subtotal_price).toBe(1700)
+		expect($set.total_price).toBe(1700)
+		expect($push?.status_history).toMatchObject({
+			field: 'items',
+			from: '1400',
+			to: '1700',
+			actor: 'admin',
+			note: '−ABS синій ×1; +PETG червоний ×1'
+		})
+	})
+
+	it('does not consult the catalogue for a line that only shrinks', async () => {
+		const { service, update, findByIds } = buildService(unpaid())
+
+		await service.update(ORDER_ID, { items: [{ variant_id: KEPT_ID, quantity: 1 }] })
+
+		expect(findByIds).not.toHaveBeenCalled()
+		const { $set, $push } = writeOf(update)
+		expect($set.subtotal_price).toBe(500)
+		expect($set.total_price).toBe(500)
+		expect($push?.status_history).toMatchObject({ note: 'PLA чорний: 2 → 1 шт.' })
+	})
+
+	it('checks the stock when a kept line grows', async () => {
+		const { service, update } = buildService(unpaid(), [
+			catalogueVariant(KEPT_ID, { name: 'PLA чорний', sku: 'SKU-1', stock: 3 })
+		])
+
+		await expect(
+			service.update(ORDER_ID, { items: [{ variant_id: KEPT_ID, quantity: 5 }] })
+		).rejects.toMatchObject({ response: { code: 'INSUFFICIENT_STOCK', available: 3 } })
+		expect(update).not.toHaveBeenCalled()
+	})
+
+	it('refuses a new line that is sold out', async () => {
+		const { service, update } = buildService(unpaid(), [catalogueVariant(NEW_ID, { stock: 0 })])
+
+		await expect(
+			service.update(ORDER_ID, {
+				items: [
+					{ variant_id: KEPT_ID, quantity: 2 },
+					{ variant_id: NEW_ID, quantity: 1 }
+				]
+			})
+		).rejects.toMatchObject({ response: { code: 'OUT_OF_STOCK' } })
+		expect(update).not.toHaveBeenCalled()
+	})
+
+	it('refuses the same variant on two lines', async () => {
+		const { service, update } = buildService(unpaid())
+
+		await expect(
+			service.update(ORDER_ID, {
+				items: [
+					{ variant_id: KEPT_ID, quantity: 1 },
+					{ variant_id: KEPT_ID, quantity: 1 }
+				]
+			})
+		).rejects.toMatchObject({ response: { code: 'DUPLICATE_ORDER_LINE' } })
+		expect(update).not.toHaveBeenCalled()
+	})
+
+	it('edits a paid order and records the sum to collect in the history', async () => {
+		const { service, update } = buildService(
+			unpaid({ payment_status: PaymentStatus.PAID, payment_method: PaymentMethod.LIQPAY }),
+			[catalogueVariant(NEW_ID)]
+		)
+
+		await service.update(
+			ORDER_ID,
+			{
+				items: [
+					{ variant_id: KEPT_ID, quantity: 1 },
+					{ variant_id: NEW_ID, quantity: 1 }
+				]
+			},
+			ADMIN_ID
+		)
+
+		const { $set, $push } = writeOf(update)
+		expect($set.total_price).toBe(1200)
+		expect($push?.status_history).toMatchObject({
+			field: 'items',
+			from: '1000',
+			to: '1200',
+			actor: 'admin',
+			admin_id: new Types.ObjectId(ADMIN_ID)
+		})
+		expect($push?.status_history.note).toMatch(
+			/^\+PETG червоний ×1; PLA чорний: 2 → 1 шт\. — оплачено/
+		)
+		expect($push?.status_history.note).toMatch(/доплата 200,00 ₴$/)
+	})
+
+	it('records the sum to return when a paid order gets cheaper', async () => {
+		const { service, update } = buildService(unpaid({ payment_status: PaymentStatus.PAID }))
+
+		await service.update(ORDER_ID, { items: [{ variant_id: KEPT_ID, quantity: 1 }] })
+
+		expect(writeOf(update).$push?.status_history.note).toMatch(/повернути 500,00 ₴$/)
+	})
+
+	it('leaves no history entry when the lines did not change', async () => {
+		const { service, update } = buildService(unpaid())
+
+		await service.update(ORDER_ID, { items: [{ variant_id: KEPT_ID, quantity: 2 }] })
+
+		expect(writeOf(update).$push).toBeUndefined()
+	})
+
+	it('re-prices the coupon over the kept snapshot and the new line', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				total_price: 1000,
+				applied_discount: {
+					coupon_id: 'c',
+					code: 'TEN',
+					discount_percent: 10,
+					discount_amount: 0
+				}
+			}),
+			[catalogueVariant(NEW_ID)]
+		)
+
+		await service.update(ORDER_ID, {
+			items: [
+				{ variant_id: KEPT_ID, quantity: 2 },
+				{ variant_id: NEW_ID, quantity: 1 }
+			]
+		})
+
+		// The kept line's −17 % sale (100 ₴ × 2) beats the coupon's 10 % of 600 × 2 = 120 → 0;
+		// the plain new line takes the full 10 % of 700 = 70.
+		const { $set } = writeOf(update)
+		expect($set.applied_discount).toMatchObject({ discount_percent: 10, discount_amount: 70 })
+		expect($set.total_price).toBe(1630)
+	})
+
+	it('refuses a line edit while a LiqPay session built with the old total is open', async () => {
+		const { service, update } = buildService(
+			unpaid({
+				payment_method: PaymentMethod.LIQPAY,
+				liqpay_checkout_started_at: new Date(Date.now() - 60_000)
+			})
+		)
+
+		await expect(
+			service.update(ORDER_ID, { items: [{ variant_id: KEPT_ID, quantity: 1 }] })
+		).rejects.toMatchObject({ response: { code: 'LIQPAY_SESSION_ACTIVE' } })
+		expect(update).not.toHaveBeenCalled()
+	})
+})

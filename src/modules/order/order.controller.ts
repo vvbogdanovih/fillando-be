@@ -159,8 +159,8 @@ export class OrderController {
 	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.ORDERS.UPDATE)
 	@ApiOkResponse({ type: OrderResponseDto })
-	update(@Param('id') id: string, @Body() dto: AdminUpdateOrderDto) {
-		return this.orderService.update(id, dto)
+	update(@Req() req: Request, @Param('id') id: string, @Body() dto: AdminUpdateOrderDto) {
+		return this.orderService.update(id, dto, (req.user as JWTPayload).id)
 	}
 
 	@Patch(ENDPOINTS.ORDERS.UPDATE_ORDER_STATUS)

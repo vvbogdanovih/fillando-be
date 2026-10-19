@@ -51,8 +51,12 @@ class OrderResponseDiscountDto {
 }
 
 class OrderStatusHistoryEntryDto {
-	@ApiProperty({ enum: ['order_status', 'payment_status'] })
-	field: 'order_status' | 'payment_status'
+	@ApiProperty({
+		enum: ['order_status', 'payment_status', 'items'],
+		description:
+			'`items` — the admin replaced, added or re-counted order lines: `from`/`to` are the totals before and after, `note` lists the changes and, for a paid order, the sum to collect or return'
+	})
+	field: 'order_status' | 'payment_status' | 'items'
 
 	@ApiProperty({
 		type: String,

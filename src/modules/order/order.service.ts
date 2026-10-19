@@ -52,6 +52,7 @@ import {
 	liqpayRetryAfterSeconds,
 	liqpaySessionExpiredBefore
 } from './helpers/liqpay-session.helpers'
+import { itemsEditHistoryEntry, type ItemsEditLine } from './helpers/order-items-edit'
 import { GenerateReportDto } from './dto/generate-report.dto'
 import { GetOrderStatsQueryDto } from './dto/get-order-stats-query.dto'
 import { buildOrderStats, type OrderStatsData, type StatsSourceOrder } from './stats/stats.builder'
@@ -77,6 +78,20 @@ interface OrderableVariant {
 	stock: number
 	status: ProductStatus
 	images?: string[] | null
+}
+
+/** One stored order line — the snapshot of the variant as it was sold (`OrderItem`). */
+interface OrderLineSnapshot {
+	variant_id: Types.ObjectId
+	product_id: Types.ObjectId
+	name: string
+	sku: string
+	vendor_sku: string | null
+	price: number
+	list_price: number
+	promo_percent: number | null
+	quantity: number
+	image: string | null
 }
 
 /**
@@ -224,109 +239,178 @@ export class OrderService {
 	 * both measured from `list_price`.
 	 */
 	private async buildOrderItems(items: Array<{ variant_id: string; quantity: number }>): Promise<{
-		orderItems: Array<{
-			variant_id: Types.ObjectId
-			product_id: Types.ObjectId
-			name: string
-			sku: string
-			vendor_sku: string | null
-			price: number
-			list_price: number
-			promo_percent: number | null
-			quantity: number
-			image: string | null
-		}>
+		orderItems: OrderLineSnapshot[]
 		subtotalPrice: number
 	}> {
-		const variantIds = items.map(i => new Types.ObjectId(i.variant_id))
-		const variants = await this.productVariantRepository.findByIds(variantIds)
-		const variantMap = new Map(variants.map((v: any) => [v._id.toString(), v]))
-		const orderItems: Array<{
-			variant_id: Types.ObjectId
-			product_id: Types.ObjectId
-			name: string
-			sku: string
-			vendor_sku: string | null
-			price: number
-			list_price: number
-			promo_percent: number | null
-			quantity: number
-			image: string | null
-		}> = []
-		let subtotalPrice = 0
+		const variantMap = await this.loadOrderableVariants(items.map(i => i.variant_id))
+		const orderItems: OrderLineSnapshot[] = []
 		// One instant for the whole order: two lines of one variant must not straddle an expiry.
 		const now = new Date()
 
 		for (const item of items) {
-			const variant = variantMap.get(item.variant_id) as OrderableVariant | undefined
-			// Every refusal below is read by the buyer on the checkout page — the storefront
-			// echoes `message` as it is — so all of them are Ukrainian, say what to do, and carry
-			// a machine-readable `code` plus the `variant_id` the storefront pins them to
-			// (Plan-0005, screen «Чекаут: помилки»). The realistic path is a guest cart holding a
-			// variant that was archived or sold out while it sat there.
-			if (!variant) {
-				throw new NotFoundException({
-					statusCode: 404,
-					error: 'Not Found',
-					code: 'VARIANT_NOT_FOUND',
-					message:
-						'Цього товару вже немає в каталозі — приберіть позицію з кошика, щоб оформити замовлення',
-					variant_id: item.variant_id
-				})
-			}
-			// Draft/archived variants are hidden from every public read; they must not be
-			// orderable by id either.
-			if (variant.status !== ProductStatus.ACTIVE) {
+			const variant = this.assertOrderable(variantMap.get(item.variant_id), item)
+			orderItems.push(this.snapshotLine(variant, item.quantity, now))
+		}
+
+		return { orderItems, subtotalPrice: this.sumLines(orderItems) }
+	}
+
+	/**
+	 * The admin's edit of the lines (FRD §9.2) — the replacement of a variant that sold out
+	 * after the buyer paid is the typical case. `items` is a full replacement of the list, but a
+	 * line that stays keeps the snapshot the buyer agreed to — name, SKU, unit price, the
+	 * promotion it was sold under — and only its quantity follows the request; a line that is new
+	 * is priced and checked exactly as at checkout. The catalogue's current price applies to what
+	 * is added, never to what stays: a paid order must not change its total because a promotion
+	 * ended or a Prom sync moved the price in between. Stock is checked for a new line and for a
+	 * kept line asked for in a larger quantity — a line that stays or shrinks is not blocked by a
+	 * variant that sold out since, which is the very line the admin is usually taking out.
+	 */
+	private async reviseOrderItems(
+		order: OrderDocument,
+		requested: Array<{ variant_id: string; quantity: number }>
+	): Promise<{ orderItems: OrderLineSnapshot[]; subtotalPrice: number }> {
+		const seen = new Set<string>()
+		for (const item of requested) {
+			if (seen.has(item.variant_id)) {
 				throw new BadRequestException({
 					statusCode: 400,
 					error: 'Bad Request',
-					code: 'VARIANT_UNAVAILABLE',
-					message: `Товар знято з продажу (${variant.sku}) — приберіть позицію з кошика, щоб оформити замовлення`,
-					variant_id: String(variant._id),
-					sku: variant.sku
+					code: 'DUPLICATE_ORDER_LINE',
+					message: 'Один товар двічі в замовленні — обʼєднайте кількість в одному рядку',
+					variant_id: item.variant_id
 				})
 			}
-			if (variant.stock < item.quantity) {
-				// 409 like the cart's own quantity check — the request is well-formed, the stock
-				// is not. Nothing is left to reduce at zero, so that case gets its own code and
-				// its own advice: remove the line instead of lowering a quantity below one.
-				const soldOut = variant.stock <= 0
-				throw new ConflictException({
-					statusCode: 409,
-					error: 'Conflict',
-					code: soldOut ? 'OUT_OF_STOCK' : 'INSUFFICIENT_STOCK',
-					message: soldOut
-						? `Товар закінчився (${variant.sku}) — приберіть позицію з кошика, щоб оформити замовлення`
-						: `Доступно лише ${variant.stock} шт. (${variant.sku}) — зменште кількість, щоб оформити замовлення`,
-					variant_id: String(variant._id),
-					sku: variant.sku,
-					available: variant.stock,
-					requested: item.quantity
-				})
-			}
+			seen.add(item.variant_id)
+		}
 
-			const promo = activePromo(variant, now)
-			const unitPrice = promo?.sale_price ?? variant.price
-			const linePrice = this.toLineTotal(unitPrice, item.quantity)
-			subtotalPrice += linePrice
-			orderItems.push({
-				variant_id: new Types.ObjectId(item.variant_id),
-				product_id: variant.product_id,
-				name: variant.name,
-				sku: variant.sku,
-				vendor_sku: variant.vendor_product_sku ?? null,
-				price: unitPrice,
-				list_price: variant.price,
-				promo_percent: promo?.percent ?? null,
+		const stored = new Map(order.items.map(line => [String(line.variant_id), line]))
+		const needsCatalogue = requested.filter(item => {
+			const kept = stored.get(item.variant_id)
+			return !kept || item.quantity > kept.quantity
+		})
+		const variantMap = await this.loadOrderableVariants(needsCatalogue.map(i => i.variant_id))
+		const now = new Date()
+
+		const orderItems: OrderLineSnapshot[] = requested.map(item => {
+			const kept = stored.get(item.variant_id)
+			if (!kept) {
+				return this.snapshotLine(
+					this.assertOrderable(variantMap.get(item.variant_id), item),
+					item.quantity,
+					now
+				)
+			}
+			if (item.quantity > kept.quantity) {
+				this.assertOrderable(variantMap.get(item.variant_id), item)
+			}
+			return {
+				variant_id: kept.variant_id,
+				product_id: kept.product_id,
+				name: kept.name,
+				sku: kept.sku,
+				vendor_sku: kept.vendor_sku ?? null,
+				price: kept.price,
+				// Orders written before TD-0012 carry no list price: the regular price was the price.
+				list_price: kept.list_price ?? kept.price,
+				promo_percent: kept.promo_percent ?? null,
 				quantity: item.quantity,
-				image: variant.images?.[0] ?? null
+				image: kept.image ?? null
+			}
+		})
+
+		return { orderItems, subtotalPrice: this.sumLines(orderItems) }
+	}
+
+	private async loadOrderableVariants(
+		variantIds: string[]
+	): Promise<Map<string, OrderableVariant>> {
+		if (variantIds.length === 0) return new Map()
+		const variants = await this.productVariantRepository.findByIds(
+			variantIds.map(id => new Types.ObjectId(id))
+		)
+		return new Map((variants as unknown as OrderableVariant[]).map(v => [v._id.toString(), v]))
+	}
+
+	/**
+	 * Every refusal below is read by the buyer on the checkout page — the storefront echoes
+	 * `message` as it is — so all of them are Ukrainian, say what to do, and carry a
+	 * machine-readable `code` plus the `variant_id` the storefront pins them to (Plan-0005,
+	 * screen «Чекаут: помилки»). The realistic path is a guest cart holding a variant that was
+	 * archived or sold out while it sat there. The admin's line edit reuses them unchanged.
+	 */
+	private assertOrderable(
+		variant: OrderableVariant | undefined,
+		item: { variant_id: string; quantity: number }
+	): OrderableVariant {
+		if (!variant) {
+			throw new NotFoundException({
+				statusCode: 404,
+				error: 'Not Found',
+				code: 'VARIANT_NOT_FOUND',
+				message:
+					'Цього товару вже немає в каталозі — приберіть позицію з кошика, щоб оформити замовлення',
+				variant_id: item.variant_id
 			})
 		}
-
-		return {
-			orderItems,
-			subtotalPrice: Number(subtotalPrice.toFixed(2))
+		// Draft/archived variants are hidden from every public read; they must not be
+		// orderable by id either.
+		if (variant.status !== ProductStatus.ACTIVE) {
+			throw new BadRequestException({
+				statusCode: 400,
+				error: 'Bad Request',
+				code: 'VARIANT_UNAVAILABLE',
+				message: `Товар знято з продажу (${variant.sku}) — приберіть позицію з кошика, щоб оформити замовлення`,
+				variant_id: String(variant._id),
+				sku: variant.sku
+			})
 		}
+		if (variant.stock < item.quantity) {
+			// 409 like the cart's own quantity check — the request is well-formed, the stock
+			// is not. Nothing is left to reduce at zero, so that case gets its own code and
+			// its own advice: remove the line instead of lowering a quantity below one.
+			const soldOut = variant.stock <= 0
+			throw new ConflictException({
+				statusCode: 409,
+				error: 'Conflict',
+				code: soldOut ? 'OUT_OF_STOCK' : 'INSUFFICIENT_STOCK',
+				message: soldOut
+					? `Товар закінчився (${variant.sku}) — приберіть позицію з кошика, щоб оформити замовлення`
+					: `Доступно лише ${variant.stock} шт. (${variant.sku}) — зменште кількість, щоб оформити замовлення`,
+				variant_id: String(variant._id),
+				sku: variant.sku,
+				available: variant.stock,
+				requested: item.quantity
+			})
+		}
+		return variant
+	}
+
+	/** A line priced at `now` — the sale price while the variant's promotion is on (TD-0012). */
+	private snapshotLine(
+		variant: OrderableVariant,
+		quantity: number,
+		now: Date
+	): OrderLineSnapshot {
+		const promo = activePromo(variant, now)
+		return {
+			variant_id: variant._id,
+			product_id: variant.product_id,
+			name: variant.name,
+			sku: variant.sku,
+			vendor_sku: variant.vendor_product_sku ?? null,
+			price: promo?.sale_price ?? variant.price,
+			list_price: variant.price,
+			promo_percent: promo?.percent ?? null,
+			quantity,
+			image: variant.images?.[0] ?? null
+		}
+	}
+
+	private sumLines(lines: readonly OrderLineSnapshot[]): number {
+		let subtotal = 0
+		for (const line of lines) subtotal += this.toLineTotal(line.price, line.quantity)
+		return Number(subtotal.toFixed(2))
 	}
 
 	private mapOrderResponse(order: any) {
@@ -833,7 +917,7 @@ export class OrderService {
 		return order
 	}
 
-	async update(id: string, dto: AdminUpdateOrderDto) {
+	async update(id: string, dto: AdminUpdateOrderDto, adminId?: string) {
 		const order = await this.orderRepository.findById(id)
 		if (!order) throw new NotFoundException('Order not found')
 
@@ -845,18 +929,28 @@ export class OrderService {
 		}
 
 		const updateSet: Record<string, unknown> = {}
+		let itemsHistory: ItemsEditLine[] | null = null
 
 		if (dto.manual_discount !== undefined) this.assertManualDiscountAllowed(order)
+		// Replacing lines of a paid order is allowed — that is what the edit is for — but not
+		// while a card session built with the old total may still complete (same hazard as
+		// the discount: the callback checks the amount against `total_price`).
+		if (dto.items) this.assertNoOpenLiqpaySession(order)
 
 		if (dto.items || dto.manual_discount !== undefined) {
 			let subtotalPrice = order.subtotal_price
 			let couponAmount = order.applied_discount?.discount_amount ?? 0
 
 			if (dto.items) {
-				const built = await this.buildOrderItems(dto.items)
+				const built = await this.reviseOrderItems(order, dto.items)
 				subtotalPrice = built.subtotalPrice
 				updateSet.items = built.orderItems
 				updateSet.subtotal_price = subtotalPrice
+				itemsHistory = built.orderItems.map(line => ({
+					variant_id: String(line.variant_id),
+					name: line.name,
+					quantity: line.quantity
+				}))
 				if (order.applied_discount) {
 					couponAmount = couponDiscountAmount(
 						built.orderItems,
@@ -940,9 +1034,29 @@ export class OrderService {
 					: this.mapDeliveryAddress(deliveryAddress)
 		}
 
+		// The line edit leaves a history entry in the same write (what left, what came, and for
+		// a paid order the sum still to collect or return) — the only record of the total the
+		// buyer actually paid once `total_price` has moved on.
+		const historyEntry = itemsHistory
+			? itemsEditHistoryEntry({
+					before: order.items.map(line => ({
+						variant_id: String(line.variant_id),
+						name: line.name,
+						quantity: line.quantity
+					})),
+					after: itemsHistory,
+					paymentStatus: order.payment_status,
+					totalBefore: order.total_price,
+					totalAfter: updateSet.total_price as number,
+					adminId
+				})
+			: null
+
 		const updatedOrder = await this.orderRepository.update(
 			{ _id: new Types.ObjectId(id) },
-			{ $set: updateSet }
+			historyEntry
+				? { $set: updateSet, $push: { status_history: historyEntry } }
+				: { $set: updateSet }
 		)
 		if (!updatedOrder) throw new NotFoundException('Order not found')
 
@@ -967,6 +1081,11 @@ export class OrderService {
 				message: 'Замовлення вже оплачене — знижку можна оформити лише як повернення коштів'
 			})
 		}
+		this.assertNoOpenLiqpaySession(order)
+	}
+
+	/** Anything that moves `total_price` waits out a card session built with the old amount. */
+	private assertNoOpenLiqpaySession(order: OrderDocument): void {
 		const retryAfter = liqpayRetryAfterSeconds(order)
 		if (retryAfter) {
 			throw new ConflictException({

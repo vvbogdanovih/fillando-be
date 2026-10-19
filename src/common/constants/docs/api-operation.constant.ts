@@ -425,7 +425,7 @@ export const API_OPERATION = {
 		UPDATE: {
 			summary: 'Update order',
 			description:
-				'Update editable order fields (items, customer, delivery, payment method, comment). Recalculates totals if items are changed. Admin only.'
+				'Update editable order fields (items, customer, delivery, payment method, comment, manual discount). `items` is a full replacement of the lines: a line that stays keeps its snapshot (unit price, name, SKU) and only follows the new quantity, a new line is priced from the current catalogue; totals and the coupon are recalculated and a `status_history` entry with `field: items` records the change (and, for a paid order, the sum to collect or return). Allowed on a paid order; refused with 409 LIQPAY_SESSION_ACTIVE while a card session is open. Admin only.'
 		},
 		UPDATE_ORDER_STATUS: {
 			summary: 'Update order status',

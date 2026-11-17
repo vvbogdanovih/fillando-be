@@ -221,27 +221,7 @@ export class CatalogSitemapService {
 	 * is kept, and `SITEMAP_MEMO_MS` bounds it in any case. The marks are read before the data.
 	 */
 	private async urlSet(stamp: { initialized: boolean; revision: number; epoch: number }) {
-		const existing = new Set(
-			(
-				await this.connection
-					.db!.listCollections(
-						{ name: { $in: [...SITEMAP_SOURCES] } },
-						{ nameOnly: true }
-					)
-					.toArray()
-			).map(row => row.name)
-		)
-		// A collection not created yet is a known state; an existing one without a mark is not.
-		const marks = await Promise.all(
-			SITEMAP_SOURCES.map(name =>
-				existing.has(name)
-					? collectionWriteMark(this.connection, name)
-					: Promise.resolve('absent')
-			)
-		)
-		const key = marks.every(Boolean)
-			? JSON.stringify([stamp.initialized, stamp.revision, stamp.epoch, marks])
-			: null
+		const key = await this.memoKey(stamp)
 		const memo = this.memo
 		if (key && memo && memo.key === key && Date.now() - memo.at < SITEMAP_MEMO_MS)
 			return memo.set
@@ -254,6 +234,39 @@ export class CatalogSitemapService {
 			})
 		}
 		return set
+	}
+	/**
+	 * What the built set is kept under, or `null` when the state cannot be told — then nothing is
+	 * kept and every read builds. Keeping the set is an optimisation: no failure here may fail the
+	 * export.
+	 *
+	 * The collections are listed without a filter and matched here. Atlas refuses a
+	 * `listCollections` filter a plain `mongod` accepts: `{ name: { $in: [...] } }` answered
+	 * `MongoServerError 8000: can't get regex from filter doc not a regex`, and
+	 * `GET /catalog/sitemap` was a 500 in production right after the deploy of 17.11.2026 while
+	 * every local run and test passed.
+	 */
+	private async memoKey(stamp: { initialized: boolean; revision: number; epoch: number }) {
+		try {
+			const existing = new Set(
+				(await this.connection.db!.listCollections({}, { nameOnly: true }).toArray()).map(
+					row => row.name
+				)
+			)
+			// A collection not created yet is a known state; an existing one without a mark is not.
+			const marks = await Promise.all(
+				SITEMAP_SOURCES.map(name =>
+					existing.has(name)
+						? collectionWriteMark(this.connection, name)
+						: Promise.resolve('absent')
+				)
+			)
+			return marks.every(Boolean)
+				? JSON.stringify([stamp.initialized, stamp.revision, stamp.epoch, marks])
+				: null
+		} catch {
+			return null
+		}
 	}
 	private async build(): Promise<UrlSet> {
 		const scope = await this.scope()

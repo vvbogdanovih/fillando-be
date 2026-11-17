@@ -250,6 +250,39 @@ it('builds the URL set once per catalogue state, again after any write to it (P1
 	await slugs()
 	expect(build).toHaveBeenCalledTimes(3)
 })
+it('still exports when the server refuses to list the collections — keeping the set is optional', async () => {
+	await control()
+	const product = new Types.ObjectId()
+	await mongoose.connection
+		.collection('categories')
+		.insertOne({ _id: category, name: 'Electrical', slug: 'electrical' })
+	await mongoose.connection
+		.collection('products')
+		.insertOne({ _id: product, category_id: category, attributes: [] })
+	await mongoose.connection.collection('product_variants').insertOne({
+		status: 'active',
+		category_id: category,
+		product_id: product,
+		slug: 'first'
+	})
+	const service = app.get<CatalogSitemapService, { build: () => Promise<unknown> }>(
+		CatalogSitemapService
+	)
+	const build = jest.spyOn(service, 'build')
+	// Atlas in production on 17.11.2026: the command with a `$in` filter was refused.
+	jest.spyOn(mongoose.connection.db!, 'listCollections').mockImplementation(() => {
+		throw new Error("can't get regex from filter doc not a regex")
+	})
+	const slugs = async () => {
+		const res = await get()
+		expect(res.status).toBe(200)
+		return (res.body as { variants: { slug: string }[] }).variants.map(row => row.slug)
+	}
+	expect(await slugs()).toEqual(['first'])
+	expect(await slugs()).toEqual(['first'])
+	// Nothing is kept without a known state: the index and the part each build, both times.
+	expect(build).toHaveBeenCalledTimes(4)
+})
 it('supports an actually empty legacy catalog without inventing control', async () => {
 	const res = await get()
 	expect(res.body).toEqual({

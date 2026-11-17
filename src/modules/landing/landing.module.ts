@@ -6,6 +6,7 @@ import { CategoryModule } from 'src/modules/category/category.module'
 import { ProductModule } from 'src/modules/product/product.module'
 import { LandingService } from './landing.service'
 import { LandingController } from './landing.controller'
+import { TypedLandingController, TypedLandingService } from './typed-landing.controller'
 
 @Module({
 	// CategoryModule for CategoryRepository: a landing address is resolved by category slug.
@@ -16,8 +17,8 @@ import { LandingController } from './landing.controller'
 		CategoryModule,
 		ProductModule
 	],
-	controllers: [LandingController],
-	providers: [LandingService, LandingRepository],
+	controllers: [LandingController, TypedLandingController],
+	providers: [LandingService, LandingRepository, TypedLandingService],
 	exports: [LandingService, LandingRepository]
 })
 export class LandingModule {}

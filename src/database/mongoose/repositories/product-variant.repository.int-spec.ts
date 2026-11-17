@@ -8,7 +8,7 @@ import { connectTestDb, dropTestDb } from '../../../../test/integration-db'
 import { Category, CategorySchema } from '../schemas/category.schema'
 import { Product, ProductSchema } from '../schemas/product.schema'
 import { ProductVariant, ProductVariantSchema } from '../schemas/product-variant.schema'
-import { ProductVariantRepository } from './product-variant.repository'
+import { ProductVariantRepository, type FeedVariantRow } from './product-variant.repository'
 
 /**
  * Runs the real aggregation pipelines / queries of {@link ProductVariantRepository} against
@@ -49,6 +49,13 @@ const PRICE_SHEET_PUBLIC_KEYS = [
 	'variant_type',
 	'color_name_uk',
 	'color_name_en',
+	// Typed inputs of the v2 columns (Plan-0010 B11, reviewed 2026-10-28): mapped field by field
+	// by the service, never returned as they are. Null on a v1 row, so the shape never varies.
+	'category_id',
+	'attributes_v2',
+	'variant_axis',
+	'variant_value',
+	'brand_name',
 	// The shop's own promotion (TD-0012) — public by design, says nothing about the supplier.
 	'sale_price',
 	'promo_percent',
@@ -301,9 +308,29 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 		})
 	})
 
+	describe('findGroupedProductIds (feed g:item_group_id, TD-0013 D04)', () => {
+		it('counts active variants only: one active beside a draft and an archived is no group', async () => {
+			await expect(repo.findGroupedProductIds()).resolves.toEqual(new Set())
+			// A second active variant makes it a group; it stops being one as soon as it leaves.
+			await repo['model'].updateOne({ _id: draftVariantId }, { status: ProductStatus.ACTIVE })
+			try {
+				await expect(repo.findGroupedProductIds()).resolves.toEqual(
+					new Set([productId.toString()])
+				)
+			} finally {
+				await repo['model'].updateOne(
+					{ _id: draftVariantId },
+					{ status: ProductStatus.DRAFT }
+				)
+			}
+			await expect(repo.findGroupedProductIds()).resolves.toEqual(new Set())
+		})
+	})
+
 	describe('findActiveForFeed (Google Shopping feed working set)', () => {
 		it('returns only the ACTIVE variant, with product, category and weight joined in', async () => {
-			const rows = await repo.findActiveForFeed()
+			const rows: FeedVariantRow[] = []
+			for await (const row of repo.findActiveForFeed()) rows.push(row)
 
 			expect(rows.map(r => r.sku)).toEqual(['FL-ACTIVE-1'])
 			const [row] = rows
@@ -328,7 +355,9 @@ describe('ProductVariantRepository (MongoDB integration)', () => {
 		})
 
 		it('carries no supplier field or value anywhere in the rows', async () => {
-			const json = JSON.stringify(await repo.findActiveForFeed())
+			const rows: FeedVariantRow[] = []
+			for await (const row of repo.findActiveForFeed()) rows.push(row)
+			const json = JSON.stringify(rows)
 			for (const field of SUPPLIER_FIELDS) expect(json).not.toContain(`"${field}"`)
 			for (const value of SUPPLIER_VALUES) expect(json).not.toContain(value)
 		})

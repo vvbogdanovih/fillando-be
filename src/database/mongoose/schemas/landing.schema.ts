@@ -55,6 +55,18 @@ export class Landing {
 	@Prop({ type: MongooseSchema.Types.Mixed, default: {} })
 	filters: Record<string, string[]>
 
+	/**
+	 * Typed pins of a landing under a v2 category (TD-0013): the catalogue `filters` object
+	 * (`attributes`, `color_families`, …). Written only by the v1→v2 migration so far; the
+	 * legacy `filters` above stay as the rollback image. No default: absent means «not migrated».
+	 */
+	@Prop({ type: MongooseSchema.Types.Mixed })
+	filters_v2?: Record<string, unknown>
+
+	/** 2 once `filters_v2` is authoritative for this landing. */
+	@Prop({ type: Number })
+	contract_version?: number
+
 	@Prop({ type: Number, default: null })
 	price_min: number | null
 

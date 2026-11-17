@@ -73,7 +73,13 @@ describe('OrderService.applyGatewayPaymentResult — cancelled orders', () => {
 			{} as never,
 			emailService as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 	}
 
@@ -149,7 +155,13 @@ describe('OrderService — admin status writes (TD-0011)', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 
 	const pushed = (update: UpdateMock) =>
@@ -467,7 +479,13 @@ describe('OrderService — COD is limited to Nova Post deliveries', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 
 	const createDto = (
@@ -564,7 +582,13 @@ describe('OrderService.getPaymentStatusPublic', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, orderRepository }
 	}
@@ -667,15 +691,17 @@ describe('OrderService.create — payment_access_token', () => {
 	const buildService = (variants: unknown[] = [buildVariant()]) => {
 		// Mimic a Mongoose document: the persisted fields plus toObject().
 		const orderRepository = {
-			create: jest.fn().mockImplementation((payload: Record<string, unknown>) => {
-				const doc = {
-					_id: 'order-object-id',
-					order_status: OrderStatus.NEW,
-					payment_status: PaymentStatus.PENDING,
-					...payload
-				}
-				return Promise.resolve({ ...doc, toObject: () => doc })
-			})
+			create: jest
+				.fn<Promise<unknown>, [Record<string, unknown>]>()
+				.mockImplementation(payload => {
+					const doc = {
+						_id: 'order-object-id',
+						order_status: OrderStatus.NEW,
+						payment_status: PaymentStatus.PENDING,
+						...payload
+					}
+					return Promise.resolve({ ...doc, toObject: () => doc })
+				})
 		}
 		const numbersRepository = { increment: jest.fn().mockResolvedValue(123) }
 		const productVariantRepository = {
@@ -693,7 +719,13 @@ describe('OrderService.create — payment_access_token', () => {
 			{} as never,
 			emailService as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, orderRepository, numbersRepository, emailService }
 	}
@@ -711,7 +743,7 @@ describe('OrderService.create — payment_access_token', () => {
 				...baseDto,
 				payment_method: PaymentMethod.IBAN,
 				delivery_method: DeliveryMethod.PICKUP
-			} as never)
+			})
 			.catch((e: unknown) => e)) as ConflictException
 
 		expect(err).toBeInstanceOf(ConflictException)
@@ -735,7 +767,7 @@ describe('OrderService.create — payment_access_token', () => {
 			...baseDto,
 			payment_method: PaymentMethod.LIQPAY,
 			delivery_method: DeliveryMethod.PICKUP
-		} as never)) as Record<string, unknown>
+		})) as Record<string, unknown>
 
 		expect(numbersRepository.increment).toHaveBeenCalledWith('order')
 		expect(result.order_number).toBe('FO-0000123')
@@ -755,6 +787,51 @@ describe('OrderService.create — payment_access_token', () => {
 		expect(emailService.sendOrderCodConfirmation).not.toHaveBeenCalled()
 	})
 
+	it('stores the ad attribution of a consenting buyer and never echoes it back', async () => {
+		const { service, orderRepository } = buildService()
+		const client = { ip: '203.0.113.7', userAgent: 'Mozilla/5.0 Chrome/130' }
+
+		const result = (await service.create(
+			{
+				...baseDto,
+				payment_method: PaymentMethod.LIQPAY,
+				delivery_method: DeliveryMethod.PICKUP,
+				attribution: { consent: 'granted', gclid: 'Cj0K_abc-1' }
+			},
+			undefined,
+			client
+		)) as Record<string, unknown>
+
+		expect(orderRepository.create.mock.calls[0][0]).toMatchObject({
+			attribution: {
+				consent: 'granted',
+				gclid: 'Cj0K_abc-1',
+				ip_address: client.ip,
+				user_agent: client.userAgent
+			}
+		})
+		expect(result).not.toHaveProperty('attribution')
+	})
+
+	it('stores nothing but the answer for a buyer who did not consent', async () => {
+		const { service, orderRepository } = buildService()
+
+		await service.create(
+			{
+				...baseDto,
+				payment_method: PaymentMethod.LIQPAY,
+				delivery_method: DeliveryMethod.PICKUP,
+				attribution: { consent: 'denied', gclid: 'Cj0K_abc-1' }
+			},
+			undefined,
+			{ ip: '203.0.113.7', userAgent: 'Mozilla/5.0 Chrome/130' }
+		)
+
+		expect(orderRepository.create.mock.calls[0][0]).toMatchObject({
+			attribution: { consent: 'denied', gclid: null, ip_address: null, user_agent: null }
+		})
+	})
+
 	it('does not attach the token to a COD order and keeps sending its email', async () => {
 		const { service, emailService } = buildService()
 
@@ -767,7 +844,7 @@ describe('OrderService.create — payment_access_token', () => {
 				warehouse_description: 'Відділення №1',
 				warehouse_number: 1
 			}
-		} as never)) as Record<string, unknown>
+		})) as Record<string, unknown>
 
 		expect(result.order_number).toBe('FO-0000123')
 		expect(result.payment_method).toBe(PaymentMethod.COD)
@@ -787,7 +864,7 @@ describe('OrderService.create — payment_access_token', () => {
 			...baseDto,
 			payment_method: PaymentMethod.IBAN,
 			delivery_method: DeliveryMethod.PICKUP
-		} as never)) as { items: Array<Record<string, unknown>> }
+		})) as { items: Array<Record<string, unknown>> }
 
 		expect(result.items).toHaveLength(1)
 		expect(result.items[0]).not.toHaveProperty('vendor_sku')
@@ -808,7 +885,7 @@ describe('OrderService.create — payment_access_token', () => {
 					...baseDto,
 					payment_method: PaymentMethod.IBAN,
 					delivery_method: DeliveryMethod.PICKUP
-				} as never)
+				})
 			).rejects.toBeInstanceOf(BadRequestException)
 
 			expect(orderRepository.create).not.toHaveBeenCalled()
@@ -870,7 +947,13 @@ describe('OrderService — the buyer changes the payment method (TD-0009 §5.4.1
 			{} as never,
 			emailService as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, orderRepository, emailService, update }
 	}
@@ -1067,7 +1150,13 @@ describe('OrderService — CASH is limited to pickup (TD-0009 §5.2)', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 
 	it('rejects moving a parcel order to CASH through the admin update', async () => {
@@ -1131,7 +1220,13 @@ describe('OrderService.applyGatewayPaymentResult — after the buyer switched me
 			{} as never,
 			emailService as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, update, emailService }
 	}
@@ -1382,7 +1477,13 @@ describe('OrderService.claimLiqpayCheckout — one live session, retries include
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, doc, update }
 	}
@@ -1516,7 +1617,13 @@ describe('OrderService.findMyOrderById — the cabinet gets the same retry clock
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, orderRepository }
 	}
@@ -1637,7 +1744,13 @@ describe('OrderService.create — every refusal the buyer can read is Ukrainian 
 			{ findActiveByCode: jest.fn().mockResolvedValue(coupon) } as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, orderRepository }
 	}
@@ -1818,7 +1931,13 @@ describe('OrderService.findAll — the admin list leaves the history to the deta
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 
 		const result = await service.findAll({ page: 1, limit: 20 })
@@ -1850,7 +1969,13 @@ describe('OrderService.update — manual discount', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, update }
 	}
@@ -2047,7 +2172,13 @@ describe('OrderService.update — manual discount', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 
 		const result = (await service.findMyOrderById(String(new Types.ObjectId()), ORDER_ID)) as {
@@ -2107,7 +2238,13 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 			discountCouponRepository as never,
 			{ sendOrderIbanConfirmation: jest.fn().mockResolvedValue(undefined) } as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, orderRepository }
 	}
@@ -2216,7 +2353,10 @@ describe('OrderService.create — promotions and coupons (TD-0012)', () => {
 })
 
 describe('OrderService.getStats — the dashboard reads two Kyiv-day windows', () => {
-	const buildService = (findStatsSource: jest.Mock) =>
+	/** `OrderRepository.findStatsSource(dateFrom, dateTo)`, typed so its calls can be read back. */
+	const statsSource = () => jest.fn<Promise<unknown[]>, [Date, Date]>()
+
+	const buildService = (findStatsSource: ReturnType<typeof statsSource>) =>
 		new OrderService(
 			{ findStatsSource } as never,
 			{} as never,
@@ -2224,11 +2364,17 @@ describe('OrderService.getStats — the dashboard reads two Kyiv-day windows', (
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 
 	it('fetches the period and the one before it by Kyiv-day instants, in parallel', async () => {
-		const findStatsSource = jest.fn().mockResolvedValue([])
+		const findStatsSource = statsSource().mockResolvedValue([])
 		const service = buildService(findStatsSource)
 
 		const result = await service.getStats({ date_from: '2026-09-01', date_to: '2026-09-30' })
@@ -2243,7 +2389,7 @@ describe('OrderService.getStats — the dashboard reads two Kyiv-day windows', (
 	})
 
 	it('answers zeros for an empty period instead of the report’s 400', async () => {
-		const service = buildService(jest.fn().mockResolvedValue([]))
+		const service = buildService(statsSource().mockResolvedValue([]))
 
 		const result = await service.getStats({})
 
@@ -2251,7 +2397,7 @@ describe('OrderService.getStats — the dashboard reads two Kyiv-day windows', (
 	})
 
 	it('refuses a reversed range before touching the database', async () => {
-		const findStatsSource = jest.fn()
+		const findStatsSource = statsSource()
 		const service = buildService(findStatsSource)
 
 		await expect(
@@ -2319,7 +2465,9 @@ describe('OrderService.update — items (replacing a line, FRD §9.2)', () => {
 	type Write = { $set: Record<string, unknown>; $push?: { status_history: HistoryEntry } }
 
 	const buildService = (order: OrderFixture, variants: unknown[] = []) => {
-		const findByIds = jest.fn().mockResolvedValue(variants)
+		const findByIds = jest
+			.fn<Promise<unknown[]>, [Types.ObjectId[]]>()
+			.mockResolvedValue(variants)
 		const update = jest
 			.fn<Promise<OrderFixture>, [unknown, Write]>()
 			.mockImplementation((_filter, payload) =>
@@ -2332,7 +2480,13 @@ describe('OrderService.update — items (replacing a line, FRD §9.2)', () => {
 			{} as never,
 			{} as never,
 			{} as never,
-			{} as never
+			{} as never,
+			{
+				beginRead: jest
+					.fn()
+					.mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+				finishRead: jest.fn().mockResolvedValue(undefined)
+			} as never
 		)
 		return { service, update, findByIds }
 	}

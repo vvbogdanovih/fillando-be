@@ -1,6 +1,14 @@
-import { Controller, Get, Post, Res, UseGuards } from '@nestjs/common'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Controller, Get, Post, Res, UseGuards, ServiceUnavailableException } from '@nestjs/common'
+import {
+	ApiCreatedResponse,
+	ApiOkResponse,
+	ApiOperation,
+	ApiTags,
+	ApiServiceUnavailableResponse
+} from '@nestjs/swagger'
 import type { Response } from 'express'
+import { pipeline } from 'node:stream'
+import { createGunzip } from 'node:zlib'
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino'
 import { API_OPERATION } from 'src/common/constants/docs/api-operation.constant'
 import { ENDPOINTS } from 'src/common/constants/endpoints.constant'
@@ -28,10 +36,22 @@ export class FeedController {
 	 * both the window before the first generation and a run that produced zero items —
 	 * `FeedService` refuses to cache such a run, so the cached XML always holds items.
 	 */
+	@ApiServiceUnavailableResponse({
+		description:
+			'Feed unavailable, stale generation stamp or catalog maintenance. Retry-After and no-store are returned.'
+	})
+	@ApiOkResponse()
 	@Get(ENDPOINTS.FEEDS.GOOGLE_SHOPPING_XML)
 	@ApiOperation(API_OPERATION.FEEDS.GOOGLE_SHOPPING_XML)
-	getGoogleShoppingFeed(@Res() res: Response): void {
-		const cached = this.feedService.getXml()
+	async getGoogleShoppingFeed(@Res() res: Response): Promise<void> {
+		let cached: Awaited<ReturnType<FeedService['getVerifiedXml']>>
+		try {
+			cached = await this.feedService.getVerifiedXml()
+		} catch (error) {
+			if (error instanceof ServiceUnavailableException)
+				res.set({ 'Retry-After': '5', 'Cache-Control': 'no-store' })
+			throw error
+		}
 		if (!cached) {
 			res.status(503)
 				.set({ 'Retry-After': String(RETRY_AFTER_SECONDS), 'Cache-Control': 'no-store' })
@@ -45,11 +65,25 @@ export class FeedController {
 		res.set({
 			'Content-Type': 'application/xml; charset=utf-8',
 			'Last-Modified': cached.generatedAt.toUTCString(),
-			'Cache-Control': 'public, max-age=300'
+			'Cache-Control': 'public, max-age=300',
+			// What `res.end(xml)` used to set implicitly: the body is streamed now, not chunked.
+			'Content-Length': String(cached.bytes)
 		})
-		res.end(cached.xml)
+		// The feed is kept compressed (Plan-0010 D06): the same bytes, inflated as they are sent,
+		// so a fetch never materialises the whole document.
+		const inflate = createGunzip()
+		pipeline(inflate, res, error => {
+			if (error)
+				this.logger.warn(`Google Shopping feed response ended early: ${error.message}`)
+		})
+		inflate.end(cached.gzip)
 	}
 
+	@ApiServiceUnavailableResponse({
+		description:
+			'Catalog maintenance, changed revision/epoch or incompatible catalog contract. Previous XML is retained.'
+	})
+	@ApiCreatedResponse()
 	@Post(ENDPOINTS.FEEDS.GOOGLE_SHOPPING_REGENERATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)

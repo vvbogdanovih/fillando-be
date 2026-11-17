@@ -233,26 +233,10 @@ export const API_PROPERTY = {
 		description: 'Include only variants with stock greater than 0',
 		required: false
 	},
-	PRICE_LIST_TIER1_PERCENT: {
-		example: 10,
-		default: 10,
-		minimum: 0,
-		maximum: 100,
-		description: 'Discount percent applied to the base price for the "Ціна від 50кг" column',
-		required: false
-	},
-	PRICE_LIST_TIER2_PERCENT: {
-		example: 15,
-		default: 15,
-		minimum: 0,
-		maximum: 100,
-		description: 'Discount percent applied to the base price for the "Ціна від 100кг" column',
-		required: false
-	},
 	PRICE_LIST_ORIENTATION: {
 		example: 'portrait',
 		default: 'portrait',
-		description: 'A4 page orientation. Landscape widens the name and colour columns',
+		description: 'A4 page orientation. Landscape widens every column',
 		required: false
 	}
 } as const

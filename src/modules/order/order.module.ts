@@ -1,3 +1,4 @@
+import { LegacyCatalogWritePolicy } from '../catalog-safety/legacy-catalog-write.interceptor'
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { Order, OrderSchema } from 'src/database/mongoose/schemas/order.schema'
@@ -9,6 +10,7 @@ import { OrderRepository } from 'src/database/mongoose/repositories/order.reposi
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
 import { NumbersModule } from 'src/modules/numbers/numbers.module'
 import { ProductModule } from 'src/modules/product/product.module'
+import { CategoryModule } from 'src/modules/category/category.module'
 import { EmailModule } from 'src/modules/email/email.module'
 import { OrderService } from './order.service'
 import { OrderController } from './order.controller'
@@ -26,10 +28,12 @@ import { DeliveryTrackingCronService } from './tracking/delivery-tracking-cron.s
 		]),
 		NumbersModule,
 		ProductModule,
+		CategoryModule,
 		EmailModule
 	],
 	controllers: [OrderController],
 	providers: [
+		LegacyCatalogWritePolicy,
 		OrderService,
 		OrderRepository,
 		DiscountCouponRepository,

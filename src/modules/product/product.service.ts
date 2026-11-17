@@ -1,12 +1,11 @@
 import {
 	BadRequestException,
-	ConflictException,
 	Injectable,
 	Logger,
 	NotFoundException,
 	Optional
 } from '@nestjs/common'
-import { Types } from 'mongoose'
+import { Types, type UpdateQuery } from 'mongoose'
 import {
 	StorefrontRevalidationService,
 	storefrontRevalidation
@@ -28,8 +27,11 @@ import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SearchProductsDto } from './dto/search-products.dto'
 import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
+import { isTypedCategory, legacyShapeOf, type LegacyShapeCategory } from './typed-legacy-shape'
+import { priceColumnsOf, priceValuesOf, type PriceColumn } from './price-columns'
 import { ColorRepository } from 'src/database/mongoose/repositories/color.repository'
 import { CategoryRepository } from 'src/database/mongoose/repositories/category.repository'
+
 import { ColorFamily } from 'src/common/types/enums'
 import type { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import {
@@ -37,6 +39,7 @@ import {
 	MATERIAL_PATTERNS,
 	pickAttr,
 	pickColor,
+	pickVariantLabel,
 	type AttrLike
 } from './product-attribute.helpers'
 import { toPublicAttributes } from './product-public.mappers'
@@ -47,6 +50,8 @@ import {
 	type PromoPatch,
 	type PromoWriteInput
 } from './promo-pricing'
+
+type VariantWithProduct = Awaited<ReturnType<ProductVariantRepository['findVariantWithProduct']>>
 
 /** What a `color_id` on the wire resolves to: the pair stored on the variant, plus its label. */
 interface ResolvedColor {
@@ -71,20 +76,29 @@ function storableVariantFields<T extends object>(
 	) as Omit<T, 'color_id' | 'promo_percent' | 'promo_ends_at'>
 }
 
+/**
+ * The product page result without `typed`, which is internal to the public read adapter and never
+ * spread into a response (TD-0013). Stripped by name like {@link storableVariantFields}, for the
+ * same reason: no never-read binding.
+ */
+function withoutTyped<T extends { typed: unknown }>(found: T): Omit<T, 'typed'> {
+	return Object.fromEntries(Object.entries(found).filter(([key]) => key !== 'typed')) as Omit<
+		T,
+		'typed'
+	>
+}
+
 /** A stored variant as the rename planner reads it — `_id` is not declared on the schema class. */
 type StoredVariant = ProductVariant & { _id: Types.ObjectId }
 
-/** One variant's regenerated identity, vetted before any of them is written. */
+/** A display-name update; an existing URL is never derived again from its name. */
 interface PlannedRename {
 	id: Types.ObjectId
-	sku: string
 	name: string
-	slug: string
-	/** What it occupies right now — the difference decides whether it has to move at all. */
-	currentSlug: string
 }
 
-interface PriceSheetRaw {
+/** A price-sheet row as `ProductVariantRepository.findPriceSheet` projects it. */
+export interface PriceSheetRaw {
 	id: string
 	product_name: string
 	slug: string
@@ -101,6 +115,11 @@ interface PriceSheetRaw {
 	image?: string | null
 	attributes?: AttrLike[]
 	variant_type?: { key?: string; label?: string } | null
+	category_id?: string
+	attributes_v2?: { k: string; v: unknown }[] | null
+	variant_axis?: { key: string } | null
+	variant_value?: unknown
+	brand_name?: string | null
 }
 
 @Injectable()
@@ -229,7 +248,7 @@ export class ProductService {
 		return `FL-${String(num).padStart(6, '0')}`
 	}
 
-	async search(dto: SearchProductsDto) {
+	async search(dto: SearchProductsDto, visibleCategoryIds?: string[]) {
 		const { q, page = 1, limit = 20 } = dto
 
 		const [textResults, skuResults, categoryIds] = await Promise.all([
@@ -253,7 +272,8 @@ export class ProductService {
 			productIds,
 			skuVariantIds,
 			page,
-			limit
+			limit,
+			categoryIds: visibleCategoryIds?.map(id => new Types.ObjectId(id))
 		})
 	}
 
@@ -262,32 +282,106 @@ export class ProductService {
 	}
 
 	/**
-	 * Flat, paginated variant list for the public price-sheet table. The repository already
-	 * restricts rows to ACTIVE variants and to public fields; this mapper only reshapes them.
+	 * Paginated variant list for the public price-sheet table, grouped by category: each category
+	 * on the page comes with its own characteristic columns (`priceColumnsOf`, owner 2026-11-06)
+	 * and each row with its values for them. The repository already restricts rows to ACTIVE
+	 * variants and to public fields; this mapper only reshapes them.
 	 */
-	async getPriceSheet(query: GetPriceSheetQueryDto) {
+	async getPriceSheet(
+		query: GetPriceSheetQueryDto,
+		/**
+		 * Publicly visible product categories (TD-0013) and the content of those a page lists — a
+		 * v2 one formats its products. Only the page's categories are read (Plan-0010 D06).
+		 */
+		visible?: {
+			ids: string[]
+			content: (ids: string[]) => Promise<Map<string, LegacyShapeCategory & { name: string }>>
+		}
+	) {
 		const { q, page = 1, limit = 50 } = query
-		const { items, total } = await this.productVariantRepository.findPriceSheet({
+		const result = await this.productVariantRepository.findPriceSheet({
 			q,
 			page,
-			limit
+			limit,
+			categoryIds: visible?.ids.map(id => new Types.ObjectId(id))
 		})
+		const byId =
+			visible && (await visible.content(result.items.map(item => item.category_id ?? '')))
+		const items = result.items.map(item => {
+			// A v2 product in the legacy shape: the same fields, read from its typed values.
+			const category = byId?.get(item.category_id ?? '')
+			if (!isTypedCategory(category)) return item
+			const shape = legacyShapeOf(category, item)
+			return {
+				...item,
+				// v2: the brand entity or the characteristic marked `brand`, never a label match.
+				manufacturer: shape.manufacturer,
+				attributes: shape.attributes,
+				variant_type: shape.variant && {
+					key: shape.variant.key,
+					label: shape.variant.label
+				},
+				v_value: shape.variant?.value ?? null
+			}
+		})
+		const total = result.total
 
-		const rows = (items as PriceSheetRaw[]).map(item => {
+		const categories = new Map<
+			string,
+			{ id: string; name: string; columns: PriceColumn[]; variant_column: boolean }
+		>()
+		const rows = items.map(item => {
 			const attributes = Array.isArray(item.attributes) ? item.attributes : []
+			const categoryId = item.category_id ?? ''
+			const category = byId?.get(categoryId)
+			if (category && !categories.has(categoryId))
+				categories.set(categoryId, {
+					id: categoryId,
+					name: category.name,
+					columns: priceColumnsOf(category),
+					variant_column: false
+				})
+			// «Назва» is the product's name: a variation no column shows (a v1 category, an axis
+			// that is not a filter) keeps the «Варіант» column, or its SKUs would read the same.
+			const section = categories.get(categoryId)
+			const axisKey = item.variant_axis?.key
+			if (
+				section &&
+				(!section.columns.length ||
+					(axisKey && !section.columns.some(column => column.key === axisKey)))
+			)
+				section.variant_column = true
 			return {
 				id: item.id,
 				slug: item.slug,
 				image: item.image ?? null,
 				name: item.product_name,
-				manufacturer: pickAttr(attributes, MANUFACTURER_PATTERNS),
-				material: pickAttr(attributes, MATERIAL_PATTERNS),
+				category_id: categoryId,
+				values: priceValuesOf(category, {
+					...item,
+					color_label: formatColorLabel(item.color_name_uk, item.color_name_en)
+				}),
+				manufacturer:
+					'manufacturer' in item
+						? item.manufacturer
+						: pickAttr(attributes, MANUFACTURER_PATTERNS),
+				// Deprecated (owner, 2026-11-06): the sheet shows the category's columns; kept for a
+				// storefront deployed ahead of this backend, and null once a category is typed.
+				material: isTypedCategory(category)
+					? null
+					: pickAttr(attributes, MATERIAL_PATTERNS),
 				// Dictionary first: after the colour migration `v_value` is the English name, so
 				// deriving the label from the variant alone would flip the sheet to English.
 				// Kept a plain string — the storefront validates this field as one.
 				color:
 					formatColorLabel(item.color_name_uk, item.color_name_en) ??
 					pickColor(item.v_value, attributes, item.variant_type),
+				variant_label: pickVariantLabel(
+					item.v_value,
+					item.variant_type,
+					formatColorLabel(item.color_name_uk, item.color_name_en) ??
+						pickColor(item.v_value, attributes, item.variant_type)
+				),
 				article: item.sku || null,
 				price: item.price,
 				sale_price: item.sale_price ?? null,
@@ -299,7 +393,7 @@ export class ProductService {
 			}
 		})
 
-		return { items: rows, total, page, limit }
+		return { items: rows, categories: [...categories.values()], total, page, limit }
 	}
 
 	getAllVariantSlugs(): Promise<Array<{ slug: string; updatedAt: Date }>> {
@@ -359,9 +453,6 @@ export class ProductService {
 	async getVariantBySlug(slug: string) {
 		const result = await this.productVariantRepository.findVariantWithProduct(slug)
 		if (!result) throw new NotFoundException('Variant not found')
-		const attributes: AttrLike[] = Array.isArray(result.product.attributes)
-			? (result.product.attributes as AttrLike[])
-			: []
 		// Units belong to the category, so the specification table can only print «1 кг» once the
 		// category is joined (I-27). Looked up by the slug the repository already resolved — the
 		// product projection carries no `category_id`; a payload without a category simply has no
@@ -371,10 +462,31 @@ export class ProductService {
 		const category = categorySlug
 			? await this.categoryRepository.findBySlug(categorySlug)
 			: null
+		return this.legacyDetail(result, category)
+	}
+
+	/**
+	 * The v1 product page payload for an already-resolved variant and its category. Shared with
+	 * the public read adapter, which resolves the category through the visibility-checked
+	 * public projection instead of the raw repository.
+	 */
+	legacyDetail(
+		found: NonNullable<VariantWithProduct>,
+		category: {
+			required_attributes?: { key: string; unit?: string | null }[] | null
+		} | null
+	) {
+		const result = withoutTyped(found)
+		const attributes: AttrLike[] = Array.isArray(result.product.attributes)
+			? result.product.attributes
+			: []
 		return {
 			...result,
 			product: {
-				...result.product,
+				id: result.product.id,
+				name: result.product.name,
+				description: result.product.description,
+				variant_type: result.product.variant_type,
 				attributes: toPublicAttributes(attributes, category?.required_attributes),
 				manufacturer: pickAttr(attributes, MANUFACTURER_PATTERNS)
 			}
@@ -405,7 +517,14 @@ export class ProductService {
 		// exists: there is no transaction to roll a half-created product back with.
 		const promoPatches = (variants ?? []).map(variant => this.toPromoPatch(variant, null))
 
-		const product = await this.productRepository.create({ ...productData, attributes } as any)
+		// The DTO carries the ids as validated hex strings (`@IsMongoId`); the schema holds them as
+		// ObjectIds — the same conversion Mongoose would otherwise make on save.
+		const product = await this.productRepository.create({
+			...productData,
+			category_id: new Types.ObjectId(productData.category_id),
+			vendor_id: new Types.ObjectId(productData.vendor_id),
+			attributes
+		})
 
 		const createdVariants = variants?.length
 			? await Promise.all(
@@ -449,15 +568,7 @@ export class ProductService {
 		const current = await this.productRepository.findById(id)
 		if (!current) throw new NotFoundException('Product not found')
 
-		// Only an actual change of name regenerates variant identities. The admin form posts `name`
-		// on every save, so keying off its presence would re-plan — and re-reject — on edits that
-		// have nothing to do with the name, locking a product with a duplicate out of every field.
 		const renaming = dto.name !== undefined && dto.name !== current.name
-
-		// A rename regenerates the slug of every variant, and `slug` is unique. Plan and vet the
-		// whole batch *before* the first write: there is no transaction to fall back on (this
-		// deployment runs a standalone MongoDB), so a duplicate discovered mid-batch used to leave
-		// the product renamed and only some of its variants rewritten.
 		const rename = renaming ? await this.planVariantRename(id, dto.name!) : null
 
 		const updated = await this.productRepository.update(
@@ -485,40 +596,12 @@ export class ProductService {
 		return updated
 	}
 
-	/**
-	 * Writes a planned rename in two passes.
-	 *
-	 * One pass is not enough because slugs can *rotate* within a product: variant A's new address
-	 * is the one variant B is still sitting on until B is written too. Order is not something a
-	 * concurrent batch can guarantee and there is no transaction to wrap it in, so the losing write
-	 * hits the unique index and the rename half-applies. Parking every mover on a temporary address
-	 * first empties the whole target range, after which the second pass cannot collide: the
-	 * pre-flight has already ruled out duplicates inside the plan and holders outside the product.
-	 */
 	private async applyVariantRename(planned: PlannedRename[]): Promise<void> {
-		const movers = planned.filter(p => p.slug !== p.currentSlug)
-		const stayers = planned.filter(p => p.slug === p.currentSlug)
-
 		await Promise.all(
-			movers.map(p =>
-				this.productVariantRepository.update(
-					{ _id: p.id },
-					{ slug: `${p.slug}-moving-${String(p.id)}` }
-				)
-			)
-		)
-
-		await Promise.all(
-			[...movers, ...stayers].map(p =>
-				this.productVariantRepository.update({ _id: p.id }, { name: p.name, slug: p.slug })
-			)
+			planned.map(p => this.productVariantRepository.update({ _id: p.id }, { name: p.name }))
 		)
 	}
 
-	/**
-	 * Works out what every variant of a product would be called after a rename, and refuses the
-	 * rename outright if two of them would end up at the same address.
-	 */
 	private async planVariantRename(
 		productId: string,
 		productName: string
@@ -536,47 +619,14 @@ export class ProductService {
 
 		const planned = variants.map(v => ({
 			id: v._id,
-			sku: v.sku,
-			currentSlug: v.slug,
 			name: variantName(
 				productName,
 				v.v_value,
 				v.color_id ? (nameByColorId.get(String(v.color_id)) ?? null) : null
-			),
-			slug: generateSlug(v.v_value ? `${productName} ${v.v_value}` : productName)
+			)
 		}))
 
-		await this.assertSlugsAvailable(planned)
 		return planned
-	}
-
-	/** 409 naming the SKUs, rather than a duplicate-key error partway through the batch. */
-	private async assertSlugsAvailable(planned: PlannedRename[]): Promise<void> {
-		const skusBySlug = new Map<string, string[]>()
-		for (const p of planned) skusBySlug.set(p.slug, [...(skusBySlug.get(p.slug) ?? []), p.sku])
-
-		const clashing = [...skusBySlug.entries()].filter(([, skus]) => skus.length > 1)
-		if (clashing.length) {
-			throw new ConflictException(
-				'Rename refused: these variants would share one address — ' +
-					clashing.map(([slug, skus]) => `${skus.join(' + ')} → ${slug}`).join('; ') +
-					'. Give them different variant values, or merge the duplicates.'
-			)
-		}
-
-		const ownIds = new Set(planned.map(p => String(p.id)))
-		const taken = (
-			(await this.productVariantRepository.findBySlugs([
-				...skusBySlug.keys()
-			])) as StoredVariant[]
-		).filter(v => !ownIds.has(String(v._id)))
-
-		if (taken.length) {
-			throw new ConflictException(
-				'Rename refused: these addresses already belong to other products — ' +
-					taken.map(v => `${v.slug} (${v.sku})`).join(', ')
-			)
-		}
 	}
 
 	async delete(id: string) {
@@ -659,7 +709,7 @@ export class ProductService {
 		})
 		if (!existing) throw new NotFoundException('Variant not found')
 
-		const patch: Record<string, any> = { ...dto }
+		const patch: UpdateQuery<ProductVariant> = { ...dto }
 		// Wire values; the stored ones come from the promo rules (string date → Date, cross-field
 		// checks). `price_updated_at` is deliberately not stamped: the regular price did not move.
 		delete patch.promo_percent
@@ -680,7 +730,6 @@ export class ProductService {
 			const vValue = dto.v_value !== undefined ? dto.v_value : existing.v_value
 			const colorLabel = color ? color.label : await this.storedColorLabel(existing.color_id)
 			patch.name = variantName(product.name, vValue, colorLabel)
-			patch.slug = generateSlug(vValue ? `${product.name} ${vValue}` : product.name)
 		}
 		if (dto.price !== undefined) patch.price_updated_at = new Date()
 		if (dto.stock !== undefined) patch.stock_updated_at = new Date()
@@ -690,7 +739,7 @@ export class ProductService {
 				_id: new Types.ObjectId(variantId),
 				product_id: new Types.ObjectId(productId)
 			},
-			patch as any
+			patch
 		)
 		if (!updated) throw new NotFoundException('Variant not found')
 		// Price, stock, weight and status all arrive through here, and every one of them is on

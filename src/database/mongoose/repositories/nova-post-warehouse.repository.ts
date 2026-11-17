@@ -25,13 +25,17 @@ export class NovaPostWarehouseRepository extends BaseRepository<NovaPostWarehous
 		return this.findOne({ ref })
 	}
 
+	/**
+	 * Ordered by branch number: a list that mixes post and cargo branches reads «№1, №2, №3…»
+	 * like the carrier's own, instead of in the order the sync happened to store them.
+	 */
 	findByCityRef(
 		cityRef: string,
-		typeOfWarehouse?: string,
+		typesOfWarehouse?: string[],
 		q?: string
 	): Promise<NovaPostWarehouse[]> {
 		const filter: mongoose.QueryFilter<NovaPostWarehouse> = { cityRef }
-		if (typeOfWarehouse) filter.typeOfWarehouse = typeOfWarehouse
+		if (typesOfWarehouse?.length) filter.typeOfWarehouse = { $in: typesOfWarehouse }
 		if (q !== undefined && q !== null) {
 			const normalizedQ = q.trim().replace(/\s+/g, ' ')
 			if (normalizedQ) {
@@ -51,7 +55,7 @@ export class NovaPostWarehouseRepository extends BaseRepository<NovaPostWarehous
 				]
 			}
 		}
-		return this.findAll(filter)
+		return this.model.find(filter).sort({ number: 1 }).lean().exec()
 	}
 
 	clearAll(): Promise<unknown> {

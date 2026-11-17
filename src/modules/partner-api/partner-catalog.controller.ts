@@ -1,3 +1,8 @@
+import {
+	CatalogAdaptedRead,
+	LegacyCatalogController,
+	CatalogReadOnlyPost
+} from '../catalog-safety/legacy-catalog-write.interceptor'
 import { Body, Controller, Header, HttpCode, Post, UseGuards } from '@nestjs/common'
 import {
 	ApiBody,
@@ -21,6 +26,12 @@ import {
 	PartnerSkuPageDto,
 	PartnerSkuRequestDto
 } from './partner-catalog.dto'
+@LegacyCatalogController()
+@ApiResponse({
+	status: 503,
+	description:
+		'Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition.'
+})
 @Controller(ENDPOINTS.PARTNER_API.BASE)
 @ApiTags('Каталог')
 @ApiBearerAuth('partner-token')
@@ -32,6 +43,8 @@ import {
 })
 export class PartnerCatalogController {
 	constructor(private readonly service: PartnerCatalogService) {}
+	@CatalogReadOnlyPost()
+	@CatalogAdaptedRead()
 	@Post(ENDPOINTS.PARTNER_API.CATEGORIES)
 	@HttpCode(200)
 	@ApiBody({
@@ -45,6 +58,8 @@ export class PartnerCatalogController {
 	categories() {
 		return this.service.categories()
 	}
+	@CatalogReadOnlyPost()
+	@CatalogAdaptedRead()
 	@Post(ENDPOINTS.PARTNER_API.SKUS)
 	@HttpCode(200)
 	@Header('Cache-Control', 'no-store')
@@ -69,6 +84,8 @@ export class PartnerCatalogController {
 	skusFromBody(@Body() body: PartnerSkuRequestDto) {
 		return this.service.skus(body)
 	}
+	@CatalogReadOnlyPost()
+	@CatalogAdaptedRead()
 	@Post(ENDPOINTS.PARTNER_API.LOOKUP)
 	@HttpCode(200)
 	@Header('Cache-Control', 'no-store')

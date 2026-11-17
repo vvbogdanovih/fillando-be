@@ -7,6 +7,7 @@ import {
 	STATUS_ACTORS,
 	type StatusActor
 } from 'src/common/types/enums'
+import { ADS_CONSENT_STATES, type AdsConsent } from 'src/database/mongoose/schemas/order.schema'
 
 class OrderResponseCustomerDto {
 	@ApiProperty({ example: 'Іван Петренко' })
@@ -145,6 +146,30 @@ class OrderResponseItemDto {
 	image: string | null
 }
 
+class OrderResponseAttributionDto {
+	@ApiProperty({ enum: ADS_CONSENT_STATES, example: 'granted' })
+	consent: AdsConsent
+
+	@ApiProperty({ type: String, nullable: true, example: 'Cj0KCQiA-example_gclid' })
+	gclid: string | null
+
+	@ApiProperty({ type: String, nullable: true, example: null })
+	gbraid: string | null
+
+	@ApiProperty({ type: String, nullable: true, example: null })
+	wbraid: string | null
+
+	@ApiProperty({ type: String, nullable: true, example: '203.0.113.7' })
+	ip_address: string | null
+
+	@ApiProperty({
+		type: String,
+		nullable: true,
+		example: 'Mozilla/5.0 (…) Chrome/130.0 Safari/537.36'
+	})
+	user_agent: string | null
+}
+
 export class OrderResponseDto {
 	@ApiProperty({ example: '664f1b2c3d4e5f6a7b8c9d10' })
 	_id: string
@@ -197,6 +222,15 @@ export class OrderResponseDto {
 		description: 'Admin responses only (TD-0011) — never sent to the buyer'
 	})
 	status_history?: OrderStatusHistoryEntryDto[]
+
+	@ApiProperty({
+		type: OrderResponseAttributionDto,
+		required: false,
+		nullable: true,
+		description:
+			'Admin order detail only: ad attribution of the visit — everything but `consent` is null unless the buyer consented; null on orders placed before it was recorded'
+	})
+	attribution?: OrderResponseAttributionDto | null
 
 	@ApiProperty({
 		enum: OrderStatus,

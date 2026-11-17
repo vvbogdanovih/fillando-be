@@ -12,6 +12,7 @@ import { createRbacApp, send } from 'src/common/testing/rbac-harness'
 import { PartnerApiService, hashPartnerToken } from './partner-api.service'
 import { PartnerApiController } from './partner-api.controller'
 import { PartnerTokenController } from './partner-token.controller'
+import { CategoryPublicReadService } from '../category/category-public-read.service'
 import { PartnerApiModule } from './partner-api.module'
 import { createPartnerDocument } from './partner-api.swagger'
 
@@ -100,7 +101,7 @@ describe('Partner API HTTP contract', () => {
 		})
 		expect(res.headers['cache-control']).toBe('no-store')
 		expect(repository.bulkAvailability).toHaveBeenCalledTimes(1)
-		expect(repository.bulkAvailability).toHaveBeenCalledWith(['missing', 'A', 'B'])
+		expect(repository.bulkAvailability).toHaveBeenCalledWith(['missing', 'A', 'B'], undefined)
 		expect(repository.availability).not.toHaveBeenCalled()
 	})
 	it('accepts exactly 100 SKUs and returns 200 when none are found', async () => {
@@ -283,6 +284,8 @@ describe('Public Swagger isolation', () => {
 			.overrideProvider(getModelToken('PartnerApiToken'))
 			.useValue({})
 			.overrideProvider(getModelToken('ProductVariant'))
+			.useValue({})
+			.overrideProvider(CategoryPublicReadService)
 			.useValue({})
 			.compile()
 		const app = mod.createNestApplication({ logger: false })

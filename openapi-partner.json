@@ -35,6 +35,9 @@
           },
           "429": {
             "description": "Спільний ліміт партнерських запитів перевищено. Повторіть через Retry-After секунд."
+          },
+          "503": {
+            "description": "Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition."
           }
         },
         "security": [
@@ -86,6 +89,9 @@
           },
           "429": {
             "description": "Ліміт запитів перевищено. Повторіть через Retry-After секунд."
+          },
+          "503": {
+            "description": "Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition."
           }
         },
         "security": [
@@ -141,6 +147,9 @@
           },
           "429": {
             "description": "Спільний ліміт партнерського API. Повторіть через Retry-After секунд."
+          },
+          "503": {
+            "description": "Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition."
           }
         },
         "security": [
@@ -202,6 +211,9 @@
           },
           "429": {
             "description": "Спільний ліміт партнерського API. Повторіть через Retry-After секунд."
+          },
+          "503": {
+            "description": "Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition."
           }
         },
         "security": [
@@ -249,6 +261,9 @@
           },
           "429": {
             "description": "Спільний ліміт партнерського API. Повторіть через Retry-After секунд."
+          },
+          "503": {
+            "description": "Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition."
           }
         },
         "security": [

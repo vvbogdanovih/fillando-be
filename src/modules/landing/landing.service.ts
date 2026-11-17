@@ -11,6 +11,8 @@ import { sanitizePlainText, sanitizeRichText } from 'src/common/utils'
 import { LandingStatus } from 'src/common/types/enums'
 import { CreateLandingDto } from './dto/create-landing.dto'
 import { UpdateLandingDto } from './dto/update-landing.dto'
+import { CategoryPublicReadService } from '../category/category-public-read.service'
+import { PublicCatalogService } from '../product/public-catalog.service'
 
 @Injectable()
 export class LandingService {
@@ -23,8 +25,82 @@ export class LandingService {
 		 * landing saved during a bulk write shares its throttle window (Plan-0005 I-h).
 		 */
 		@Optional()
-		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation
+		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation,
+		/**
+		 * Public visibility across the catalogue transition (TD-0013). Optional for the unit
+		 * specs, which keep the pre-tree behaviour.
+		 */
+		@Optional() private readonly publicCategories?: CategoryPublicReadService,
+		/** Typed landing counts (Plan-0010 F07); optional for the pre-tree unit specs. */
+		@Optional() private readonly typedCatalog?: PublicCatalogService
 	) {}
+
+	/**
+	 * `product_count` of each landing: a typed landing (`contract_version: 2`) counts its
+	 * `filters_v2` with the conditions of `GET /products/catalog/v2`, so a landing created in the
+	 * new admin (no legacy `filters`) does not count its whole category; legacy landings as before.
+	 */
+	private async landingCounts(
+		landings: {
+			_id: unknown
+			category_id: Types.ObjectId
+			filters: Record<string, string[]>
+			filters_v2?: unknown
+			contract_version?: unknown
+		}[]
+	) {
+		const typed = this.typedCatalog
+			? landings.filter(row => row.contract_version === 2 && row.filters_v2 != null)
+			: []
+		const counts = await this.productVariantRepository.countVariantsForLandings(
+			landings
+				.filter(row => !typed.includes(row))
+				.map(landing => ({
+					id: String(landing._id),
+					category_id: landing.category_id,
+					filters: landing.filters
+				}))
+		)
+		const byCategory = new Map<string, typeof typed>()
+		for (const row of typed)
+			byCategory.set(String(row.category_id), [
+				...(byCategory.get(String(row.category_id)) ?? []),
+				row
+			])
+		for (const [categoryId, rows] of byCategory) {
+			const typedCounts = await this.typedCatalog!.countTypedLandings(
+				categoryId,
+				rows.map(row => ({ id: String(row._id), filters: row.filters_v2 }))
+			)
+			for (const [id, count] of typedCounts) counts.set(id, count)
+		}
+		return counts
+	}
+
+	/** Visible product categories by id, or `null` when visibility is not wired (specs). */
+	private async publicLandingCategories() {
+		if (!this.publicCategories) return null
+		const rows = await this.publicCategories.productCategories()
+		return new Map(
+			rows.map(row => [
+				row._id,
+				{ slug: row.slug, name: row.name, version: row.attribute_contract_version }
+			])
+		)
+	}
+
+	/**
+	 * A landing is public under a public category of its own contract: a v1 category with its
+	 * legacy `filters`, a v2 category only once the landing carries typed `filters_v2`
+	 * (`contract_version: 2`) — a v2 page never reinterprets legacy pins.
+	 */
+	private static landingFits(
+		landing: { contract_version?: unknown; filters_v2?: unknown },
+		version: number | undefined
+	) {
+		if (version === 1) return true
+		return version === 2 && landing.contract_version === 2 && landing.filters_v2 != null
+	}
 
 	/**
 	 * PUBLIC — active landings only, each with `product_count`.
@@ -37,14 +113,16 @@ export class LandingService {
 	 */
 	async findActive(categoryId?: string) {
 		if (categoryId) this.assertObjectId(categoryId)
-		const landings = await this.landingRepository.findActive(categoryId)
-		const counts = await this.productVariantRepository.countVariantsForLandings(
-			landings.map(landing => ({
-				id: String(landing._id),
-				category_id: landing.category_id,
-				filters: landing.filters
-			}))
+		const visible = await this.publicLandingCategories()
+		const landings = (await this.landingRepository.findActive(categoryId)).filter(
+			landing =>
+				!visible ||
+				LandingService.landingFits(
+					landing as never,
+					visible.get(String(landing.category_id))?.version
+				)
 		)
+		const counts = await this.landingCounts(landings)
 		return landings.map(landing => ({
 			...landing,
 			product_count: counts.get(String(landing._id)) ?? 0
@@ -52,8 +130,23 @@ export class LandingService {
 	}
 
 	/** PUBLIC — the sitemap's source of landing URLs; active only. */
-	findActiveSlugs() {
-		return this.landingRepository.findActiveSlugs()
+	async findActiveSlugs() {
+		const visible = await this.publicLandingCategories()
+		if (!visible) return this.landingRepository.findActiveSlugs()
+		// The slug rows carry no contract fields, so the fit is decided on the landing documents.
+		const fitting = new Set(
+			(await this.landingRepository.findActive())
+				.filter(landing =>
+					LandingService.landingFits(
+						landing as never,
+						visible.get(String(landing.category_id))?.version
+					)
+				)
+				.map(landing => `${visible.get(String(landing.category_id))!.slug}/${landing.slug}`)
+		)
+		return (await this.landingRepository.findActiveSlugs()).filter(row =>
+			fitting.has(`${row.category_slug}/${row.slug}`)
+		)
 	}
 
 	/**
@@ -68,13 +161,7 @@ export class LandingService {
 	async findAllForAdmin(categoryId?: string) {
 		if (categoryId) this.assertObjectId(categoryId)
 		const landings = await this.landingRepository.findAllForAdmin(categoryId)
-		const counts = await this.productVariantRepository.countVariantsForLandings(
-			landings.map(landing => ({
-				id: String(landing._id),
-				category_id: landing.category_id,
-				filters: landing.filters
-			}))
-		)
+		const counts = await this.landingCounts(landings)
 		return landings.map(landing => ({
 			...landing,
 			product_count: counts.get(String(landing._id)) ?? 0
@@ -89,12 +176,17 @@ export class LandingService {
 	async findActiveBySlugs(categorySlug: string, landingSlug: string) {
 		const category = await this.categoryRepository.findBySlug(categorySlug)
 		if (!category) throw new NotFoundException('Landing not found')
+		const visible = await this.publicLandingCategories()
+		const version = visible?.get(String(category._id))?.version
+		if (visible && version === undefined) throw new NotFoundException('Landing not found')
 
 		const landing = await this.landingRepository.findActiveByCategoryAndSlug(
 			category._id,
 			landingSlug
 		)
 		if (!landing) throw new NotFoundException('Landing not found')
+		if (visible && !LandingService.landingFits(landing.toObject(), version))
+			throw new NotFoundException('Landing not found')
 
 		return {
 			...landing.toObject(),

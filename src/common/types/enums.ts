@@ -46,6 +46,12 @@ export enum DeliveryMethod {
 
 export enum NovaPostWarehouseType {
 	PARCEL_LOCKER = 'PARCEL_LOCKER',
+	/**
+	 * Every staffed branch — post and cargo together. The checkout offers only this one and the
+	 * parcel locker: a buyer does not know which kind their branch is, and a town with cargo
+	 * branches only showed an empty list under «Поштове».
+	 */
+	BRANCH = 'BRANCH',
 	POST = 'POST',
 	CARGO = 'CARGO'
 }

@@ -17,11 +17,19 @@ export type PartnerCatalogRow = {
 	images?: string[]
 	weight_g?: number | null
 	v_value?: string | null
+	/** Typed axis value (v2 categories, TD-0013); formatted by the service, never sent raw. */
+	variant_value?: unknown
+	/** Dictionary `name_uk` of the SKU's colour (the partner «Колір» row of a colour axis). */
+	color_name_uk?: string | null
 	category: { _id: Types.ObjectId; name: string; slug: string }
 	product: {
 		description?: { html?: string }
 		attributes?: { k: string; l: string; v: string | number | boolean }[]
 		variant_type?: { key: string; label: string }
+		attributes_v2?: { k: string; v: unknown }[]
+		variant_axis?: { key: string } | null
+		/** Name of an active linked brand entity, if any. */
+		brand_name?: string | null
 	}
 }
 @Injectable()
@@ -45,7 +53,10 @@ export class PartnerCatalogRepository {
 								category_id: 1,
 								description: 1,
 								attributes: 1,
-								variant_type: 1
+								variant_type: 1,
+								attributes_v2: 1,
+								variant_axis: 1,
+								brand_id: 1
 							}
 						}
 					],
@@ -66,10 +77,15 @@ export class PartnerCatalogRepository {
 			{ $unwind: '$category' }
 		]
 	}
-	async categories() {
+	/**
+	 * `categoryIds` — the publicly visible product categories (TD-0013). Omitted only by callers
+	 * predating the tree, which then list every category as before.
+	 */
+	async categories(categoryIds?: Types.ObjectId[]) {
+		const scope = categoryIds ? { category_id: { $in: categoryIds } } : {}
 		const [categories, counts] = await Promise.all([
 			this.categoryModel
-				.find()
+				.find(categoryIds ? { _id: { $in: categoryIds } } : {})
 				.select('_id name slug')
 				.sort({ order: 1, _id: 1 })
 				.lean()
@@ -79,7 +95,7 @@ export class PartnerCatalogRepository {
 					_id: Types.ObjectId
 					count: number
 				}>([
-					{ $match: { status: ProductStatus.ACTIVE } },
+					{ $match: { status: ProductStatus.ACTIVE, ...scope } },
 					...this.joins(),
 					{ $group: { _id: '$category_id', count: { $sum: 1 } } }
 				])
@@ -97,13 +113,22 @@ export class PartnerCatalogRepository {
 	categoryExists(id: string) {
 		return this.categoryModel.exists({ _id: id }).exec()
 	}
-	skus(categoryId: string | undefined, after: string | undefined, limit: number) {
+	skus(
+		categoryId: string | undefined,
+		after: string | undefined,
+		limit: number,
+		categoryIds?: Types.ObjectId[]
+	) {
 		return this.variants
 			.aggregate<{ sku: string }>([
 				{
 					$match: {
 						status: ProductStatus.ACTIVE,
-						...(categoryId ? { category_id: new Types.ObjectId(categoryId) } : {}),
+						...(categoryId
+							? { category_id: new Types.ObjectId(categoryId) }
+							: categoryIds
+								? { category_id: { $in: categoryIds } }
+								: {}),
 						...(after ? { sku: { $gt: after } } : {})
 					}
 				},
@@ -115,11 +140,36 @@ export class PartnerCatalogRepository {
 			.collation({ locale: 'simple' })
 			.exec()
 	}
-	lookup(skus: string[]) {
+	lookup(skus: string[], categoryIds?: Types.ObjectId[]) {
 		return this.variants
 			.aggregate<PartnerCatalogRow>([
-				{ $match: { sku: { $in: skus }, status: ProductStatus.ACTIVE } },
+				{
+					$match: {
+						sku: { $in: skus },
+						status: ProductStatus.ACTIVE,
+						...(categoryIds ? { category_id: { $in: categoryIds } } : {})
+					}
+				},
 				...this.joins(),
+				// A linked brand entity counts only while active, as on the product page.
+				{
+					$lookup: {
+						from: 'brands',
+						localField: 'product.brand_id',
+						foreignField: '_id',
+						pipeline: [{ $match: { status: 'active' } }, { $project: { name: 1 } }],
+						as: 'brand'
+					}
+				},
+				{
+					$lookup: {
+						from: 'colors',
+						localField: 'color_id',
+						foreignField: '_id',
+						pipeline: [{ $project: { name_uk: 1 } }],
+						as: 'colour'
+					}
+				},
 				{
 					$project: {
 						_id: 0,
@@ -134,9 +184,18 @@ export class PartnerCatalogRepository {
 						images: 1,
 						weight_g: 1,
 						v_value: 1,
+						variant_value: 1,
 						'product.description.html': 1,
 						'product.attributes': 1,
 						'product.variant_type': 1,
+						'product.attributes_v2': 1,
+						'product.variant_axis': 1,
+						'product.brand_name': {
+							$ifNull: [{ $arrayElemAt: ['$brand.name', 0] }, null]
+						},
+						color_name_uk: {
+							$ifNull: [{ $arrayElemAt: ['$colour.name_uk', 0] }, null]
+						},
 						category: 1
 					}
 				}

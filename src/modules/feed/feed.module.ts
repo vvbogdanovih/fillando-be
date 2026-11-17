@@ -1,9 +1,11 @@
+import { LegacyCatalogWritePolicy } from '../catalog-safety/legacy-catalog-write.interceptor'
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
 import { Order, OrderSchema } from 'src/database/mongoose/schemas/order.schema'
 import { LandingModule } from '../landing/landing.module'
 import { ProductModule } from '../product/product.module'
+import { CategoryModule } from '../category/category.module'
 import { FeedController } from './feed.controller'
 import { FeedCronService } from './feed-cron.service'
 import { FeedService } from './feed.service'
@@ -19,10 +21,17 @@ import { PromoExpiryCronService } from './promo-expiry-cron.service'
 @Module({
 	imports: [
 		ProductModule,
+		CategoryModule,
 		LandingModule,
 		MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }])
 	],
 	controllers: [FeedController],
-	providers: [FeedService, FeedCronService, PromoExpiryCronService, OrderRepository]
+	providers: [
+		LegacyCatalogWritePolicy,
+		FeedService,
+		FeedCronService,
+		PromoExpiryCronService,
+		OrderRepository
+	]
 })
 export class FeedModule {}

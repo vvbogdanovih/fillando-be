@@ -54,16 +54,25 @@ export class PartnerApiRepository {
 			.lean()
 			.exec()
 	}
-	bulkAvailability(skus: string[]) {
+	/** `categoryIds` — the publicly visible product categories (TD-0013), when known. */
+	bulkAvailability(skus: string[], categoryIds?: Types.ObjectId[]) {
 		return this.variants
-			.find({ sku: { $in: skus }, status: ProductStatus.ACTIVE })
+			.find({
+				sku: { $in: skus },
+				status: ProductStatus.ACTIVE,
+				...(categoryIds ? { category_id: { $in: categoryIds } } : {})
+			})
 			.select('sku stock stock_updated_at -_id')
 			.lean()
 			.exec()
 	}
-	availability(sku: string) {
+	availability(sku: string, categoryIds?: Types.ObjectId[]) {
 		return this.variants
-			.findOne({ sku, status: ProductStatus.ACTIVE })
+			.findOne({
+				sku,
+				status: ProductStatus.ACTIVE,
+				...(categoryIds ? { category_id: { $in: categoryIds } } : {})
+			})
 			.select('sku stock stock_updated_at -_id')
 			.lean()
 			.exec()

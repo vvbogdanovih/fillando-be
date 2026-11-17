@@ -3,15 +3,17 @@ import { JwtService } from '@nestjs/jwt'
 import { RegisterDto } from './dto/register.dto'
 import * as argon2 from 'argon2'
 import { createHash, randomUUID } from 'node:crypto'
+import { Types } from 'mongoose'
 import { LoginDto } from './dto/login.dto'
 import { JWTPayload } from 'src/common/types/jwt-payload'
+import type { GoogleUser } from 'src/common/strategies/google.strategy'
 import {
 	AccessTokenLifetime,
 	ENV,
 	REFRESH_REUSE_GRACE_MS,
 	RefreshTokenLifetime
 } from 'src/common/constants'
-import { AuthMethod, Role } from 'src/common/types/enums'
+import { AuthMethod } from 'src/common/types/enums'
 import { UserRepository } from 'src/database/mongoose/repositories/user.repository'
 import { RefreshTokenRepository } from 'src/database/mongoose/repositories/refresh-token.repository'
 
@@ -23,7 +25,7 @@ export class AuthService {
 		private refreshTokenRepository: RefreshTokenRepository
 	) {}
 
-	async getMe(user: any) {
+	async getMe(user: JWTPayload) {
 		const found = await this.userRepository.findById(user.id)
 		if (!found) throw new UnauthorizedException('Користувача не знайдено')
 		return {
@@ -35,8 +37,9 @@ export class AuthService {
 		}
 	}
 
-	async googleLogin(user: any, context?: { ipAddress?: string; userAgent?: string }) {
-		let existingUser = await this.userRepository.findByEmail(user.email)
+	async googleLogin(user: GoogleUser, context?: { ipAddress?: string; userAgent?: string }) {
+		// The strategy asks for the `email` scope, so Google sends the address.
+		let existingUser = await this.userRepository.findByEmail(user.email!)
 
 		if (!existingUser) {
 			existingUser = await this.userRepository.create({
@@ -148,7 +151,7 @@ export class AuthService {
 		const expiresAt = new Date(Date.now() + RefreshTokenLifetime.ms)
 		await this.refreshTokenRepository.create({
 			token: this.hashToken(token),
-			userId: userId as any,
+			userId: new Types.ObjectId(userId),
 			expiresAt,
 			ipAddress: context?.ipAddress,
 			userAgent: context?.userAgent
@@ -160,9 +163,11 @@ export class AuthService {
 		await this.refreshTokenRepository.deleteByTokenHash(this.hashToken(refreshToken))
 	}
 
-	async verifyRefreshToken(token: string) {
+	async verifyRefreshToken(token: string): Promise<JWTPayload> {
 		try {
-			return await this.jwtService.verifyAsync(token, { secret: ENV.REFRESH_JWT_SECRET })
+			return await this.jwtService.verifyAsync<JWTPayload>(token, {
+				secret: ENV.REFRESH_JWT_SECRET
+			})
 		} catch {
 			throw new UnauthorizedException('Недійсний токен оновлення.')
 		}
@@ -175,7 +180,10 @@ export class AuthService {
 	 * as a stolen token and rejected. Every rejection leaves the caller without a session, so the
 	 * controller clears the cookies on it.
 	 */
-	async refresh(refreshToken: string, context?: { ipAddress?: string; userAgent?: string }) {
+	async refresh(
+		refreshToken: string | undefined,
+		context?: { ipAddress?: string; userAgent?: string }
+	) {
 		if (!refreshToken) throw new UnauthorizedException('Refresh token відсутній.')
 
 		const stored = await this.refreshTokenRepository.findByTokenHash(
@@ -204,7 +212,7 @@ export class AuthService {
 			id: decoded.id,
 			email: decoded.email,
 			name: decoded.name,
-			role: decoded.role as Role
+			role: decoded.role
 		}
 
 		const access_token = this.issueAccessToken(payload)

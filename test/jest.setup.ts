@@ -1,3 +1,6 @@
+import http, { Agent, type Server } from 'node:http'
+import { NestApplication } from '@nestjs/core'
+
 /**
  * Unit tests import modules that validate the environment at import time
  * (`src/common/constants/env.constant.ts`). Provide safe placeholders so specs
@@ -37,3 +40,34 @@ for (const [key, value] of Object.entries(defaults)) {
 
 // Jest sets NODE_ENV=test, which the env schema does not accept.
 process.env.NODE_ENV = 'development'
+
+// Integration HTTP (Plan-0010 D06.6). supertest gives a server that is not listening `listen(0)`
+// — the wildcard address — and then connects to 127.0.0.1. On macOS a wildcard listener may be
+// handed a port another process on the machine already listens on at 127.0.0.1, and that process
+// gets the request: an empty 404, a 401, «socket hang up», a request that never ends. So every
+// Nest test application listens on 127.0.0.1 once `init()` resolves (the OS never hands out a port
+// taken there) and supertest only reuses it; the suite's `app.close()` closes it. A spec that calls
+// `listen()` itself gets exactly the address it asked for.
+type TestApp = NestApplication & { testBound?: boolean; testListen?: boolean }
+const serverOf = (app: TestApp) => app.getHttpServer() as Server
+// The prototype's own methods, called below with the application as `this`.
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const { init, listen } = NestApplication.prototype
+NestApplication.prototype.init = async function (this: TestApp): Promise<TestApp> {
+	await init.call(this)
+	const server = serverOf(this)
+	if (!this.testListen && !server.listening) {
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+		this.testBound = true
+	}
+	return this
+}
+NestApplication.prototype.listen = async function (this: TestApp, ...args: unknown[]) {
+	this.testListen = true
+	if (this.testBound) await new Promise<void>(resolve => serverOf(this).close(() => resolve()))
+	return (listen as (...a: unknown[]) => Promise<unknown>).apply(this, args) as Promise<Server>
+} as typeof listen
+// And one connection per request: since Node 19 the global agent — shared by every suite of a
+// `--runInBand` process through the built-in `http` module — keeps sockets alive, and a pooled
+// socket to a port a closed server used still reaches that closed application.
+http.globalAgent = new Agent({ keepAlive: false })

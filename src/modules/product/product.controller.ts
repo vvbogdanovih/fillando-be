@@ -1,4 +1,10 @@
 import {
+	CatalogAdaptedRead,
+	LegacyCatalogController,
+	CatalogReadOnlyPost
+} from '../catalog-safety/legacy-catalog-write.interceptor'
+import { ApiCreatedResponse, ApiServiceUnavailableResponse } from '@nestjs/swagger'
+import {
 	Body,
 	Controller,
 	Delete,
@@ -6,14 +12,11 @@ import {
 	Param,
 	Patch,
 	Post,
-	Query,
-	Res,
+	StreamableFile,
 	UseGuards
 } from '@nestjs/common'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
-import type { Response } from 'express'
-import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { API_OPERATION, CATALOG_UNAVAILABLE, ENDPOINTS } from 'src/common/constants'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
 import { RolesGuard } from 'src/common/guards/roles.guard'
@@ -26,10 +29,9 @@ import { ValidateProductDto } from './dto/validate-product.dto'
 import { SetVariantImagesDto } from './dto/set-variant-images.dto'
 import { AddVariantDto, UpdateVariantDto } from './dto/update-variant.dto'
 import { SetProductPromotionDto } from './dto/set-product-promotion.dto'
-import { SearchProductsDto } from './dto/search-products.dto'
-import { GetPriceSheetQueryDto } from './dto/get-price-sheet-query.dto'
 import { GeneratePriceListDto } from './dto/generate-price-list.dto'
 
+@LegacyCatalogController()
 @Controller(ENDPOINTS.PRODUCTS.BASE)
 @ApiTags(ENDPOINTS.PRODUCTS.BASE)
 export class ProductController {
@@ -39,6 +41,8 @@ export class ProductController {
 	) {}
 
 	// Unpaginated full dump for the admin catalogue screen — the storefront uses /catalog.
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.PRODUCTS.GET_ALL)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -47,73 +51,47 @@ export class ProductController {
 		return this.productService.findAll()
 	}
 
-	// Three `$facet` aggregations per request — the most expensive public read, and the storefront
-	// calls it on every filter click, so it is throttled generously rather than left open (§4a).
-	//
-	// `Record<string, string>` rather than a DTO on purpose: besides the reserved parameters the
-	// catalogue accepts arbitrary attribute filters (`?polymer=PLA`), and the global
-	// `ValidationPipe` runs with `whitelist: true` — a DTO class would strip every key it does not
-	// declare and the filters would silently stop working. The reserved parameters are parsed
-	// defensively in the service instead.
-	@Get(ENDPOINTS.PRODUCTS.CATALOG)
-	@UseGuards(ThrottlerGuard)
-	@Throttle({ default: { limit: 120, ttl: 60_000 } })
-	@ApiOperation(API_OPERATION.PRODUCTS.CATALOG)
-	getCatalog(@Query() query: Record<string, string>) {
-		return this.productService.getCatalog(query)
-	}
-
-	@Get(ENDPOINTS.PRODUCTS.SEARCH)
-	@ApiOperation(API_OPERATION.PRODUCTS.SEARCH)
-	search(@Query() dto: SearchProductsDto) {
-		return this.productService.search(dto)
-	}
-
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.PRODUCTS.VARIANT_SLUGS)
 	@ApiOperation(API_OPERATION.PRODUCTS.VARIANT_SLUGS)
 	getAllVariantSlugs() {
 		return this.productService.getAllVariantSlugs()
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.PRODUCTS.VARIANT_COUNT)
 	@ApiOperation(API_OPERATION.PRODUCTS.VARIANT_COUNT)
 	getVariantCount() {
 		return this.productService.getVariantCount()
 	}
 
-	@Get(ENDPOINTS.PRODUCTS.PRICE_SHEET)
-	@UseGuards(ThrottlerGuard)
-	@Throttle({ default: { limit: 20, ttl: 60_000 } })
-	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_SHEET)
-	getPriceSheet(@Query() query: GetPriceSheetQueryDto) {
-		return this.productService.getPriceSheet(query)
-	}
-
 	// JwtAuthGuard must come first — RolesGuard reads req.user.role, which only exists
 	// once the JWT has been validated.
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.ADAPTED_READ })
+	// Adapted read (TD-0013): visible product categories only, v2 products in the legacy shape.
+	@CatalogReadOnlyPost()
+	@CatalogAdaptedRead()
+	@ApiCreatedResponse()
 	@Post(ENDPOINTS.PRODUCTS.PRICE_LIST_PDF)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
 	@ApiOperation(API_OPERATION.PRODUCTS.PRICE_LIST_PDF)
-	async generatePriceListPdf(@Body() dto: GeneratePriceListDto, @Res() res: Response) {
+	async generatePriceListPdf(@Body() dto: GeneratePriceListDto) {
 		const { buffer, filename } = await this.priceListService.generatePdf(dto)
-		res.set({
-			'Content-Type': 'application/pdf',
-			'Content-Disposition': `attachment; filename="${filename}"`,
-			'Content-Length': buffer.length.toString()
+		return new StreamableFile(buffer, {
+			type: 'application/pdf',
+			disposition: `attachment; filename="${filename}"`,
+			length: buffer.length
 		})
-		res.end(buffer)
-	}
-
-	@Get(ENDPOINTS.PRODUCTS.BY_SLUG)
-	@ApiOperation(API_OPERATION.PRODUCTS.BY_SLUG)
-	getVariantBySlug(@Param('slug') slug: string) {
-		return this.productService.getVariantBySlug(slug)
 	}
 
 	// The raw product document carries `vendor_id` — which supplier the product is bought from —
 	// so it is admin-only like the variant reads: supplier fields leave the backend through no
 	// public route, without exception. The storefront reads `/products/by-slug/:slug`.
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.PRODUCTS.GET_BY_ID)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -122,6 +100,9 @@ export class ProductController {
 		return this.productService.findById(id)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@CatalogReadOnlyPost()
+	@ApiCreatedResponse()
 	@Post(ENDPOINTS.PRODUCTS.VALIDATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -130,6 +111,8 @@ export class ProductController {
 		return this.productService.validate(dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiCreatedResponse()
 	@Post(ENDPOINTS.PRODUCTS.CREATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -140,6 +123,8 @@ export class ProductController {
 
 	// Raw variant documents carry supplier identifiers (vendor_product_sku, prom_id) that the
 	// admin editor needs but the public API must never expose — hence ADMIN-only.
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.PRODUCTS.VARIANTS)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -148,6 +133,8 @@ export class ProductController {
 		return this.productService.getVariants(id)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.PRODUCTS.VARIANT)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -156,6 +143,8 @@ export class ProductController {
 		return this.productService.getVariant(id, variantId)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiCreatedResponse()
 	@Post(ENDPOINTS.PRODUCTS.VARIANTS)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -164,6 +153,8 @@ export class ProductController {
 		return this.productService.addVariant(id, dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Patch(ENDPOINTS.PRODUCTS.PROMOTION)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -172,6 +163,8 @@ export class ProductController {
 		return this.productService.setProductPromotion(id, dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Patch(ENDPOINTS.PRODUCTS.VARIANT)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -184,6 +177,8 @@ export class ProductController {
 		return this.productService.updateVariant(id, variantId, dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Delete(ENDPOINTS.PRODUCTS.VARIANT)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -192,6 +187,8 @@ export class ProductController {
 		return this.productService.deleteVariant(id, variantId)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Patch(ENDPOINTS.PRODUCTS.PATCH_VARIANT_IMAGES)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -204,6 +201,8 @@ export class ProductController {
 		return this.productService.setVariantImages(id, variantId, dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Patch(ENDPOINTS.PRODUCTS.UPDATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -212,6 +211,8 @@ export class ProductController {
 		return this.productService.update(id, dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Delete(ENDPOINTS.PRODUCTS.DELETE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)

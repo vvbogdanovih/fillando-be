@@ -1,12 +1,13 @@
-import { INestApplication } from '@nestjs/common'
+import { INestApplication, ServiceUnavailableException } from '@nestjs/common'
 import { getLoggerToken } from 'nestjs-pino'
+import { gzipSync } from 'node:zlib'
 import { createRbacApp, HttpMethod, send } from 'src/common/testing/rbac-harness'
 import { Role } from 'src/common/types/enums'
 import { FeedController } from './feed.controller'
 import { FeedService } from './feed.service'
 
 const feedService = {
-	getXml: jest.fn(),
+	getVerifiedXml: jest.fn(),
 	generate: jest.fn().mockResolvedValue({ item_count: 1 }),
 	getStatus: jest.fn().mockReturnValue({ xml_ready: true })
 }
@@ -27,7 +28,10 @@ describe('FeedController RBAC', () => {
 			controllers: [FeedController],
 			providers: [
 				{ provide: FeedService, useValue: feedService },
-				{ provide: getLoggerToken(FeedController.name), useValue: { info: jest.fn() } }
+				{
+					provide: getLoggerToken(FeedController.name),
+					useValue: { info: jest.fn(), warn: jest.fn() }
+				}
 			]
 		})
 	})
@@ -38,8 +42,10 @@ describe('FeedController RBAC', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks()
-		feedService.getXml.mockReturnValue({
-			xml: '<?xml version="1.0"?><rss/>',
+		const xml = '<?xml version="1.0"?><rss/>'
+		feedService.getVerifiedXml.mockReturnValue({
+			gzip: gzipSync(xml),
+			bytes: Buffer.byteLength(xml),
 			generatedAt: new Date('2026-09-06T10:00:00Z')
 		})
 	})
@@ -72,11 +78,30 @@ describe('FeedController RBAC', () => {
 			expect(res.status).toBe(200)
 			expect(res.headers['content-type']).toMatch(/application\/xml/)
 			expect(res.headers['last-modified']).toBe('Sun, 06 Sep 2026 10:00:00 GMT')
-			expect(res.text).toContain('<rss/>')
+			// The stored artifact is compressed; the response is the XML itself, sized, not chunked.
+			expect(res.headers['content-length']).toBe('27')
+			expect(res.headers['content-encoding']).toBeUndefined()
+			expect(res.headers['transfer-encoding']).toBeUndefined()
+			expect(res.text).toBe('<?xml version="1.0"?><rss/>')
+		})
+
+		it('returns non-cacheable JSON on a stale feed without XML headers', async () => {
+			feedService.getVerifiedXml.mockRejectedValueOnce(
+				new ServiceUnavailableException({
+					message: 'Stale feed',
+					details: { code: 'CATALOG_FEED_STALE' }
+				})
+			)
+			const res = await send(app, 'get', '/feeds/google-shopping.xml')
+			expect(res.status).toBe(503)
+			expect(res.headers['retry-after']).toBe('5')
+			expect(res.headers['cache-control']).toBe('no-store')
+			expect(res.headers['content-type']).toContain('application/json')
+			expect(res.headers['last-modified']).toBeUndefined()
 		})
 
 		it('answers 503 with Retry-After before the first generation — never an empty channel', async () => {
-			feedService.getXml.mockReturnValue(null)
+			feedService.getVerifiedXml.mockReturnValue(null)
 			const res = await send(app, 'get', '/feeds/google-shopping.xml', {})
 
 			expect(res.status).toBe(503)

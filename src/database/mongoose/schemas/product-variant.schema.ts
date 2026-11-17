@@ -102,6 +102,10 @@ ProductVariantSchema.index({ category_id: 1, status: 1 })
 // Serves the catalogue colour filter: category + status are always matched, and
 // color_family is the only extra predicate the swatch sidebar adds.
 ProductVariantSchema.index({ category_id: 1, status: 1, color_family: 1 })
+// The price-ordered walk of the whole catalogue and large groups (Plan-0010 D06): active SKUs
+// without a promotion in price order, and the promoted ones alone, without sorting the scope —
+// 100 000 SKUs, see PublicCatalogService.splitListing.
+ProductVariantSchema.index({ status: 1, promo_percent: 1, price: 1 })
 ProductVariantSchema.index({ slug: 1 }, { unique: true })
 ProductVariantSchema.index({ sku: 1 }, { unique: true })
 export type ProductVariantDocument = HydratedDocument<ProductVariant>

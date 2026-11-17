@@ -159,7 +159,8 @@ document, and list only `status = active` variants (`ProductStatus.ACTIVE`):
 - `GET /products/by-slug/:slug` — `toPublicVariant` allowlist (`id`, `name`, `slug`, `sku`, `price`,
   `price_updated_at`, `stock`, `images`, `v_value`, `status`, `color`, `weight_g`) for the variant
   and its siblings, `toPublicAttributes` for `product.attributes` (`k`, `l`, `v`, `unit`), plus
-  `product.manufacturer` from the «Виробник» attribute. A `draft` slug → 404;
+  `product.manufacturer` (v2: brand entity or the characteristic marked brand; v1: the «Виробник»
+  attribute). A `draft` slug → 404;
   an `archived` slug → 200 with `status: archived` (the discontinued product page, TD-0006 §5.4) —
   siblings stay `active`-only.
 - `GET /products/price-sheet` — `PRICE_SHEET_PUBLIC_PROJECTION`; search no longer matches
@@ -259,6 +260,7 @@ no database, they run with plain `yarn test`:
 | `LiqpayModule`           | `liqpay.controller.rbac.spec.ts`              | both endpoints public **by design** (guest checkout, LiqPay's servers), the callback's `@HttpCode(200)` + `{ status: 'ok' }`, the 10/min limit       |
 | `NovaPostModule`         | `nova-post.controller.rbac.spec.ts`           | the SSE `/sync` admin-only, `/cities` and `/warehouses` public for the guest address picker, and each handler's empty-argument short-circuit         |
 | `PromModule`             | `prom.controller.rbac.spec.ts`                | the SSE `/sync-availability` admin-only — an anonymous trigger is a mass price rewrite, not a read — and no other path answering                     |
+| Plan-0010 catalogue (11 controllers: category drafts/SEO/export/publication, catalog operations, colour dictionary, typed landings/products, routes, storefront settings, sitemap) | `catalog-admin.controller.rbac.spec.ts` | table-driven from Nest's route metadata (43 routes on 31.10; the category presentation's two removed 2026-11-05): every route is on its explicit public list (`GET /storefront-settings`, `/routes/resolve`, `/catalog/sitemap`, `/catalog/sitemap/part`) or ADMIN-only — anonymous 401, USER 403, the service never reached, ADMIN passes; a new route is covered the day it is added (audit 31.10.2026) |
 
 Every one of these specs also lists its **public** endpoints explicitly, not just the guarded
 ones. A guard added to a public route breaks the shop as thoroughly as a missing guard exposes
@@ -301,7 +303,7 @@ the same treatment: `@UseGuards(ThrottlerGuard)` + `@Throttle(...)` comes with a
 `*.controller.throttle.spec.ts` (or, where the module already has one, in its RBAC spec — see
 `OrderModule`) plus a row in `API_AND_SWAGGER.md` §4a.
 
-**All eighteen controllers now carry a spec.** `AuthModule`'s is a throttle spec rather than an
+**All eighteen controllers now carry a spec** (and the Plan-0010 catalogue controllers one table-driven spec, row above). `AuthModule`'s is a throttle spec rather than an
 RBAC one, and that is the correct shape: no handler in `auth.controller.ts` carries `@Roles`, so
 there is no role decision to pin — its guards are `ThrottlerGuard`, `AuthGuard('google')` and
 `OptionalJwtAuthGuard`, and that spec covers them. A new controller adds a row to the table

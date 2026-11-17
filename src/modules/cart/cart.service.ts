@@ -4,10 +4,23 @@ import { Types } from 'mongoose'
 import { CartRepository } from 'src/database/mongoose/repositories/cart.repository'
 import { CartItem } from 'src/database/mongoose/schemas/cart.schema'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
+import { ProductVariant } from 'src/database/mongoose/schemas/product-variant.schema'
 import { AddCartItemDto } from './dto/add-cart-item.dto'
 import { UpdateCartItemDto } from './dto/update-cart-item.dto'
 import { MergeCartDto } from './dto/merge-cart.dto'
 import { publicPromoFields } from 'src/modules/product/promo-pricing'
+
+/** A variant as `findByIds` returns it: a lean row, so it carries its `_id`. */
+type StoredVariant = ProductVariant & { _id: Types.ObjectId }
+
+/**
+ * A cart line as the repository returns it. On a hydrated cart each line is a subdocument, and
+ * `toObject()` yields its stored fields alone; a plain line has no such method.
+ */
+type StoredCartItem = CartItem & { toObject?: () => CartItem }
+
+/** A plain copy of a cart line, for a write that replaces the whole `items` array. */
+const toPlainItem = (item: StoredCartItem): CartItem => item.toObject?.() ?? { ...item }
 
 @Injectable()
 export class CartService {
@@ -18,11 +31,17 @@ export class CartService {
 		private readonly productVariantRepository: ProductVariantRepository
 	) {}
 
+	/** The variants behind these ids, keyed by id. */
+	private async findVariants(ids: Types.ObjectId[]): Promise<Map<string, StoredVariant>> {
+		// `findByIds` reads with `.lean()`, so every row has its `_id`; the repository's declared
+		// `ProductVariant[]` merely leaves the field out.
+		const variants = (await this.productVariantRepository.findByIds(ids)) as StoredVariant[]
+		return new Map(variants.map(v => [v._id.toString(), v]))
+	}
+
 	private async populateItems(items: CartItem[]) {
 		if (!items.length) return []
-		const variantIds = items.map(i => i.variant_id)
-		const variants = await this.productVariantRepository.findByIds(variantIds)
-		const variantMap = new Map(variants.map((v: any) => [v._id.toString(), v]))
+		const variantMap = await this.findVariants(items.map(i => i.variant_id))
 		const now = new Date()
 
 		return items.map(item => {
@@ -35,6 +54,9 @@ export class CartService {
 					? {
 							name: v.name,
 							slug: v.slug,
+							// The SKU is the item id of every analytics event and the feed's
+							// `g:id`: the storefront's begin_checkout must not send the Mongo id.
+							sku: v.sku,
 							price: v.price,
 							// Regular price above, the promotion trio here (TD-0012): the
 							// storefront sums `sale_price ?? price`.
@@ -52,12 +74,9 @@ export class CartService {
 		const cart = await this.cartRepository.findByUserId(userId)
 		if (!cart || !cart.items.length) return { items: [], removed_items: [] }
 
-		const variants = await this.productVariantRepository.findByIds(
-			cart.items.map(i => i.variant_id)
-		)
-		const variantMap = new Map(variants.map((v: any) => [v._id.toString(), v]))
+		const variantMap = await this.findVariants(cart.items.map(i => i.variant_id))
 
-		const validItems: CartItem[] = []
+		const validItems: StoredCartItem[] = []
 		const removedItems: string[] = []
 
 		for (const item of cart.items) {
@@ -72,7 +91,7 @@ export class CartService {
 		if (removedItems.length > 0) {
 			await this.cartRepository.update(
 				{ user_id: new Types.ObjectId(userId) },
-				{ $set: { items: validItems.map(i => (i as any).toObject?.() ?? i) } }
+				{ $set: { items: validItems.map(i => i.toObject?.() ?? i) } }
 			)
 		}
 
@@ -89,9 +108,9 @@ export class CartService {
 		}
 
 		const cart = await this.cartRepository.findByUserId(userId)
-		const currentItems = cart ? cart.items.map((i: any) => i.toObject?.() ?? { ...i }) : []
+		const currentItems = cart ? cart.items.map(toPlainItem) : []
 		const existingIndex = currentItems.findIndex(
-			(i: any) => i.variant_id.toString() === dto.variant_id
+			i => i.variant_id.toString() === dto.variant_id
 		)
 
 		if (existingIndex >= 0) {
@@ -129,8 +148,8 @@ export class CartService {
 		const cart = await this.cartRepository.findByUserId(userId)
 		if (!cart) throw new NotFoundException('Кошик порожній')
 
-		const items = cart.items.map((i: any) => i.toObject?.() ?? { ...i })
-		const index = items.findIndex((i: any) => i.variant_id.toString() === variantId)
+		const items = cart.items.map(toPlainItem)
+		const index = items.findIndex(i => i.variant_id.toString() === variantId)
 		if (index < 0) throw new NotFoundException('Товар відсутній у кошику')
 
 		items[index].quantity = dto.quantity
@@ -146,9 +165,7 @@ export class CartService {
 		const cart = await this.cartRepository.findByUserId(userId)
 		if (!cart) return { items: [], removed_items: [] }
 
-		const items = cart.items
-			.filter(i => i.variant_id.toString() !== variantId)
-			.map((i: any) => i.toObject?.() ?? { ...i })
+		const items = cart.items.filter(i => i.variant_id.toString() !== variantId).map(toPlainItem)
 
 		const updated = await this.cartRepository.update(
 			{ user_id: new Types.ObjectId(userId) },
@@ -176,8 +193,7 @@ export class CartService {
 		if (!dto.items.length) return { items: [], removed_items: [] }
 
 		const variantIds = dto.items.map(i => new Types.ObjectId(i.variant_id))
-		const variants = await this.productVariantRepository.findByIds(variantIds)
-		const variantMap = new Map(variants.map((v: any) => [v._id.toString(), v]))
+		const variantMap = await this.findVariants(variantIds)
 
 		const validItems: Array<{ variant_id: Types.ObjectId; quantity: number; added_at: Date }> =
 			[]

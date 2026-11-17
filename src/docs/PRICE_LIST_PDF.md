@@ -2,10 +2,14 @@
 
 ## Overview
 
-A print-ready A4 PDF price list for the admin panel, in either orientation. Rows are **grouped by product**: each product's
-name occupies a single cell merged (`rowspan`) across all of its variants, mirroring the merged-cell
-spreadsheet the business already used. Products are ordered by **manufacturer**, then product name,
-then colour. On top of the base price it renders two configurable wholesale tiers.
+A print-ready A4 PDF price list for the admin panel, in either orientation — a **stock extract**: one
+table per category, with that category's own characteristic columns, quantity and the base price.
+There are no wholesale discount columns (owner, 2026-11-06: «хай буде просто вижимка наявності,
+знижку буду сам людині говорити»); the former «Ціна від 50кг / 100кг» tiers and their
+`tier1_percent`/`tier2_percent` were removed. Rows are **grouped by product**: the product's name and
+its product-level values occupy cells merged (`rowspan`) across all of its variants, mirroring the
+merged-cell spreadsheet the business already used. Within a category products are ordered by
+**brand**, then product name, then variant.
 
 Distinct from [PRICE_SHEET.md](./PRICE_SHEET.md), which is the public paginated JSON table: this one
 is admin-only, unpaginated, and returns a binary PDF.
@@ -24,13 +28,10 @@ endpoint on `ProductController` (see [RBAC.md](./RBAC.md)). Guard order matters:
 |---|---|---|---|
 | `category_ids` | `string[]` (mongo ids, max 200) | — | Omit or send `[]` for **all** categories |
 | `in_stock_only` | `boolean` | `false` | `stock > 0` only. Must be a real boolean — `"true"` is rejected |
-| `tier1_percent` | `number` 0–100 | `10` | Discount for the «Ціна від 50кг» column |
-| `tier2_percent` | `number` 0–100 | `15` | Discount for the «Ціна від 100кг» column |
-| `orientation` | `'portrait' \| 'landscape'` | `'portrait'` | A4 page orientation |
+| `orientation` | `'portrait' \| 'landscape'` | `'portrait'` | A4 page orientation; landscape widens every column (the admin dialog sends `landscape` by default) |
 
-`tier2_percent < tier1_percent` is **not** rejected — an inverted pair is a valid, if odd, admin
-choice, and a cross-field validator would add friction for no safety. The sanity check lives in the
-frontend form.
+The global `ValidationPipe` strips unknown fields (`whitelist`), so an older admin still sending
+`tier1_percent`/`tier2_percent` gets the same PDF.
 
 **Response:** `200/201` with `Content-Type: application/pdf`,
 `Content-Disposition: attachment; filename="price-list-YYYY-MM-DD.pdf"`, `Content-Length`. The
@@ -46,22 +47,24 @@ filename is deliberately ASCII: `Content-Disposition` without RFC 5987 encoding 
 
 ## Columns
 
+Each category is a section: its name as a heading, then its own table (the `<thead>` repeats on
+every page the table spans). Sections come in catalogue order (`productCategories()`).
+
 | # | Header | Source |
 |---|---|---|
 | 1 | `SKU` | `product_variants.sku` (the internal `FL-000123` article) |
 | 2 | `Назва` | `products.name` — **merged across the product's variants** |
-| 3 | `Колір` | derived, `—` when absent |
-| 4 | `К-ть` | `product_variants.stock`, `0` when empty (shown as `0`, not a dash) |
-| 5 | `Ціна` | `product_variants.price` |
-| 6 | `Ціна від 50кг` | `Math.round(price * (1 - tier1_percent / 100))` |
-| 7 | `Ціна від 100кг` | `Math.round(price * (1 - tier2_percent / 100))` |
+| 3… | the category's columns | `priceColumnsOf` (`src/modules/product/price-columns.ts`, shared with the public price sheet): every definition with a filter plus the colour (`semantic: color`), in the category's order, kept while all products share one value. Values by `priceValuesOf`: label and unit («1.75 мм», «Шовковий (Silk)»), several values joined by «, ». A product-level value is **merged across the product's variants**; the column of the product's axis is one cell per SKU (a colour axis as the dictionary names it, «Чорний (Black)») |
+| … | `Варіант` | only when a section needs it: a v1 category (no columns until it is migrated) or a product whose axis is not one of the columns — stored display-name suffix, otherwise variant value; `—` when absent |
+| n−1 | `К-ть` | `product_variants.stock`, `0` when empty (shown as `0`, not a dash) |
+| n | `Ціна` | `product_variants.price` |
 
-Wholesale tiers are rounded to whole hryvnias. The template therefore formats with
-`maximumFractionDigits: 2, minimumFractionDigits: 0` rather than reusing `formatPrice` from
+Prices are whole hryvnias. The template therefore formats with `maximumFractionDigits: 2,
+minimumFractionDigits: 0` rather than reusing `formatPrice` from
 `src/modules/order/helpers/format.helpers.ts`, which hard-codes 2 decimals and appends `₴` per cell.
-
-Category names are **not** printed as section headings — the grouping is product-level only. Selected
-category names appear once in the header's filter summary line.
+Column widths are computed per section: SKU, quantity and price fixed, the name and the
+characteristic columns share the rest. Selected category names also appear once in the header's
+filter summary line.
 
 ## Filtering and ordering
 
@@ -69,12 +72,14 @@ Always restricted to `status === 'active'`; `draft` and `archived` variants neve
 
 `ProductVariantRepository.findPriceListRows` does the cheap, index-friendly work: `$match` (status,
 optional `category_id: $in`, optional `stock > 0`), a `$lookup` into `products` projecting only
-`name`/`attributes`/`variant_type`, then a deterministic `$sort` and `$limit`. The
+`name`/`attributes`/`variant_type` and the typed fields, the active brand entity and the dictionary
+colour, then a deterministic `$sort` and `$limit`. The
 `{ category_id: 1, status: 1 }` index covers the "some categories" case; "all categories" is a
 collection scan on `status`, which is tens of milliseconds at current catalogue size. Add
 `{ status: 1, stock: 1 }` if that ever becomes hot.
 
-**The final ordering happens in JS, deliberately** (`PriceListService.buildBlocks`):
+**The final ordering happens in JS, deliberately** (`PriceListService.buildSections` /
+`buildBlocks`):
 
 - Brand is a **regex match on a human-entered attribute label** (`Виробник`, `виробник`, `Бренд`, …).
   `$regexMatch` with `options: 'i'` gives no guaranteed Unicode case-folding for Cyrillic, so a case
@@ -149,10 +154,11 @@ Details that matter:
   boundary, and Chromium drops it — the last column prints with no right edge while the left one
   looks fine. The 1px inset keeps it inside. Removing it silently reintroduces the bug.
 - **Orientation** is passed as puppeteer's `landscape` flag on `page.pdf`, not via an `@page` CSS
-  rule, so there is no `preferCSSPageSize` juggling. The template swaps its `<colgroup>` to match:
-  landscape has 267mm of printable width versus 190mm portrait, and spends the extra room on the
-  name and colour columns — the two that wrap — rather than inflating the numeric ones, which never
-  need more than four digits.
+  rule, so there is no `preferCSSPageSize` juggling. Column widths are percentages computed per
+  section from what the columns hold (`columnWidths`: room for the longest text up to a cap, never
+  less than the longest word plus padding), so landscape's 267mm of printable width versus 190mm
+  portrait widens every column. The filament's nine characteristic columns fit landscape; portrait
+  breaks their headers mid-word, so the admin dialog defaults to landscape (2026-11-06).
 - `PUPPETEER_EXECUTABLE_PATH` from the Dockerfile is picked up automatically — never hardcode
   `executablePath`.
 - `protocolTimeout: 180_000` on launch plus explicit `setContent`/`pdf` timeouts, otherwise a large
@@ -194,3 +200,37 @@ falls back to a `FILLANDO` text wordmark and logs a warning.
 with a category checkbox list ("Всі категорії" master row), an in-stock toggle and the two percent
 inputs. Downloads via bare `axios` + `responseType: 'blob'`, because the shared `httpService` would
 Zod-parse the body.
+
+## General catalogue variants (local Plan-0010)
+
+The rendered row uses `variant_label` and the heading «Варіант». A stored name
+starting with the exact product name plus ` — ` supplies its display suffix (including
+Ukrainian dictionary colour). Otherwise `pickVariantLabel` keeps a size/current value
+independent of colour. Sorting is by this display value, then SKU. Wholesale tier
+calculation, product grouping and block splitting are unchanged. Service/template
+unit coverage captures HTML; it is not a Chromium layout test.
+
+### Local Plan-0010 read barrier
+
+The controller returns a StreamableFile instead of writing directly to Express.
+The legacy catalog interceptor verifies catalog revision/epoch after PDF generation
+and before any PDF bytes/download headers are sent. Maintenance or a changed stamp
+returns JSON 503 with Retry-After: 5 and Cache-Control: no-store. This preserves
+normal PDF download headers/status for a stable legacy catalog. The PDF renderer
+itself is unchanged; this HTTP barrier is not protection for direct service calls.
+
+### Adapted read (local Plan-0010 B11, 2026-10-28)
+
+The PDF handler is an adapted read (`@CatalogAdaptedRead`): it runs while the tree holds v2/draft
+categories and still refuses during maintenance or a revision/epoch change. `PriceListService` reads
+the public category projection: only SKUs of visible product categories are listed; a requested
+hidden or unknown category contributes nothing (only hidden ones → the usual 400 «Немає товарів»),
+and the header names visible categories only. A v2 row is put into the legacy shape by
+`legacyShapeOf` before grouping, so the brand is named explicitly — a linked active brand entity, else
+the characteristic marked `semantic: brand` (`row.brand`, never a label match; owner 2026-11-05) —
+and the variant column is the stored name suffix («Чорний (Black)», «63 А»).
+Rehearsal on the 27.10 dump: the PDF text before and after the migration is identical (301 rows).
+
+After bootstrap `/admin/products` is the new catalogue workspace; its header now carries the same
+«Прайс-лист» dialog (`PriceListButton`, categories from `GET /categories`), so the PDF stays
+reachable once the legacy products page is fenced.

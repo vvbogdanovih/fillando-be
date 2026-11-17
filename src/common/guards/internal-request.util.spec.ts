@@ -25,11 +25,7 @@ describe('isInternalRequest', () => {
 	})
 
 	it('exempts nothing when no token is configured', () => {
-		const spy = jest.replaceProperty(
-			ENV as { INTERNAL_API_TOKEN?: string },
-			'INTERNAL_API_TOKEN',
-			undefined
-		)
+		const spy = jest.replaceProperty(ENV, 'INTERNAL_API_TOKEN', undefined)
 		try {
 			expect(isInternalRequest(ctxWith({ [INTERNAL_TOKEN_HEADER]: token }))).toBe(false)
 		} finally {

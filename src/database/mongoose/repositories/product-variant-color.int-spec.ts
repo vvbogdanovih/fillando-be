@@ -123,21 +123,21 @@ describe('ProductVariantRepository — colour join (MongoDB integration)', () =>
 
 		it('emits the dictionary names for a coloured variant', async () => {
 			const { items } = await repo.findPriceSheet({ page: 1, limit: 50 })
-			const row = items.find((i: { slug: string }) => i.slug === 'coloured-slug')
+			const row = items.find(i => i.slug === 'coloured-slug')
 
-			expect(row.color_name_uk).toBe('Червоний')
-			expect(row.color_name_en).toBe('Red')
+			expect(row?.color_name_uk).toBe('Червоний')
+			expect(row?.color_name_en).toBe('Red')
 		})
 
 		it('emits explicit nulls, not missing keys, for a colourless variant', async () => {
 			const { items } = await repo.findPriceSheet({ page: 1, limit: 50 })
-			const coloured = items.find((i: { slug: string }) => i.slug === 'coloured-slug')
-			const plain = items.find((i: { slug: string }) => i.slug === 'colourless-slug')
+			const coloured = items.find(i => i.slug === 'coloured-slug')
+			const plain = items.find(i => i.slug === 'colourless-slug')
 
-			expect(plain.color_name_uk).toBeNull()
-			expect(plain.color_name_en).toBeNull()
+			expect(plain?.color_name_uk).toBeNull()
+			expect(plain?.color_name_en).toBeNull()
 			// Same shape for every row — a consumer can rely on the keys existing.
-			expect(Object.keys(plain).sort()).toEqual(Object.keys(coloured).sort())
+			expect(Object.keys(plain!).sort()).toEqual(Object.keys(coloured!).sort())
 		})
 	})
 
@@ -159,9 +159,9 @@ describe('ProductVariantRepository — colour join (MongoDB integration)', () =>
 
 		it('projects the four public colour fields', async () => {
 			const { items } = await repo.findCatalogItems(params)
-			const coloured = items.find((i: { slug: string }) => i.slug === 'coloured-slug')
+			const coloured = items.find(i => i.slug === 'coloured-slug')
 
-			expect(coloured.color).toEqual({
+			expect(coloured?.color).toEqual({
 				name_uk: 'Червоний',
 				name_en: 'Red',
 				family: ColorFamily.RED,
@@ -171,9 +171,9 @@ describe('ProductVariantRepository — colour join (MongoDB integration)', () =>
 
 		it('projects null for a variant with no dictionary colour', async () => {
 			const { items } = await repo.findCatalogItems(params)
-			const plain = items.find((i: { slug: string }) => i.slug === 'colourless-slug')
+			const plain = items.find(i => i.slug === 'colourless-slug')
 
-			expect(plain.color).toBeNull()
+			expect(plain?.color).toBeNull()
 		})
 	})
 
@@ -221,7 +221,7 @@ describe('ProductVariantRepository — colour join (MongoDB integration)', () =>
 				colorFamilies: [ColorFamily.RED]
 			})
 
-			expect(items.map((i: { slug: string }) => i.slug)).not.toContain('colourless-slug')
+			expect(items.map(i => i.slug)).not.toContain('colourless-slug')
 		})
 
 		it('offers one swatch per family present, with a count and a colour to paint it', async () => {

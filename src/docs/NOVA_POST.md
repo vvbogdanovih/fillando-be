@@ -64,7 +64,9 @@ than 2 characters.
 **Auth:** public.
 
 Returns warehouses for the given city `ref` (use `ref` from the cities search response). Optional
-`type`: `PARCEL_LOCKER` | `POST` | `CARGO` — same as before.
+`type`: `PARCEL_LOCKER` | `BRANCH` | `POST` | `CARGO`. `BRANCH` is post and cargo branches together
+— the checkout offers only «Поштомат» and «Відділення», because a buyer does not know which kind
+their branch is. The list is ordered by branch number.
 
 Optional `q` (aligned with `GET /nova-post/cities?q=`): when present and non-empty after trim,
 the response is filtered to branches that match **at least one** of:
@@ -91,8 +93,8 @@ When `q` is omitted or blank, behaviour is unchanged: all warehouses for `cityRe
 `NovaPostWarehouseRepository`
 
 - `findByRef(ref)` — find one warehouse by its NP ref
-- `findByCityRef(cityRef, typeOfWarehouse?, q?)` — warehouses for a city; optional NP warehouse type
-  id and optional text/number search query `q`
+- `findByCityRef(cityRef, typesOfWarehouse?, q?)` — warehouses for a city ordered by number; optional
+  list of NP warehouse type ids and optional text/number search query `q`
 - `bulkUpsert(docs)` — upsert array of warehouses, returns count of affected records
 
 ---

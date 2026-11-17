@@ -1,3 +1,4 @@
+import { CategoryPublicReadService } from './category-public-read.service'
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { CategoryRepository } from 'src/database/mongoose/repositories/category.repository'
 import {
@@ -14,6 +15,7 @@ export class CategoryService {
 
 	constructor(
 		private readonly categoryRepository: CategoryRepository,
+		private readonly publicReader: CategoryPublicReadService,
 		/**
 		 * Not a registered provider: `@Optional()` leaves it `undefined` and the default takes
 		 * over, so this service shares one throttle window with the product and colour writes
@@ -24,19 +26,13 @@ export class CategoryService {
 	) {}
 
 	findAll() {
-		return this.categoryRepository.findAll({})
+		return this.publicReader.findAll()
 	}
-
-	async findById(id: string) {
-		const category = await this.categoryRepository.findById(id)
-		if (!category) throw new NotFoundException('Category not found')
-		return category
+	findById(id: string) {
+		return this.publicReader.findById(id)
 	}
-
-	async findBySlug(slug: string) {
-		const category = await this.categoryRepository.findBySlug(slug)
-		if (!category) throw new NotFoundException('Category not found')
-		return category
+	findBySlug(slug: string) {
+		return this.publicReader.findBySlug(slug)
 	}
 
 	private mapRequiredAttributes(attributes?: RequiredAttributeDto[]) {
@@ -49,9 +45,11 @@ export class CategoryService {
 		}))
 	}
 
-	private withMappedAttributes<T extends { required_attributes?: RequiredAttributeDto[] }>(
-		dto: T
-	) {
+	private withMappedAttributes<
+		T extends {
+			required_attributes?: RequiredAttributeDto[]
+		}
+	>(dto: T) {
 		const required_attributes = this.mapRequiredAttributes(dto.required_attributes)
 		return {
 			...dto,

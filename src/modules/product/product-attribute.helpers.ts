@@ -38,6 +38,17 @@ export function pickAttr(attributes: AttrLike[], patterns: RegExp[]): string | n
 	return found?.v != null ? String(found.v) : null
 }
 
+/**
+ * The material the shop states for a product — `g:material` in the Merchant feed and `material`
+ * in the page's structured data, so the two never disagree: a v2 definition with the `material`
+ * semantic first, then the filament `polymer` value, then a «Матеріал»-labelled characteristic.
+ */
+export function materialOf(semanticMaterial: string | null | undefined, attributes: AttrLike[]) {
+	if (semanticMaterial) return semanticMaterial
+	const polymer = attributes.find(attribute => attribute?.k === 'polymer')
+	return polymer ? String(polymer.v) : pickAttr(attributes, MATERIAL_PATTERNS)
+}
+
 export function pickColor(
 	vValue: string | null | undefined,
 	attributes: AttrLike[],
@@ -49,6 +60,19 @@ export function pickColor(
 
 	// If the product's variant axis is colour, the variant value IS the colour.
 	if (variantIsColor && vValue) return vValue
-	// Otherwise look for a colour attribute, then fall back to the variant value.
-	return pickAttr(attributes, COLOR_PATTERNS) ?? vValue ?? null
+	// A size, length or current value is not a colour. Explicit colour attributes remain valid.
+	return pickAttr(attributes, COLOR_PATTERNS)
+}
+
+/** Display a size/current/other variant independently from its actual colour. */
+export function pickVariantLabel(
+	value: string | null | undefined,
+	variantType: { label?: string } | null | undefined,
+	color: string | null
+): string | null {
+	const label = variantType?.label
+	const variant = value?.trim() || null
+	return label && !COLOR_PATTERNS.some(pattern => pattern.test(label))
+		? (variant ?? color)
+		: (color ?? variant)
 }

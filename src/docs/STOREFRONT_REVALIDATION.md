@@ -58,10 +58,30 @@ x-revalidate-secret: {REVALIDATE_SECRET}      # only when the env var is set
 {"resource":"products"}
 ```
 
-- **Fire-and-forget.** `revalidate()` returns `void` and never rejects. A non-2xx or a timeout
-  (3 s) is a warning in the log — `Storefront products revalidation after variant update failed
-  (401)` — and the cached copy then expires on its own schedule. No admin save may fail because
-  the storefront was unreachable.
+- **Fire-and-forget.** `revalidate()` returns `void` and never rejects. No admin save may fail
+  because the storefront was unreachable.
+- **Kept until acknowledged — the outbox** (P12, owner decision 02.11.2026; TD-0013 catalog
+  mutations §4). The app attaches the shared instance to MongoDB at start
+  (`StorefrontPurgeOutbox`, `src/common/services/storefront-purge-outbox.ts`), and from then on a
+  request is a document in `storefront_purges`, one per resource: `_id` (the resource), `triggers`
+  (for the log line), `version` (bumped by every request), `due_at`, `attempts`, `lease_until`,
+  `echo`, `last_sent_at`, `last_error`. A poll (every 1 s, and right after a request) claims a due
+  document with a 30 s lease — two backend processes never send the same purge — and posts it.
+  Only a **2xx** removes it: no answer, a timeout (3 s), a 401 from a wrong secret, a 5xx — all
+  keep it, retried after 2 s, doubling up to 5 min, with a warning on the 3rd and every 10th try
+  that names what stays stale — `Storefront categories revalidation after category seo not
+  acknowledged after 3 attempts: 503 … — kept in the outbox, retried every 8 s; stale until then:
+  /catalog, /{category}, /{category}/{landing}, /products/{slug}, the header menu, /sitemap.xml`.
+  The purge survives a restart of either side: the next process delivers what the last one left.
+  A delivery clears only the version it carried; a request that arrived during the call stays due.
+- **The echo** (P15): an acknowledged purge is sent once more 10 s later, then the document is
+  removed. A page render that read the old data just before the purge and wrote its cache entry
+  just after it would otherwise serve the old copy for its hour; the echo expires that entry too.
+  The release E2E saw the header menu stay stale once (01.11) and never reproduced it — the cause
+  is not established; the echo closes that window whatever the cause.
+- **Without the outbox** (a process that never attached one: scripts, unit tests; or MongoDB
+  failing the request itself, logged as `not queued`): the old path — sent now, 3 attempts 2 s
+  apart for no answer / 429 / 5xx, then one warning; the cache then expires on its own (up to 1 h).
 - No `Origin` header is sent, which the frontend's same-origin check treats as a server caller.
 - `Content-Type: application/json` is the frontend's CSRF control, not decoration.
 
@@ -75,19 +95,20 @@ storm with no benefit.
 So the sender throttles per resource, with a **5 s window**:
 
 1. the first write of a burst purges **immediately** — an ordinary single save is never delayed;
-2. every write inside the window is remembered but not sent;
-3. when the window closes, one **trailing** purge covers all of them, and re-opens the window, so
-   a sync that is still writing stays at one purge per window instead of resuming one per write.
+2. every write inside the window joins the one pending document (its trigger, a new version);
+3. it is due when the window after the last delivery closes, so a sync that is still writing
+   stays at one purge per window instead of resuming one per write.
 
-Worst case a bulk write is visible ~5 s late instead of up to an hour late. A quiet window
-closes without sending anything, so an idle admin costs no requests at all.
+Worst case a bulk write is visible ~5 s late instead of up to an hour late. Nothing is sent
+without a request (and its one echo), so an idle admin costs no requests at all. A purge waiting
+out a failure keeps its retry time when a new request joins it.
 
-The window lives on one process-wide instance (`storefrontRevalidation`), and services take it
-through an `@Optional()` constructor parameter that defaults to it. That is deliberate: it is not
-a registered provider, because a provider registered in three modules would be three throttle
-windows — and a bulk write reaching the storefront through two of them is exactly the storm the
-window prevents. If it is ever registered for real, register it **once**, in a `@Global()`
-module. A spec passes its own instance instead.
+The window is in the outbox, so it holds across processes too. The sender is still one
+process-wide instance (`storefrontRevalidation`) that services take through an `@Optional()`
+constructor parameter defaulting to it, and `StorefrontPurgeModule` (`@Global()`, imported once in
+`AppModule`) only attaches it to the database — it is not a provider anyone injects. A spec
+passes its own instance; the outbox spec (`storefront-revalidation.outbox.int-spec.ts`) attaches
+instances to a test database with short timings and a local HTTP server as the storefront.
 
 ### Known gap: the Prom sync itself
 
@@ -117,8 +138,9 @@ removes the duplication and puts landing writes in the same window as the rest.
 Outside production the frontend accepts the call without a secret (localhost development), and
 when the backend has none it sends no header — a supported state, not a misconfiguration. In
 production the frontend answers 503 until its own secret is set and 401 when the two disagree.
-Both show up as the warning above and nothing else: **an unset or mismatched secret degrades the
-shop to the old one-hour staleness, it never breaks a save.**
+Both show up as the warning above and a document that stays in `storefront_purges` (retried every
+5 min at most) — nothing else: **an unset or mismatched secret degrades the shop to the old one-hour
+staleness, it never breaks a save**, and the owed purges go out once the secret is fixed.
 
 ## Limits (inherited from the frontend)
 

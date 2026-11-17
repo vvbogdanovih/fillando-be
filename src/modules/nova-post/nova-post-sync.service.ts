@@ -67,8 +67,12 @@ export class NovaPostSyncService {
 				subject.next({ data: { type: 'done', ...result } })
 				subject.complete()
 			})
-			.catch(err => {
-				subject.next({ data: { type: 'error', message: err.message } })
+			.catch((err: unknown) => {
+				const message =
+					typeof err === 'object' && err !== null && 'message' in err
+						? err.message
+						: undefined
+				subject.next({ data: { type: 'error', message } })
 				subject.complete()
 			})
 

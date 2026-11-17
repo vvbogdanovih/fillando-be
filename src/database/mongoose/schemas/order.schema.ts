@@ -173,6 +173,40 @@ export class StatusHistoryEntry {
 
 export const StatusHistoryEntrySchema = SchemaFactory.createForClass(StatusHistoryEntry)
 
+export const ADS_CONSENT_STATES = ['granted', 'denied', 'unknown'] as const
+export type AdsConsent = (typeof ADS_CONSENT_STATES)[number]
+
+/**
+ * What a conversion upload to Google Ads needs about the visit that placed the order (owner,
+ * 2026-11-16). Everything but `consent` is recorded **only** under `consent: 'granted'` — the
+ * buyer's answer in the cookie banner; otherwise the fields stay null, so an order placed without
+ * consent carries nothing to send (`helpers/order-attribution.ts`).
+ */
+@Schema({ _id: false })
+export class OrderAttribution {
+	@Prop({ type: String, enum: ADS_CONSENT_STATES, required: true })
+	consent: AdsConsent
+
+	/** Google click identifiers the storefront kept from the landing URL. */
+	@Prop({ type: String, default: null })
+	gclid: string | null
+
+	@Prop({ type: String, default: null })
+	gbraid: string | null
+
+	@Prop({ type: String, default: null })
+	wbraid: string | null
+
+	/** The buyer's address and browser as the `POST /orders` request carried them. */
+	@Prop({ type: String, default: null })
+	ip_address: string | null
+
+	@Prop({ type: String, default: null })
+	user_agent: string | null
+}
+
+export const OrderAttributionSchema = SchemaFactory.createForClass(OrderAttribution)
+
 @Schema({ collection: 'orders', timestamps: true })
 export class Order {
 	@Prop({ required: true, unique: true })
@@ -245,6 +279,10 @@ export class Order {
 
 	@Prop({ type: String, default: null })
 	comment: string | null
+
+	/** Admin-only; stripped from every buyer-facing response. Null on orders placed before it. */
+	@Prop({ type: OrderAttributionSchema, default: null })
+	attribution: OrderAttribution | null
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order)

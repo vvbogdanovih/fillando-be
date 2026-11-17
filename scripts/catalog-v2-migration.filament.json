@@ -1,0 +1,40 @@
+{
+	"category_slug": "filament",
+	"brand_key": null,
+	"number_keys": ["vaha", "diametr"],
+	"drop_product_keys": ["kolir"],
+	"removed_keys": ["material"],
+	"axis": { "key": "color", "label": "Колір", "semantic": "color" },
+	"product_name_addition": "Філамент (пластик для 3D-друку)",
+	"definition_order": ["color", "spool_included", "polymer", "finish", "reinforcement", "series"],
+	"semantics": { "vyrobnyk": "brand", "polymer": "material" },
+	"value_aliases": { "finish": { "Glow": "Luminous" } },
+	"enum_labels": {
+		"polymer": { "TPU": "TPU (Flex)", "PA6": "PA6 (Нейлон)" },
+		"finish": {
+			"Silk": "Шовковий (Silk)",
+			"Matte": "Матовий (Matte)",
+			"Luminous": "Люмінесцентний (Luminous)",
+			"Rainbow": "Веселка (Rainbow)",
+			"Gradient": "Градієнт (Gradient)",
+			"Dual-Silk": "Двоколірний шовк (Dual-Silk)",
+			"Tri-Silk": "Триколірний шовк (Tri-Silk)",
+			"Wood": "Під дерево (Wood)",
+			"Temperature Changing": "Термохромний (Temperature Changing)"
+		},
+		"reinforcement": { "CF": "Вуглеволокно (CF)", "GF": "Скловолокно (GF)" },
+		"series": { "Basic": "Базова (Basic)", "High Speed": "Швидкісний (High Speed)" }
+	},
+	"single_sku_color_key": "kolir",
+	"color_aliases": { "Матова веселка": "Rainbow" },
+	"sku_colors": { "FL-000224": "Natural Wood", "FL-000180": "Black", "FL-000248": "Black" },
+	"product_notices": [
+		{
+			"key": "spool_included",
+			"value": "Ні (рефіл)",
+			"title": "Це рефіл — без котушки",
+			"text": "Намотка постачається без пластикової котушки. Щоб друкувати, потрібна власна багаторазова котушка (masterspool) або тримач для рефілу.",
+			"badge": "Без котушки"
+		}
+	]
+}

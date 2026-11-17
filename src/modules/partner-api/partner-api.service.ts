@@ -3,8 +3,10 @@ import {
 	Injectable,
 	Logger,
 	NotFoundException,
+	Optional,
 	UnauthorizedException
 } from '@nestjs/common'
+import { CategoryPublicReadService } from '../category/category-public-read.service'
 import { createHash, randomBytes } from 'node:crypto'
 import { Types } from 'mongoose'
 import { PartnerApiRepository } from 'src/database/mongoose/repositories/partner-api.repository'
@@ -18,7 +20,17 @@ export const hashPartnerToken = (token: string) => createHash('sha256').update(t
 @Injectable()
 export class PartnerApiService {
 	private readonly logger = new Logger(PartnerApiService.name)
-	constructor(private readonly repository: PartnerApiRepository) {}
+	constructor(
+		private readonly repository: PartnerApiRepository,
+		/** Availability is answered only for SKUs of publicly visible categories (TD-0013). */
+		@Optional() private readonly publicCategories?: CategoryPublicReadService
+	) {}
+	private async visibleIds() {
+		if (!this.publicCategories) return undefined
+		return (await this.publicCategories.productCategories()).map(
+			row => new Types.ObjectId(row._id)
+		)
+	}
 	private metadata(row: {
 		_id: Types.ObjectId
 		name: string
@@ -65,7 +77,7 @@ export class PartnerApiService {
 	}
 	async bulkAvailability(skus: string[]): Promise<BulkPartnerAvailabilityResponseDto> {
 		const uniqueSkus = [...new Set(skus)]
-		const rows = await this.repository.bulkAvailability(uniqueSkus)
+		const rows = await this.repository.bulkAvailability(uniqueSkus, await this.visibleIds())
 		const bySku = new Map(rows.map(row => [row.sku, row]))
 		const items: PartnerAvailabilityDto[] = []
 		const not_found: string[] = []
@@ -77,7 +89,7 @@ export class PartnerApiService {
 		return { items, not_found }
 	}
 	async availability(sku: string) {
-		const row = await this.repository.availability(sku)
+		const row = await this.repository.availability(sku, await this.visibleIds())
 		if (!row) throw new NotFoundException('Product not found')
 		return this.toAvailability(row)
 	}

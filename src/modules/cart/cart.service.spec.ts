@@ -15,6 +15,7 @@ const buildVariant = (id: string, overrides: Record<string, unknown> = {}) => ({
 	_id: new Types.ObjectId(id),
 	name: `Variant ${id.slice(-1)}`,
 	slug: `variant-${id.slice(-1)}`,
+	sku: `FL-00000${id.slice(-1)}`,
 	price: 500,
 	stock: 10,
 	status: ProductStatus.ACTIVE,
@@ -22,6 +23,9 @@ const buildVariant = (id: string, overrides: Record<string, unknown> = {}) => ({
 	v_value: null,
 	...overrides
 })
+
+/** The update the service hands the cart repository: the whole `items` array, replaced. */
+type ItemsWrite = { $set: { items: unknown[] } }
 
 const ACTIVE = buildVariant(ACTIVE_ID)
 const DRAFT = buildVariant(DRAFT_ID, { status: ProductStatus.DRAFT })
@@ -31,12 +35,12 @@ const buildService = (cart: { items: Array<Record<string, unknown>> } | null) =>
 		findByUserId: jest.fn().mockResolvedValue(cart),
 		update: jest
 			.fn()
-			.mockImplementation((_filter, payload) =>
+			.mockImplementation((_filter, payload: ItemsWrite) =>
 				Promise.resolve({ items: payload.$set.items })
 			),
 		upsertByUserId: jest
 			.fn()
-			.mockImplementation((_userId, payload) =>
+			.mockImplementation((_userId, payload: ItemsWrite) =>
 				Promise.resolve({ items: payload.$set.items })
 			)
 	}
@@ -138,6 +142,8 @@ describe('CartService — promotion fields on cart lines (TD-0012)', () => {
 		const cart = await service.getCart(USER_ID)
 
 		expect(cart.items[0].variant).toMatchObject({
+			// The analytics item id of the storefront's begin_checkout (Plan-0010 F12).
+			sku: `FL-00000${ACTIVE_ID.slice(-1)}`,
 			price: 600,
 			sale_price: 540,
 			promo_percent: 10,

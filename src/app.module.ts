@@ -1,3 +1,9 @@
+import { CatalogSitemapModule } from './modules/catalog-safety/catalog-sitemap'
+import { APP_INTERCEPTOR } from '@nestjs/core'
+import {
+	LegacyCatalogWriteInterceptor,
+	LegacyCatalogWritePolicy
+} from './modules/catalog-safety/legacy-catalog-write.interceptor'
 import { PartnerApiModule, PartnerTokenAdminModule } from './modules/partner-api/partner-api.module'
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
@@ -6,6 +12,7 @@ import { ThrottlerModule } from '@nestjs/throttler'
 import { isInternalRequest } from './common/guards/internal-request.util'
 import { throttlerTracker } from './common/guards/throttler-tracker.util'
 import { LoggerModule } from 'nestjs-pino'
+import type { IncomingMessage } from 'node:http'
 import { stdSerializers } from 'pino-http'
 
 import { AuthModule } from './modules/auth/auth.module'
@@ -14,6 +21,8 @@ import { CategoryModule } from './modules/category/category.module'
 import { ProductModule } from './modules/product/product.module'
 import { ColorModule } from './modules/color/color.module'
 import { LandingModule } from './modules/landing/landing.module'
+import { StorefrontModule } from './modules/storefront/storefront.module'
+import { CatalogRoutesModule } from './modules/catalog-routes/catalog-routes.module'
 import { UploadModule } from './modules/upload/upload.module'
 import { NumbersModule } from './modules/numbers/numbers.module'
 import { CartModule } from './modules/cart/cart.module'
@@ -29,9 +38,11 @@ import { DiscountCouponModule } from './modules/discount-coupon/discount-coupon.
 import { UsersModule } from './modules/users/users.module'
 import { WholesaleInquiryModule } from './modules/wholesale-inquiry/wholesale-inquiry.module'
 import { ENV } from './common/constants'
+import { StorefrontPurgeModule } from './common/services/storefront-purge-outbox'
 
 @Module({
 	imports: [
+		CatalogSitemapModule,
 		PartnerApiModule,
 		PartnerTokenAdminModule,
 		LoggerModule.forRoot({
@@ -49,7 +60,7 @@ import { ENV } from './common/constants'
 					censor: '[redacted]'
 				},
 				serializers: {
-					req: req => {
+					req: (req: IncomingMessage) => {
 						const serialized = stdSerializers.req(req)
 						serialized.url = serialized.url.replace(/([?&]token=)[^&]*/, '$1[redacted]')
 						return serialized
@@ -67,12 +78,15 @@ import { ENV } from './common/constants'
 		}),
 		MongooseModule.forRoot(ENV.DATABASE_URL),
 		ScheduleModule.forRoot(),
+		StorefrontPurgeModule,
 		AuthModule,
 		VendorModule,
 		CategoryModule,
 		ProductModule,
 		ColorModule,
 		LandingModule,
+		StorefrontModule,
+		CatalogRoutesModule,
 		UploadModule,
 		NumbersModule,
 		CartModule,
@@ -89,7 +103,10 @@ import { ENV } from './common/constants'
 		WholesaleInquiryModule
 	],
 	controllers: [],
-	providers: [],
+	providers: [
+		LegacyCatalogWritePolicy,
+		{ provide: APP_INTERCEPTOR, useClass: LegacyCatalogWriteInterceptor }
+	],
 	exports: []
 })
 export class AppModule {}

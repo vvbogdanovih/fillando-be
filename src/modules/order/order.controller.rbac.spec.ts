@@ -247,11 +247,14 @@ describe('OrderController RBAC', () => {
 			}
 		)
 
+		// The request's own address and browser, handed over for `buildOrderAttribution`.
+		const CLIENT: unknown = expect.objectContaining({ ip: expect.any(String) as unknown })
+
 		it('places a guest order with no user id attached', async () => {
 			const res = await send(app, 'post', '/orders', { body: { items: [] } })
 
 			expect(res.status).toBe(201)
-			expect(orderService.create).toHaveBeenCalledWith({ items: [] }, undefined)
+			expect(orderService.create).toHaveBeenCalledWith({ items: [] }, undefined, CLIENT)
 		})
 
 		it('attaches the user id when the same checkout carries a token', async () => {
@@ -261,7 +264,7 @@ describe('OrderController RBAC', () => {
 			})
 
 			expect(res.status).toBe(201)
-			expect(orderService.create).toHaveBeenCalledWith({ items: [] }, 'u1')
+			expect(orderService.create).toHaveBeenCalledWith({ items: [] }, 'u1', CLIENT)
 		})
 
 		/**

@@ -16,7 +16,11 @@ const buildService = () => {
 		delete: jest.fn().mockResolvedValue(true)
 	}
 	const revalidation = { revalidate: jest.fn() }
-	const service = new CategoryService(categoryRepository as never, revalidation as never)
+	const service = new CategoryService(
+		categoryRepository as never,
+		{} as never,
+		revalidation as never
+	)
 	return { service, categoryRepository, revalidation }
 }
 

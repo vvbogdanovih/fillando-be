@@ -218,9 +218,10 @@ derive the margin. Public product endpoints also list only `status = active` var
 (`ProductStatus.ACTIVE`) — the price sheet, `GET /products/variants/slugs` (sitemap source) and
 `GET /products/variants/count` (its cache key), `catalog`/`search`. `GET /products/by-slug/:slug`
 additionally resolves an `archived` slug (200, `status: archived`, for the discontinued product
-page — TD-0006 §5.4); a `draft` slug → 404. The response also carries `product.manufacturer`,
-read from the «Виробник» attribute with the same `pickAttr(MANUFACTURER_PATTERNS)` the price sheet
-uses — `Vendor` is the supplier and is never exposed as the brand.
+page — TD-0006 §5.4); a `draft` slug → 404. The response also carries `product.manufacturer`: on a v2
+page the linked brand entity, else the characteristic marked `semantic: brand`; on a v1 page the
+«Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`, as the price sheet — `Vendor` is the
+supplier and is never exposed as the brand.
 
 `product.attributes` goes through `toPublicAttributes` for the same reason, and is the one place a
 field is joined **in** rather than dropped: each attribute carries the `unit` its category declares
@@ -274,25 +275,31 @@ login(...) {}
 | `POST /discount-coupons/validate`                  | 20                         |
 | `GET /products/price-sheet`                        | 20                         |
 | `GET /products/catalog`                            | 120                        |
+| `GET /products/catalog/v2`, `GET /products/catalog/v2/category-counts`, `GET /products/catalog/v2/strip` | 120 each (`product.controller.throttle.spec.ts`) |
+| `GET /catalog/sitemap`, `GET /catalog/sitemap/part` | 10 each (`catalog-sitemap.controller.throttle.spec.ts`; owner decision 31.10.2026 — each read scans the visible SKUs; the storefront and the release probes send `X-Internal-Token` and are exempt; the per-IP key is the visitor behind Cloudflare (P11); the URL set is built once per catalogue state and kept in memory (P14)) |
 | `GET /orders/lookup/:orderNumber`                  | 30                         |
 | `PATCH /orders/lookup/:orderNumber/payment-method` | 5                          |
 | `POST /wholesale-inquiries`                        | 10                         |
 
-- The IP comes from `req.ips[0] ?? req.ip`, via the `getTracker` in
-  `src/common/guards/throttler-tracker.util.ts`. `main.ts` sets `trust proxy 1`, so `req.ips`
-  is the `X-Forwarded-For` chain, client first. The library's own default is `req.ip`, which
-  behind a proxy is the proxy — every visitor arriving through one Cloudflare edge would have
-  shared a single allowance while a caller from another edge went uncounted. This paragraph
-  described the tracker for a while before the tracker existed (Plan-0005 I-39).
-- The header is only as trustworthy as the deployment: anything that can reach the app without
-  passing the proxy can set `X-Forwarded-For` itself. Keeping the origin unreachable except
-  through Cloudflare and Nginx is the release check (Plan-0005 A1), not something the tracker
-  can enforce.
+- The key is the visitor, `clientIp(req)` in `src/common/guards/client-ip.util.ts`, via the
+  `getTracker` in `src/common/guards/throttler-tracker.util.ts` (P11, owner decision 02.11.2026).
+  `main.ts` sets `trust proxy 1`, so `req.ip` is the address the proxy in front of the app saw.
+  Behind Cloudflare that is an edge node every visitor it serves shares — the library's default
+  key, which made one allowance for all of them while a caller through another edge went uncounted
+  (Plan-0005 I-39). When `req.ip` is in Cloudflare's published ranges (`CLOUDFLARE_RANGES`), the
+  key is `CF-Connecting-IP`, which Cloudflare overwrites; from any other address the header is
+  ignored, so a request around Cloudflare (Railway's `*.up.railway.app`) is keyed by its own
+  address and cannot choose one — as long as the proxy in front appends the address it saw to
+  `X-Forwarded-For`, which `trust proxy 1` assumes and Railway does not document (release check). The head of `X-Forwarded-For` is never read — the client writes
+  it. A range Cloudflare adds later only falls back to the edge key; update the list then. The
+  partner API's per-IP limit and the IP stored with a refresh token use the same `clientIp`.
+  Release check: runbook §3.10 (`X-RateLimit-Remaining` from two networks). Tests:
+  `throttler-tracker.util.spec.ts`, `discount-coupon.controller.throttle.spec.ts` (two visitors
+  through one edge, a spoofed header around it).
 - `GET /products/catalog` is deliberately the loosest limit in the table (120/min = 2/s). It runs
   three `$facet` aggregations, so it must not be free — but it is also the endpoint the storefront
   calls on every filter click, it is rendered server-side (all SSR renders share the one container
-  IP), and behind Cloudflare the leftmost `X-Forwarded-For` entry is only the real client as long as
-  the edge is configured to send it. A tight limit here breaks browsing, not scraping. **Follow-up:**
+  IP). A tight limit here breaks browsing, not scraping. **Follow-up:**
   the storefront's `serverFetch` does not send `X-Internal-Token` yet, so SSR catalogue renders are
   counted like a visitor's; adding the header exempts them (`skipIf`) and is the proper fix.
 - A blocked request gets `429` with a `Retry-After` header (exposed through CORS).
@@ -331,7 +338,24 @@ Non-exhaustive — see `app.module.ts` for the full list (18 feature modules) an
 
 ## 6. Where Swagger is configured
 
-- **`src/main.ts`** — Builds the OpenAPI document and mounts Swagger UI at **`/swagger`** (or `/<global-prefix>/swagger` if a global prefix is configured).
+- **`src/common/swagger/openapi-document.ts`** (`buildOpenApiDocument`) — builds the one OpenAPI document that
+  `src/main.ts` mounts at **`/swagger`** and `yarn spec:export` writes to `openapi.json`.
+- **`src/main.ts`** — mounts Swagger UI at **`/swagger`** (or `/<global-prefix>/swagger` if a global prefix is configured).
+
+### Security in the document (owner decision 31.10.2026)
+
+Three schemes: **`access-cookie`** (apiKey in cookie `access_token` — the canonical name of
+`ACCSESS_TOKEN_NAME` in fillando-meta `docs/runbooks/env-template.env`, a constant, never the generating
+process's env), **`partner-token`** (HTTP bearer) and **`internal-token`** (header `x-internal-token`). The
+access cookie is the document's default requirement. Every operation carries exactly one mark, derived from
+its guards so it cannot drift from the code: `JwtAuthGuard` → `[{access-cookie: []}]`, its description starting
+«Requires role: ADMIN (access cookie).» (or «Requires sign-in…» without `@Roles`); `PartnerApiGuard` →
+`[{partner-token: []}]`; anything else (no guard, throttling, `OptionalJwtAuthGuard`, Google OAuth) → explicitly
+public, `security: []`. The internal token only exempts a request from the per-IP limits (§4a) — no route requires
+it, so no operation is marked with it (42 public, 127 cookie, 5 partner on 31.10). Swagger UI's «Try it out» works
+as before: public operations run without authorization; cookie ones send the browser's own cookie (the UI
+cannot set an httpOnly cookie). Pinned by `src/common/swagger/openapi-document.spec.ts` (every route exactly one
+mark, the committed `openapi.json` carries the same marks).
 - **Controllers** — Provide tags and operation metadata via `@ApiTags`, `@ApiOperation`.
 - **DTOs** — Provide request/response schemas via `@ApiProperty`.
 - **Constants** — `API_OPERATION` and `API_PROPERTY` keep doc texts in one place so you don’t duplicate them in every controller/DTO.

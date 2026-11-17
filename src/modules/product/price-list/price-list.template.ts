@@ -1,4 +1,4 @@
-import type { PriceListBlock, PriceListData } from './price-list.types'
+import type { PriceListBlock, PriceListData, PriceListSection } from './price-list.types'
 
 /**
  * Product names and colours are vendor-scraped and do contain `&`, `<` and quotes, so
@@ -14,8 +14,8 @@ function esc(value: string | number | null | undefined): string {
 }
 
 /**
- * Wholesale prices are whole hryvnias, so this is deliberately not `formatPrice` from
- * the order helpers (which hard-codes 2 decimals and appends ₴ to every cell).
+ * Prices are whole hryvnias, so this is deliberately not `formatPrice` from the order helpers
+ * (which hard-codes 2 decimals and appends ₴ to every cell).
  */
 function formatUah(value: number): string {
 	return value.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -31,40 +31,113 @@ function formatDateTime(date: Date): string {
 	})
 }
 
-/**
- * Column widths are percentages of the printable width, which differs a lot between
- * orientations (190mm portrait vs 267mm landscape). Landscape spends its extra room on
- * the name and colour columns — the two that wrap — instead of inflating the numeric
- * ones, which never need more than four digits.
- */
-const COLUMN_WIDTHS = {
-	portrait: ['11%', '32%', '16%', '7%', '11%', '11.5%', '11.5%'],
-	landscape: ['9%', '34%', '19%', '6%', '10.5%', '10.75%', '10.75%']
-} as const
+/** The longest word: a column narrower than it breaks the word in the middle. */
+const longestWord = (text: string) => Math.max(0, ...text.split(/\s+/).map(word => word.length))
 
-function renderBlock(block: PriceListBlock): string {
+/**
+ * Column widths, as percentages of the printable width (190mm portrait, 267mm landscape). SKU,
+ * quantity and price are fixed — a code or four digits. The name and the category's columns share
+ * the rest by what they hold: a column gets room for its longest text up to a cap, and never less
+ * than its longest word (header included), so «Помаранчевий (Orange)» is not split mid-word while
+ * «1.75 мм» stays narrow. Measured in characters; the font is the same everywhere.
+ */
+function columnWidths(section: PriceListSection): string[] {
+	const fixed = { sku: 10, stock: 5, price: 7 }
+	const rows = section.blocks.flatMap(block => block.rows)
+	// A word needs its letters plus the cell's padding; a bold header letter is wider still.
+	const weight = (texts: string[], label: string) =>
+		Math.max(
+			5,
+			(longestWord(label) + 2) * 1.15,
+			...texts.map(text => longestWord(text) + 2),
+			Math.min(20, Math.max(0, ...texts.map(text => text.length)) * 0.6)
+		)
+	const flexible = [
+		Math.max(
+			14,
+			Math.min(26, Math.max(0, ...section.blocks.map(block => block.product_name.length)) / 2)
+		),
+		...section.columns.map(column =>
+			weight(
+				rows.map(row => row.values[column.key] ?? ''),
+				column.label
+			)
+		),
+		...(section.variant_column
+			? [
+					weight(
+						rows.map(row => row.variant_label),
+						'Варіант'
+					)
+				]
+			: [])
+	]
+	const rest = 100 - fixed.sku - fixed.stock - fixed.price
+	const total = flexible.reduce((sum, value) => sum + value, 0)
+	return [
+		fixed.sku,
+		...flexible.map(value => (rest * value) / total),
+		fixed.stock,
+		fixed.price
+	].map(width => `${width.toFixed(2)}%`)
+}
+
+function renderBlock(section: PriceListSection, block: PriceListBlock): string {
+	const span = block.rows.length
 	const rows = block.rows
 		.map((row, index) => {
-			const nameCell =
-				index === 0
-					? `<td class="name" rowspan="${block.rows.length}">${esc(block.product_name)}${
-							block.is_continuation ? '<span class="cont"> (продовження)</span>' : ''
-						}</td>`
-					: ''
+			const first = index === 0
+			// The product's name and product-level values are one merged cell; its axis — the one
+			// value that differs between its SKUs — one cell per row.
+			const columns = section.columns
+				.map(column =>
+					column.key === block.axis_key
+						? `<td>${esc(row.values[column.key] ?? '—')}</td>`
+						: first
+							? `<td class="merged" rowspan="${span}">${esc(row.values[column.key] ?? '—')}</td>`
+							: ''
+				)
+				.join('')
+			const nameCell = first
+				? `<td class="name" rowspan="${span}">${esc(block.product_name)}${
+						block.is_continuation ? '<span class="cont"> (продовження)</span>' : ''
+					}</td>`
+				: ''
 
 			return `<tr>
 			<td class="sku">${esc(row.sku)}</td>
-			${nameCell}
-			<td>${esc(row.color)}</td>
+			${nameCell}${columns}${section.variant_column ? `<td>${esc(row.variant_label)}</td>` : ''}
 			<td class="c">${row.stock}</td>
 			<td class="r">${formatUah(row.price)}</td>
-			<td class="r">${formatUah(row.price_tier1)}</td>
-			<td class="r">${formatUah(row.price_tier2)}</td>
 		</tr>`
 		})
 		.join('\n\t\t')
 
 	return `<tbody class="grp">\n\t\t${rows}\n\t</tbody>`
+}
+
+/** One category: its heading and its own table — the header repeats on every page it spans. */
+function renderSection(section: PriceListSection): string {
+	return `<h2>${esc(section.category_name)}</h2>
+	<table>
+		<colgroup>
+			${columnWidths(section)
+				.map(width => `<col style="width:${width}" />`)
+				.join('\n\t\t\t')}
+		</colgroup>
+		<thead>
+			<tr>
+				<th>SKU</th>
+				<th>Назва</th>
+				${section.columns.map(column => `<th>${esc(column.label)}</th>`).join('')}${
+					section.variant_column ? '<th>Варіант</th>' : ''
+				}
+				<th>К-ть</th>
+				<th>Ціна</th>
+			</tr>
+		</thead>
+		${section.blocks.map(block => renderBlock(section, block)).join('\n\t\t')}
+	</table>`
 }
 
 export function priceListTemplate(data: PriceListData): string {
@@ -105,23 +178,27 @@ export function priceListTemplate(data: PriceListData): string {
 		.logo { height: 26px; display: block; margin-bottom: 6px; }
 		.wordmark { font-size: 18px; font-weight: 700; letter-spacing: 2px; margin-bottom: 6px; }
 		h1 { font-size: 13px; margin: 0 0 3px; }
+		h2 { font-size: 11px; margin: 10px 0 4px; break-after: avoid; page-break-after: avoid; }
 		.meta { font-size: 8px; color: #666; }
 		table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 		/* Repeats the column header on every printed page. */
 		thead { display: table-header-group; }
 		/* Keeps a merged-name block whole, so a rowspan never straddles a page break. */
 		tbody.grp, tr { break-inside: avoid; page-break-inside: avoid; }
+		/* Category labels are long («Котушка в комплекті»): plain case, wrapped between words. */
 		th {
 			border: 1px solid #999;
 			background: #f0f0f0;
 			padding: 4px 5px;
 			font-size: 8px;
+			font-weight: 600;
 			text-align: left;
-			text-transform: uppercase;
-			letter-spacing: .4px;
+			vertical-align: bottom;
+			overflow-wrap: anywhere;
 		}
 		td { border: 1px solid #999; padding: 3px 5px; vertical-align: top; word-break: break-word; }
 		td.name { vertical-align: middle; font-weight: 600; }
+		td.merged { vertical-align: middle; }
 		td.sku, td.r { white-space: nowrap; font-variant-numeric: tabular-nums; }
 		td.c { text-align: center; }
 		td.r { text-align: right; }
@@ -134,25 +211,7 @@ export function priceListTemplate(data: PriceListData): string {
 		<h1>Прайс-лист</h1>
 		<div class="meta">Станом на ${formatDateTime(data.generatedAt)} · ${filters}</div>
 	</div>
-	<table>
-		<colgroup>
-			${(data.landscape ? COLUMN_WIDTHS.landscape : COLUMN_WIDTHS.portrait)
-				.map(width => `<col style="width:${width}" />`)
-				.join('\n\t\t\t')}
-		</colgroup>
-		<thead>
-			<tr>
-				<th>SKU</th>
-				<th>Назва</th>
-				<th>Колір</th>
-				<th>К-ть</th>
-				<th>Ціна</th>
-				<th>Ціна від 50кг</th>
-				<th>Ціна від 100кг</th>
-			</tr>
-		</thead>
-		${data.blocks.map(renderBlock).join('\n\t\t')}
-	</table>
+	${data.sections.map(renderSection).join('\n\t')}
 </body>
 </html>`
 }

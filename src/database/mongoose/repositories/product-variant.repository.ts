@@ -6,15 +6,19 @@ import { ColorFamily, ProductStatus } from 'src/common/types/enums'
 import { BaseRepository } from './base.repository'
 import {
 	PRICE_SHEET_PUBLIC_PROJECTION,
-	toPublicVariant
+	toPublicVariant,
+	type PublicColor
 } from 'src/modules/product/product-public.mappers'
+import type { Category } from '../schemas/category.schema'
 import type { Color } from '../schemas/color.schema'
+import type { Attribute, ProductDescription, VariantType } from '../schemas/product.schema'
 import type { PriceListRawRow } from 'src/modules/product/price-list/price-list.types'
+import type { PriceSheetRaw } from 'src/modules/product/product.service'
 import { mergeFacetValues, type CatalogFacetValue } from 'src/common/utils/facet.utils'
 import {
 	effectivePriceExpr,
 	publicPromoProjection,
-	salePriceOf
+	type PublicPromoFields
 } from 'src/modules/product/promo-pricing'
 
 /**
@@ -27,22 +31,55 @@ export interface CatalogColorOption {
 	hex_stops: string[]
 }
 
-/**
- * The spooled version of a refill, for the price reference on its page. `matched_colour` says
- * whether it is the same colour — when it is not, the figure is a "from", not this filament's
- * price on a spool.
- */
-export interface SpooledCounterpart {
-	slug: string
-	name: string
-	price: number
-	/** The spool's own promotion, if any — the refill page quotes what the spool really costs. */
-	sale_price: number | null
-	matched_colour: boolean
-}
-
 /** The dictionary fields the public colour payload is built from. */
 type PublicColorSource = Pick<Color, 'name_uk' | 'name_en' | 'family' | 'hex_stops'>
+
+/**
+ * The product fields the public product page reads, raw from the collection — so the v2 fields
+ * the schema class does not declare (TD-0013) come along, and a typed product's `null`s too.
+ */
+type PageProductSource = {
+	_id: Types.ObjectId
+	name: string
+	description?: ProductDescription | null
+	attributes?: Attribute[]
+	variant_type?: VariantType | null
+	attributes_v2?: { k: string; v: string | number | boolean }[]
+	variant_axis?: { key: string } | null
+	brand_id?: Types.ObjectId | null
+	purchase_notice?: { title: string; text: string; badge: string | null } | null
+}
+
+/** A variant as the product page reads it: the stored fields plus the typed axis value of a v2 SKU. */
+type PageVariant = ProductVariant & {
+	_id: Types.ObjectId
+	variant_value?: string | number | boolean | null
+}
+
+/** One row of the site search listing, as the `$facet` items branch projects it. */
+export interface SearchResultRow extends PublicPromoFields {
+	id: string
+	name: string
+	slug: string
+	sku: string
+	price: number
+	stock: number
+	price_updated_at: Date | null
+	v_value: string | null
+	attributes?: Attribute[]
+	main_image: string | null
+}
+
+/** One catalogue card: a search row plus the four public colour fields — null without a colour. */
+export interface CatalogItemRow extends SearchResultRow {
+	color: PublicColor | null
+}
+
+/** The single document a paginated `$facet` returns: one page of rows and the total count. */
+interface PagedFacet<Row> {
+	items: Row[]
+	meta: { total: number }[]
+}
 
 /**
  * Everything the display name of one variant is built from, joined in a single pass.
@@ -56,6 +93,13 @@ export interface VariantNameSource {
 	v_value: string | null
 	product_name: string
 }
+
+/**
+ * Rows per cursor batch of the feed working set. Small on purpose: a batch is deserialised at
+ * once and stays alive while its rows are built, so under concurrent catalogue reads a large one
+ * survives into the old generation — 500 rows lifted the shared peak by tens of MiB (Plan-0010 D06).
+ */
+const FEED_BATCH = 100
 
 /** One ACTIVE variant as `findActiveForFeed` returns it — the Google Shopping feed's working set. */
 export interface FeedVariantRow {
@@ -72,11 +116,17 @@ export interface FeedVariantRow {
 	images: string[]
 	v_value: string | null
 	weight_g: number | null
+	/** Typed axis value of a v2 SKU (TD-0013); the feed adapter formats it. */
+	variant_value?: string | number | boolean | null
 	product: {
 		name: string
 		description_html: string | null
 		attributes: { k?: string; l?: string; v?: string | number | boolean }[]
 		variant_type: { key?: string; label?: string } | null
+		attributes_v2?: { k: string; v: string | number | boolean }[]
+		variant_axis?: { key: string } | null
+		/** Active v2 brand entity name, if the product links one. */
+		brand_name?: string | null
 	} | null
 	category: {
 		id: string
@@ -91,6 +141,14 @@ export interface FeedVariantRow {
 		}[]
 	} | null
 	color: { name_uk: string; name_en: string } | null
+	/**
+	 * Values of the v2 definitions with a `size` / `material` / `brand` semantic (product value or
+	 * the axis value; the brand entity wins for `brand`), filled by the feed adapter only — so its
+	 * presence marks a v2 row. `g:size` / `g:material` / `g:brand` never guess from labels.
+	 */
+	semantic?: { size?: string | null; material?: string | null; brand?: string | null }
+	/** `g:product_highlight` of a v2 row: its visible characteristics (feed adapter). */
+	highlights?: string[]
 }
 
 @Injectable()
@@ -374,18 +432,18 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	/**
 	 * Public product page. ACTIVE and ARCHIVED variants are found — an archived one renders as
 	 * «Знято з продажу» so a live ad or backlink does not land on a 404 (TD-0006 §5.4). DRAFT
-	 * stays invisible on purpose. Siblings and the spooled counterpart remain ACTIVE-only, and
-	 * the `variant` part goes through {@link toPublicVariant} so supplier fields never leak.
+	 * stays invisible on purpose. Siblings remain ACTIVE-only, and the `variant` part goes
+	 * through {@link toPublicVariant} so supplier fields never leak.
 	 */
 	async findVariantWithProduct(slug: string) {
 		const variant = await this.model
 			.findOne({ slug, status: { $in: [ProductStatus.ACTIVE, ProductStatus.ARCHIVED] } })
-			.lean()
+			.lean<PageVariant>()
 			.exec()
 		if (!variant) return null
 
 		const [product, siblings, category] = await Promise.all([
-			this.model.db.collection('products').findOne(
+			this.model.db.collection<PageProductSource>('products').findOne(
 				{ _id: variant.product_id },
 				{
 					projection: {
@@ -393,7 +451,10 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						description: 1,
 						attributes: 1,
 						variant_type: 1,
-						spooled_product_id: 1
+						attributes_v2: 1,
+						variant_axis: 1,
+						brand_id: 1,
+						purchase_notice: 1
 					}
 				}
 			),
@@ -413,13 +474,14 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						stock: 1,
 						price_updated_at: 1,
 						status: 1,
-						color_id: 1
+						color_id: 1,
+						variant_value: 1
 					}
 				)
-				.lean()
+				.lean<PageVariant[]>()
 				.exec(),
 			this.model.db
-				.collection('categories')
+				.collection<Pick<Category, 'slug' | 'name'>>('categories')
 				.findOne({ _id: variant.category_id }, { projection: { slug: 1, name: 1 } })
 		])
 
@@ -433,92 +495,37 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		const colorsById = await this.loadColorsById(colorIds)
 
 		const now = new Date()
-		const spooledCounterpart = await this.findSpooledCounterpart(
-			(product as any).spooled_product_id,
-			variant.color_id,
-			now
-		)
-
 		return {
 			variant: toPublicVariant(variant, colorsById.get(String(variant.color_id)), now),
 			product: {
-				id: String((product as any)._id),
-				name: (product as any).name,
-				description: (product as any).description,
-				attributes: (product as any).attributes,
-				variant_type: (product as any).variant_type
+				id: String(product._id),
+				name: product.name,
+				description: product.description,
+				attributes: product.attributes,
+				variant_type: product.variant_type
 			},
 			// Same public allowlist as `variant` — one projection for the whole public page.
 			siblings: siblings.map(s =>
 				toPublicVariant(s, colorsById.get(String(s.color_id)), now)
 			),
-			category_slug: (category as any)?.slug ?? null,
-			category_name: (category as any)?.name ?? null,
-			spooled_counterpart: spooledCounterpart
+			category_slug: category?.slug ?? null,
+			category_name: category?.name ?? null,
+			/**
+			 * Internal to the public read adapter (TD-0013), never spread into a response: the
+			 * category it resolves visibility and the attribute contract against, and the typed
+			 * values a v2 product page formats through its category definitions.
+			 */
+			typed: {
+				category_id: String(variant.category_id),
+				attributes_v2: product.attributes_v2 ?? [],
+				variant_axis: product.variant_axis ?? null,
+				brand_id: product.brand_id ? String(product.brand_id) : null,
+				purchase_notice: product.purchase_notice ?? null,
+				variant_values: Object.fromEntries(
+					[variant, ...siblings].map(v => [String(v._id), v.variant_value ?? null])
+				)
+			}
 		}
-	}
-
-	/**
-	 * The spooled version of a refill, for the price reference and the link on its page.
-	 *
-	 * Same colour where there is one — a refill in Natural should quote the Natural spool, not
-	 * whichever variant happens to sort first — and the cheapest ACTIVE variant otherwise, since
-	 * the page shows the figure as "from". `null` for every ordinary product: only a refill
-	 * carries `spooled_product_id`.
-	 */
-	private async findSpooledCounterpart(
-		spooledProductId: Types.ObjectId | null | undefined,
-		colorId: Types.ObjectId | null | undefined,
-		now: Date = new Date()
-	): Promise<SpooledCounterpart | null> {
-		if (!spooledProductId) return null
-
-		type SpoolRow = {
-			slug: string
-			name: string
-			price: number
-			promo_percent?: number | null
-			promo_ends_at?: Date | null
-		}
-		const projection = {
-			_id: 0,
-			slug: 1,
-			name: 1,
-			price: 1,
-			promo_percent: 1,
-			promo_ends_at: 1
-		}
-		const toCounterpart = (row: SpoolRow, matched_colour: boolean): SpooledCounterpart => ({
-			slug: row.slug,
-			name: row.name,
-			price: row.price,
-			sale_price: salePriceOf(row, now),
-			matched_colour
-		})
-		const sameColour = colorId
-			? await this.model
-					.findOne(
-						{
-							product_id: spooledProductId,
-							color_id: colorId,
-							status: ProductStatus.ACTIVE
-						},
-						projection
-					)
-					.lean<SpoolRow>()
-					.exec()
-			: null
-		if (sameColour) return toCounterpart(sameColour, true)
-
-		// A refill whose own colour has no spool left is not the same offer, so this is the
-		// cheapest one — the page words it as "from" rather than as the price of this filament.
-		// Cheapest by regular price: a sale on one spool colour does not make it "the" spool.
-		const cheapest = await this.model
-			.findOne({ product_id: spooledProductId, status: ProductStatus.ACTIVE }, projection)
-			.sort({ price: 1 })
-			.lean<SpoolRow>()
-			.exec()
-		return cheapest ? toCounterpart(cheapest, false) : null
 	}
 
 	/** Dictionary rows for the given colour ids, keyed by id string. */
@@ -555,8 +562,10 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		skuVariantIds: Types.ObjectId[]
 		page: number
 		limit: number
+		/** Publicly visible categories (TD-0013); omitted only by callers predating the tree. */
+		categoryIds?: Types.ObjectId[]
 	}) {
-		const { productIds, skuVariantIds, page, limit } = params
+		const { productIds, skuVariantIds, page, limit, categoryIds } = params
 		const skip = (page - 1) * limit
 
 		const matchConditions: any[] = []
@@ -575,7 +584,12 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		}
 
 		const pipeline: any[] = [
-			{ $match: { $or: matchConditions } },
+			{
+				$match: {
+					$or: matchConditions,
+					...(categoryIds ? { category_id: { $in: categoryIds } } : {})
+				}
+			},
 			{
 				$lookup: {
 					from: 'products',
@@ -621,7 +635,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			}
 		]
 
-		const [result] = await this.model.aggregate(pipeline).exec()
+		const [result] = await this.model.aggregate<PagedFacet<SearchResultRow>>(pipeline).exec()
 		const items = result?.items ?? []
 		const total = result?.meta[0]?.total ?? 0
 
@@ -636,12 +650,23 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	 * fields only (never `vendor_product_sku` — that would be an oracle for supplier SKUs)
 	 * and rows are shaped by {@link PRICE_SHEET_PUBLIC_PROJECTION}.
 	 */
-	async findPriceSheet(params: { q?: string; page: number; limit: number }) {
-		const { q, page, limit } = params
+	async findPriceSheet(params: {
+		q?: string
+		page: number
+		limit: number
+		/** Publicly visible categories (TD-0013); omitted only by callers predating the tree. */
+		categoryIds?: Types.ObjectId[]
+	}) {
+		const { q, page, limit, categoryIds } = params
 		const skip = (page - 1) * limit
 
 		const pipeline: any[] = [
-			{ $match: { status: ProductStatus.ACTIVE } },
+			{
+				$match: {
+					status: ProductStatus.ACTIVE,
+					...(categoryIds ? { category_id: { $in: categoryIds } } : {})
+				}
+			},
 			{
 				$lookup: {
 					from: 'products',
@@ -661,7 +686,17 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 					as: 'color'
 				}
 			},
-			{ $unwind: { path: '$color', preserveNullAndEmptyArrays: true } }
+			{ $unwind: { path: '$color', preserveNullAndEmptyArrays: true } },
+			// A linked brand entity counts only while active (v2 products, TD-0013).
+			{
+				$lookup: {
+					from: 'brands',
+					localField: 'product.brand_id',
+					foreignField: '_id',
+					pipeline: [{ $match: { status: 'active' } }, { $project: { name: 1 } }],
+					as: 'brand'
+				}
+			}
 		]
 
 		const term = (q ?? '').trim()
@@ -670,18 +705,27 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			const rx = { $regex: escaped, $options: 'i' }
 			pipeline.push({
 				$match: {
-					$or: [{ 'product.name': rx }, { sku: rx }, { 'product.attributes.v': rx }]
+					$or: [
+						{ 'product.name': rx },
+						{ sku: rx },
+						{ 'product.attributes.v': rx },
+						// Typed text values (v2); an enum id or a number never matches a word.
+						{ 'product.attributes_v2.v': rx }
+					]
 				}
 			})
 		}
 
 		pipeline.push(
 			{ $addFields: { _hasStock: { $cond: [{ $gt: ['$stock', 0] }, 1, 0] } } },
-			// Availability first (in-stock variants before out-of-stock), then within each
-			// availability bucket group a product's variants together (by product name, then
-			// product id) so they don't scatter when variants were added at different times.
+			// One category after another (the sheet shows each with its own columns, owner
+			// 2026-11-06; in creation order), then availability first (in-stock variants before
+			// out-of-stock), then within each availability bucket group a product's variants
+			// together (by product name, then product id) so they don't scatter when variants were
+			// added at different times.
 			{
 				$sort: {
+					category_id: 1,
 					_hasStock: -1,
 					'product.name': 1,
 					product_id: 1,
@@ -700,7 +744,7 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 			}
 		)
 
-		const [result] = await this.model.aggregate(pipeline).exec()
+		const [result] = await this.model.aggregate<PagedFacet<PriceSheetRaw>>(pipeline).exec()
 		return {
 			items: result?.items ?? [],
 			total: result?.meta?.[0]?.total ?? 0
@@ -737,19 +781,56 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						as: 'product',
 						// Only what the price list needs — avoids hauling every description.
 						pipeline: [
-							{ $project: { _id: 0, name: 1, attributes: 1, variant_type: 1 } }
+							{
+								$project: {
+									_id: 0,
+									name: 1,
+									attributes: 1,
+									variant_type: 1,
+									attributes_v2: 1,
+									variant_axis: 1,
+									brand_id: 1
+								}
+							}
 						]
 					}
 				},
 				{ $unwind: '$product' },
+				// A linked brand entity counts only while active (v2 products, TD-0013).
+				{
+					$lookup: {
+						from: 'brands',
+						localField: 'product.brand_id',
+						foreignField: '_id',
+						pipeline: [{ $match: { status: 'active' } }, { $project: { name: 1 } }],
+						as: 'brand'
+					}
+				},
+				// The dictionary colour of a colour-axis column (owner, 2026-11-06).
+				{
+					$lookup: {
+						from: 'colors',
+						localField: 'color_id',
+						foreignField: '_id',
+						pipeline: [{ $project: { name_uk: 1, name_en: 1 } }],
+						as: 'color'
+					}
+				},
 				{
 					$project: {
 						_id: 0,
 						product_id: { $toString: '$product_id' },
+						color_name_uk: { $ifNull: [{ $arrayElemAt: ['$color.name_uk', 0] }, null] },
+						color_name_en: { $ifNull: [{ $arrayElemAt: ['$color.name_en', 0] }, null] },
+						category_id: { $toString: '$category_id' },
 						product_name: '$product.name',
 						attributes: '$product.attributes',
 						variant_type: '$product.variant_type',
+						attributes_v2: '$product.attributes_v2',
+						variant_axis: '$product.variant_axis',
+						brand_name: { $ifNull: [{ $arrayElemAt: ['$brand.name', 0] }, null] },
 						variant_name: '$name',
+						variant_value: 1,
 						v_value: 1,
 						sku: 1,
 						price: 1,
@@ -764,6 +845,24 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	}
 
 	/**
+	 * Products with more than one ACTIVE variant — the ones the feed groups with `g:item_group_id`
+	 * (TD-0013 D04). Ids only, one `$group` over the active variants; a product with a single
+	 * active variant is not a group.
+	 */
+	async findGroupedProductIds(): Promise<Set<string>> {
+		const rows = await this.model
+			.aggregate<{ _id: Types.ObjectId }>([
+				{ $match: { status: ProductStatus.ACTIVE } },
+				{ $group: { _id: '$product_id', variants: { $sum: 1 } } },
+				{ $match: { variants: { $gt: 1 } } },
+				{ $project: { _id: 1 } }
+			])
+			.allowDiskUse(true)
+			.exec()
+		return new Set(rows.map(row => String(row._id)))
+	}
+
+	/**
 	 * Working set of the Google Shopping feed (TD-0006 §5.3): every ACTIVE variant with the
 	 * product, category and dictionary colour joined in. Not a hot path — an hourly job and the
 	 * admin button — so the three `$lookup`s are fine here and the catalogue keeps its
@@ -772,11 +871,17 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 	 *
 	 * PUBLIC SURFACE by way of the feed: the projection lists fields explicitly and carries no
 	 * supplier identifier or `prom_*` value — the int-spec pins that.
+	 *
+	 * A cursor, not an array (Plan-0010 D06): at 100 000 SKUs the joined rows alone were most of a
+	 * 518 MiB peak. The SKU order is applied first, where the unique `sku` index can deliver it, so
+	 * rows stream out as they are joined; the order is the same as sorting the joined rows was.
+	 * The caller iterates it with `for await` and closes it by finishing or breaking out.
 	 */
-	findActiveForFeed(): Promise<FeedVariantRow[]> {
+	findActiveForFeed(): AsyncIterable<FeedVariantRow> & { close(): Promise<void> } {
 		return this.model
 			.aggregate<FeedVariantRow>([
 				{ $match: { status: ProductStatus.ACTIVE } },
+				{ $sort: { sku: 1 } },
 				{
 					$lookup: {
 						from: 'products',
@@ -784,13 +889,31 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						foreignField: '_id',
 						as: 'product',
 						pipeline: [
+							// The v2 brand entity, active only; never the vendor (supplier).
+							{
+								$lookup: {
+									from: 'brands',
+									localField: 'brand_id',
+									foreignField: '_id',
+									as: 'brand',
+									pipeline: [
+										{ $match: { status: 'active' } },
+										{ $project: { _id: 0, name: 1 } }
+									]
+								}
+							},
 							{
 								$project: {
 									_id: 0,
 									name: 1,
+									brand_name: {
+										$ifNull: [{ $arrayElemAt: ['$brand.name', 0] }, null]
+									},
 									description_html: { $ifNull: ['$description.html', null] },
 									attributes: { $ifNull: ['$attributes', []] },
-									variant_type: { $ifNull: ['$variant_type', null] }
+									variant_type: { $ifNull: ['$variant_type', null] },
+									attributes_v2: { $ifNull: ['$attributes_v2', []] },
+									variant_axis: { $ifNull: ['$variant_axis', null] }
 								}
 							}
 						]
@@ -844,15 +967,15 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 						images: { $ifNull: ['$images', []] },
 						v_value: { $ifNull: ['$v_value', null] },
 						weight_g: { $ifNull: ['$weight_g', null] },
+						variant_value: { $ifNull: ['$variant_value', null] },
 						product: { $ifNull: ['$product', null] },
 						category: { $ifNull: ['$category', null] },
 						color: { $ifNull: ['$color', null] }
 					}
-				},
-				{ $sort: { sku: 1 } }
+				}
 			])
 			.allowDiskUse(true)
-			.exec()
+			.cursor({ batchSize: FEED_BATCH })
 	}
 
 	async findCatalogItems(params: {
@@ -1122,8 +1245,8 @@ export class ProductVariantRepository extends BaseRepository<ProductVariant> {
 		]
 
 		const [catalogResult, priceRangeResult, facetResult] = await Promise.all([
-			this.model.aggregate(pipeline).exec(),
-			this.model.aggregate(priceRangePipeline).exec(),
+			this.model.aggregate<PagedFacet<CatalogItemRow>>(pipeline).exec(),
+			this.model.aggregate<PriceRangeRow>(priceRangePipeline).exec(),
 			this.model.aggregate<FacetRows>(facetPipeline).exec()
 		])
 
@@ -1198,6 +1321,16 @@ const COLOR_DIMENSION = Symbol('color')
  * out of the same place, or the admin column would contradict the page (I-g).
  */
 const COLOR_FAMILY_FILTER_KEY = 'color_family'
+
+/**
+ * The category-wide bounds of the effective price, as the price-range `$group` emits them; no row
+ * at all for an empty category, and `null` bounds when no variant has a price to compare.
+ */
+interface PriceRangeRow {
+	_id: null
+	min: number | null
+	max: number | null
+}
 
 /** `{ _id: value, count }` as a `$group … { $sum: 1 }` branch emits it. */
 interface CountRow {

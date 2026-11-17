@@ -1,3 +1,4 @@
+import { LegacyCatalogWritePolicy } from 'src/modules/catalog-safety/legacy-catalog-write.interceptor'
 import { Model, Types } from 'mongoose'
 import { DeliveryMethod, OrderStatus, PaymentMethod, PaymentStatus } from 'src/common/types/enums'
 import { connectTestDb, dropTestDb } from '../../../../test/integration-db'
@@ -105,7 +106,8 @@ describe('OrderRepository.update — pinned payment-method change (MongoDB integ
 				{} as never,
 				{} as never,
 				{} as never,
-				{} as never
+				{} as never,
+				new LegacyCatalogWritePolicy(conn.connection)
 			)
 
 		it('appends the FAILED → PENDING entry to an existing history by one atomic write', async () => {

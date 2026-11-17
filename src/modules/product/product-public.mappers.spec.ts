@@ -251,6 +251,9 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION', () => {
 [
   "_id",
   "attributes",
+  "attributes_v2",
+  "brand_name",
+  "category_id",
   "color_name_en",
   "color_name_uk",
   "id",
@@ -265,7 +268,9 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION', () => {
   "stock",
   "stock_updated_at",
   "v_value",
+  "variant_axis",
   "variant_type",
+  "variant_value",
 ]
 `)
 	})
@@ -296,6 +301,14 @@ describe('PRICE_SHEET_PUBLIC_PROJECTION (exact shape)', () => {
 			image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
 			attributes: '$product.attributes',
 			variant_type: '$product.variant_type',
+			// Reviewed 2026-10-28 (Plan-0010 B11): typed inputs of the v2 columns. The service maps
+			// every row field by field, so none of these five reaches the response as it is —
+			// catalog-legacy-exports.int-spec.ts pins that.
+			category_id: { $toString: '$category_id' },
+			attributes_v2: { $ifNull: ['$product.attributes_v2', null] },
+			variant_axis: { $ifNull: ['$product.variant_axis', null] },
+			variant_value: { $ifNull: ['$variant_value', null] },
+			brand_name: { $ifNull: [{ $arrayElemAt: ['$brand.name', 0] }, null] },
 			color_name_uk: { $ifNull: ['$color.name_uk', null] },
 			color_name_en: { $ifNull: ['$color.name_en', null] },
 			// The promotion trio is the one expression shared with the catalogue and search

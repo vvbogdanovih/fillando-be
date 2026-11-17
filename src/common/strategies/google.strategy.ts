@@ -3,6 +3,15 @@ import { PassportStrategy } from '@nestjs/passport'
 import { Profile, Strategy } from 'passport-google-oauth20'
 import { ENV } from 'src/common/constants'
 
+/** What `validate` puts on `req.user` after the Google callback (`AuthService.googleLogin`). */
+export type GoogleUser = {
+	email: string | undefined
+	name: string
+	picture: string | undefined
+	provider: 'google'
+	providerId: string
+}
+
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 	constructor() {
@@ -14,7 +23,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 		})
 	}
 
-	async validate(_accessToken: string, _refreshToken: string, profile: Profile): Promise<any> {
+	validate(_accessToken: string, _refreshToken: string, profile: Profile): GoogleUser {
 		const { name, emails, photos, id } = profile
 
 		return {

@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common'
-import { FeedService } from './feed.service'
+import { FEED_EXCLUSION_SAMPLE, FeedService, feedXmlOf, type FeedArtifact } from './feed.service'
 import type { FeedRawRow } from './feed.types'
+import { buildFeedXml, buildItem } from './google-shopping-feed.builder'
 
 const row = (overrides: Partial<FeedRawRow> = {}): FeedRawRow => ({
 	id: 'v1',
@@ -41,14 +42,38 @@ const brandlessRow = (sku: string): FeedRawRow =>
 		product: { ...row().product!, attributes: [{ k: 'polymer', l: 'Тип пластику', v: 'PLA' }] }
 	})
 
+/** The repository's cursor over rows that may still be arriving. */
+async function* cursor(rows: FeedRawRow[] | Promise<FeedRawRow[]>): AsyncGenerator<FeedRawRow> {
+	yield* await rows
+}
+/** A cursor whose first batch fails. */
+// eslint-disable-next-line require-yield, @typescript-eslint/require-await
+async function* failing(error: Error): AsyncGenerator<FeedRawRow> {
+	throw error
+}
+const xmlOf = (artifact: FeedArtifact | null) => (artifact ? feedXmlOf(artifact) : null)
+
+const groupedOf = (rows: FeedRawRow[]) => {
+	const counts = new Map<string, number>()
+	for (const item of rows) counts.set(item.product_id, (counts.get(item.product_id) ?? 0) + 1)
+	return new Set([...counts].filter(([, n]) => n > 1).map(([id]) => id))
+}
 const build = (rows: FeedRawRow[], landings: unknown[] = [], sold = new Map<string, number>()) => {
-	const productVariantRepository = { findActiveForFeed: jest.fn().mockResolvedValue(rows) }
+	const productVariantRepository = {
+		findActiveForFeed: jest.fn((): AsyncIterable<FeedRawRow> => cursor(rows)),
+		// Products with more than one active variant, as the repository counts them.
+		findGroupedProductIds: jest.fn(() => Promise.resolve(groupedOf(rows)))
+	}
 	const landingRepository = { findActive: jest.fn().mockResolvedValue(landings) }
 	const orderRepository = { countSoldByVariantSince: jest.fn().mockResolvedValue(sold) }
 	const service = new FeedService(
 		productVariantRepository as never,
 		landingRepository as never,
-		orderRepository as never
+		orderRepository as never,
+		{
+			beginRead: jest.fn().mockResolvedValue({ initialized: false, revision: 0, epoch: 0 }),
+			finishRead: jest.fn().mockResolvedValue(undefined)
+		} as never
 	)
 	return { service, productVariantRepository, landingRepository, orderRepository }
 }
@@ -61,12 +86,17 @@ describe('FeedService', () => {
 
 		const summary = await service.generate()
 
-		expect(summary).toMatchObject({ item_count: 1, in_stock: 1, out_of_stock: 0, excluded: [] })
-		const cached = service.getXml()
-		expect(cached?.xml).toContain('<g:id>FL-000001</g:id>')
-		expect(cached?.xml).toContain(
-			'<link>http://localhost:9000/products/kingroon-pla-black</link>'
-		)
+		expect(summary).toMatchObject({
+			item_count: 1,
+			in_stock: 1,
+			out_of_stock: 0,
+			excluded: [],
+			excluded_count: 0,
+			excluded_by_reason: {}
+		})
+		const cached = xmlOf(service.getXml())
+		expect(cached).toContain('<g:id>FL-000001</g:id>')
+		expect(cached).toContain('<link>http://localhost:9000/products/kingroon-pla-black</link>')
 		expect(service.getStatus()).toMatchObject({
 			xml_ready: true,
 			generating: false,
@@ -97,6 +127,8 @@ describe('FeedService', () => {
 		expect(summary.excluded).toEqual([
 			{ sku: 'FL-NOBRAND', name: noBrand.name, reason: 'missing_brand' }
 		])
+		expect(summary.excluded_count).toBe(1)
+		expect(summary.excluded_by_reason).toEqual({ missing_brand: 1 })
 		expect(summary.warnings).toEqual(
 			expect.arrayContaining([
 				{ code: 'no_weight', count: 1, unit: 'item', item_count: 1, skus: ['FL-NOWEIGHT'] },
@@ -176,7 +208,7 @@ describe('FeedService', () => {
 		const summary = await service.generate()
 
 		expect(summary.typed_by_landing).toBe(1)
-		expect(service.getXml()?.xml).toContain(
+		expect(xmlOf(service.getXml())).toContain(
 			'<g:product_type>Філамент &gt; PLA філамент</g:product_type>'
 		)
 	})
@@ -185,7 +217,7 @@ describe('FeedService', () => {
 		const { service, orderRepository } = build([row()], [], new Map([['v1', 12]]))
 		await service.generate()
 
-		expect(service.getXml()?.xml).toContain('<g:custom_label_4>bestseller</g:custom_label_4>')
+		expect(xmlOf(service.getXml())).toContain('<g:custom_label_4>bestseller</g:custom_label_4>')
 		const [[since]] = orderRepository.countSoldByVariantSince.mock.calls as [Date][]
 		expect(Date.now() - since.getTime()).toBeGreaterThan(89 * 24 * 60 * 60 * 1000)
 	})
@@ -193,9 +225,8 @@ describe('FeedService', () => {
 	it('refuses to run two generations at once', async () => {
 		let release: (rows: FeedRawRow[]) => void = () => undefined
 		const { service, productVariantRepository } = build([])
-		productVariantRepository.findActiveForFeed.mockImplementationOnce(
-			() => new Promise<FeedRawRow[]>(resolve => (release = resolve))
-		)
+		const pendingRows = new Promise<FeedRawRow[]>(resolve => (release = resolve))
+		productVariantRepository.findActiveForFeed.mockReturnValueOnce(cursor(pendingRows))
 
 		const first = service.generate()
 		expect(service.isRunning).toBe(true)
@@ -209,9 +240,8 @@ describe('FeedService', () => {
 	it('runs a rebuild requested during a generation once that generation ends — whoever started it (TD-0012)', async () => {
 		let release: (rows: FeedRawRow[]) => void = () => undefined
 		const { service, productVariantRepository } = build([row()])
-		productVariantRepository.findActiveForFeed.mockImplementationOnce(
-			() => new Promise<FeedRawRow[]>(resolve => (release = resolve))
-		)
+		const pendingRows = new Promise<FeedRawRow[]>(resolve => (release = resolve))
+		productVariantRepository.findActiveForFeed.mockReturnValueOnce(cursor(pendingRows))
 
 		// The admin's manual button: a run the cron never sees.
 		const manual = service.generate()
@@ -220,7 +250,8 @@ describe('FeedService', () => {
 
 		release([row()])
 		await expect(manual).resolves.toMatchObject({ item_count: 1 })
-		await new Promise<void>(resolve => setImmediate(resolve))
+		// The follower compresses off the main thread: wait for it rather than for one tick.
+		while (service.isRunning) await new Promise<void>(resolve => setTimeout(resolve, 1))
 
 		// The follower read the catalogue after the request, so the published XML is fresh.
 		expect(productVariantRepository.findActiveForFeed).toHaveBeenCalledTimes(2)
@@ -235,6 +266,68 @@ describe('FeedService', () => {
 		expect(productVariantRepository.findActiveForFeed).toHaveBeenCalledTimes(1)
 	})
 
+	it('sends g:item_group_id only for a product with more than one active variant', async () => {
+		const { service, productVariantRepository } = build([
+			row(),
+			row({ id: 'v2', sku: 'FL-000002', slug: 'b' }),
+			row({ id: 'v3', sku: 'FL-000003', slug: 'c', product_id: 'single' })
+		])
+		await service.generate()
+		const items = xmlOf(service.getXml())!.split('</item>')
+		expect(items.filter(item => item.includes('<g:item_group_id>'))).toHaveLength(2)
+		expect(items.find(item => item.includes('FL-000003'))).not.toContain('g:item_group_id')
+		expect(productVariantRepository.findGroupedProductIds).toHaveBeenCalledTimes(1)
+	})
+
+	it('streams the same document the item list builds, and serves its byte length', async () => {
+		const rows = [
+			row(),
+			row({ id: 'v2', sku: 'FL-000002', slug: 'b', stock: 0, weight_g: null }),
+			brandlessRow('FL-000003'),
+			row({ id: 'v4', sku: 'FL-000004', slug: 'd', promo_percent: 10 })
+		]
+		const { service } = build(rows)
+		const summary = await service.generate()
+		const now = new Date(summary.generated_at)
+		const items = rows.flatMap(item => {
+			const built = buildItem(item, {
+				frontendUrl: 'http://localhost:9000',
+				productType: 'Філамент',
+				inGroup: true,
+				unitsSold: 0,
+				now
+			})
+			return built.ok ? [built.xml] : []
+		})
+		const expected = buildFeedXml(items, {
+			title: 'Fillando',
+			link: 'http://localhost:9000',
+			description: 'Каталог товарів Fillando',
+			generatedAt: now
+		})
+		const artifact = service.getXml()!
+		expect(feedXmlOf(artifact)).toBe(expected)
+		expect(artifact.bytes).toBe(Buffer.byteLength(expected))
+		expect(artifact.generatedAt).toEqual(now)
+	})
+
+	it('lists a bounded sample of exclusions and counts them all by reason', async () => {
+		const brandless = Array.from({ length: FEED_EXCLUSION_SAMPLE + 5 }, (_, n) =>
+			brandlessRow(`FL-X${String(n).padStart(4, '0')}`)
+		)
+		const imageless = row({ sku: 'FL-Y', images: [] })
+		const summary = await build([row(), ...brandless, imageless]).service.generate()
+
+		expect(summary.item_count).toBe(1)
+		expect(summary.excluded).toHaveLength(FEED_EXCLUSION_SAMPLE)
+		expect(summary.excluded[0].sku).toBe('FL-X0000')
+		expect(summary.excluded_count).toBe(FEED_EXCLUSION_SAMPLE + 6)
+		expect(summary.excluded_by_reason).toEqual({
+			missing_brand: FEED_EXCLUSION_SAMPLE + 5,
+			no_images: 1
+		})
+	})
+
 	it('refuses to publish a zero-item feed and keeps the previous XML', async () => {
 		const { service, productVariantRepository } = build([row()])
 		await service.generate()
@@ -242,9 +335,9 @@ describe('FeedService', () => {
 		const publishedSummary = service.getStatus().summary
 
 		// Every variant excluded — the shape of a data collapse, e.g. «Виробник» wiped catalogue-wide.
-		productVariantRepository.findActiveForFeed.mockResolvedValueOnce([
-			brandlessRow('FL-NOBRAND')
-		])
+		productVariantRepository.findActiveForFeed.mockReturnValueOnce(
+			cursor([brandlessRow('FL-NOBRAND')])
+		)
 		const summary = await service.generate()
 
 		expect(summary).toMatchObject({ ok: false, failure_reason: 'empty_feed', item_count: 0 })
@@ -278,7 +371,7 @@ describe('FeedService', () => {
 		await service.generate()
 		const before = service.getXml()
 
-		productVariantRepository.findActiveForFeed.mockRejectedValueOnce(new Error('boom'))
+		productVariantRepository.findActiveForFeed.mockReturnValueOnce(failing(new Error('boom')))
 		await expect(service.generate()).rejects.toThrow('boom')
 
 		expect(service.getXml()).toEqual(before)
@@ -293,7 +386,7 @@ it('retains the last good XML and summary when a category was not fully migrated
 	const cached = service.getXml()
 	const broken = row()
 	broken.category!.required_attributes = [{ key: 'finish', label: 'Ефект' } as never]
-	productVariantRepository.findActiveForFeed.mockResolvedValue([broken])
+	productVariantRepository.findActiveForFeed.mockImplementation(() => cursor([broken]))
 	await expect(service.generate()).rejects.toThrow('is_required')
 	expect(service.getXml()).toEqual(cached)
 	expect(service.getStatus().last_error).toContain('is_required')

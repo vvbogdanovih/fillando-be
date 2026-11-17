@@ -3,7 +3,8 @@ import {
 	availabilityOf,
 	buildFeedXml,
 	buildItem,
-	buildTitle,
+	FEED_XML_TAIL,
+	feedXmlHead,
 	cdata,
 	descriptionText,
 	isAttrValueEmpty,
@@ -11,12 +12,15 @@ import {
 	productHighlights,
 	salesVelocityLabel,
 	stockDepthLabel,
-	stripBrandPrefix,
 	typeFamilyLabel,
 	xmlEscape
 } from './google-shopping-feed.builder'
 
-const CTX = { frontendUrl: 'https://fillando.com', productType: 'Філамент > PLA Silk філамент' }
+const CTX = {
+	frontendUrl: 'https://fillando.com',
+	productType: 'Філамент > PLA Silk філамент',
+	inGroup: true
+}
 
 const row = (): FeedRawRow => ({
 	id: '000000000000000000000002',
@@ -129,6 +133,20 @@ describe('xml helpers', () => {
 })
 
 describe('buildItem', () => {
+	it('groups a SKU only when its product has more than one active variant (TD-0013 D04)', () => {
+		expect(xmlOf(buildItem(row(), CTX))).toContain(
+			'<g:item_group_id>000000000000000000000001</g:item_group_id>'
+		)
+		// A product without variation: no group ID, every other field unchanged.
+		const single = xmlOf(buildItem(row(), { ...CTX, inGroup: false }))
+		expect(single).not.toContain('g:item_group_id')
+		expect(single).toBe(
+			xmlOf(buildItem(row(), CTX)).replace(
+				'  <g:item_group_id>000000000000000000000001</g:item_group_id>\n',
+				''
+			)
+		)
+	})
 	it('emits every mapped field for a complete row', () => {
 		const built = buildItem(row(), CTX)
 		expect(built.ok).toBe(true)
@@ -136,7 +154,7 @@ describe('buildItem', () => {
 
 		expect(xml).toContain('<g:id>FL-000342</g:id>')
 		expect(xml).toContain('<g:item_group_id>000000000000000000000001</g:item_group_id>')
-		expect(xml).toContain('<title>Філамент PLA Silk Sunlu 1.75 мм 1 кг — Золотий</title>')
+		expect(xml).toContain('<title>Sunlu PLA Silk — Золотий (Gold)</title>')
 		expect(xml).toContain('<description><![CDATA[Шовковий PLA & блиск]]></description>')
 		expect(xml).toContain('<link>https://fillando.com/products/sunlu-pla-silk-gold</link>')
 		expect(xml).toContain('<g:image_link>https://cdn.example.invalid/gold-1.jpg</g:image_link>')
@@ -255,7 +273,7 @@ describe('buildItem', () => {
 		expect(xml).not.toContain('<g:shipping_weight>')
 		// The title stands in for a missing description — a required field may not be empty.
 		expect(xml).toContain(
-			'<description><![CDATA[Філамент PLA Silk Sunlu 1.75 мм 1 кг — Золотий]]></description>'
+			'<description><![CDATA[Sunlu PLA Silk — Золотий (Gold)]]></description>'
 		)
 		expect(built.ok && built.warnings.sort()).toEqual(
 			[
@@ -333,91 +351,30 @@ describe('buildItem', () => {
 
 	it('escapes metacharacters in titles and links', () => {
 		const r = row()
-		r.product!.name = 'Sunlu PLA "Rainbow" & <Glow>'
-		r.color = null
-		r.v_value = null
-		r.product!.attributes = r.product!.attributes.filter(
-			a => a.k !== 'diametr' && a.k !== 'vaha'
-		)
+		r.name = 'Sunlu PLA "Rainbow" & <Glow>'
 		const xml = xmlOf(buildItem(r, CTX))
-		expect(xml).toContain(
-			'<title>Філамент PLA &quot;Rainbow&quot; &amp; &lt;Glow&gt; Sunlu</title>'
-		)
+		expect(xml).toContain('<title>Sunlu PLA &quot;Rainbow&quot; &amp; &lt;Glow&gt;</title>')
 	})
 })
 
 describe('title', () => {
-	const specs = [
-		{ k: 'diametr', l: 'Діаметр', v: '1.75', unit: 'мм' },
-		{ k: 'vaha', l: 'Вага філаменту', v: '1', unit: 'кг' }
-	]
-	const title = (productName: string, over: Partial<Parameters<typeof buildTitle>[0]> = {}) =>
-		buildTitle({
-			categoryName: 'Філамент',
-			productName,
-			brand: 'Kingroon',
-			color: 'Чорний',
-			attributes: specs,
-			...over
-		})
-
-	it('strips the brand prefix only when the name actually starts with it', () => {
-		expect(stripBrandPrefix('Kingroon PLA', 'Kingroon')).toBe('PLA')
-		expect(stripBrandPrefix('PLA Kingroon', 'Kingroon')).toBe('PLA Kingroon')
-		expect(stripBrandPrefix('Kingroon', 'Kingroon')).toBe('Kingroon')
-		expect(stripBrandPrefix('Kingroon PLA', null)).toBe('Kingroon PLA')
-	})
-
-	it('reads «Категорія тип бренд діаметр вага — колір»', () => {
-		expect(title('Kingroon PLA Silk')).toBe('Філамент PLA Silk Kingroon 1.75 мм 1 кг — Чорний')
-	})
-
-	it('keeps what only the product name says — packaging, AMS, high speed', () => {
-		expect(title('Kingroon PETG (CoPET) (еко-пакування)')).toBe(
-			'Філамент PETG (CoPET) (еко-пакування) Kingroon 1.75 мм 1 кг — Чорний'
-		)
-		expect(title('Bambu Lab TPU для AMS', { brand: 'Bambu Lab' })).toBe(
-			'Філамент TPU для AMS Bambu Lab 1.75 мм 1 кг — Чорний'
+	// The SKU's own name, as the site prints it (owner, 2026-11-05): no category name, no
+	// diameter or weight composed in, no brand moved about.
+	it('is the SKU name as stored', () => {
+		const r = row()
+		r.name = 'Kingroon PETG (CoPET) 3 кг — Філамент (пластик для 3D-друку) — Чорний (Black)'
+		r.category!.name = 'Інша назва категорії'
+		expect(xmlOf(buildItem(r, CTX))).toContain(
+			'<title>Kingroon PETG (CoPET) 3 кг — Філамент (пластик для 3D-друку) — Чорний (Black)</title>'
 		)
 	})
 
-	it('does not repeat a spec the name already carries, decimal comma included', () => {
-		expect(
-			title('Kingroon PETG (CoPET) 3 кг', {
-				attributes: [specs[0], { k: 'vaha', l: 'Вага філаменту', v: '3', unit: 'кг' }]
-			})
-		).toBe('Філамент PETG (CoPET) 3 кг Kingroon 1.75 мм — Чорний')
-		expect(title('Kingroon PLA 1,75 мм')).toBe('Філамент PLA 1,75 мм Kingroon 1 кг — Чорний')
-	})
-
-	it('says the brand and the category noun once', () => {
-		expect(title('Філамент PLA')).toBe('Філамент PLA Kingroon 1.75 мм 1 кг — Чорний')
-		expect(title('PLA від Kingroon')).toBe('Філамент PLA від Kingroon 1.75 мм 1 кг — Чорний')
-		// A name that is nothing but the brand still has to describe something.
-		expect(title('Kingroon')).toBe('Філамент Kingroon 1.75 мм 1 кг — Чорний')
-	})
-
-	it('drops the parts it has no data for instead of leaving punctuation behind', () => {
-		expect(title('Kingroon PA-CF 15%', { color: null })).toBe(
-			'Філамент PA-CF 15% Kingroon 1.75 мм 1 кг'
-		)
-		expect(title('PLA', { brand: null, color: null, attributes: [] })).toBe('Філамент PLA')
-	})
-
-	it('caps the composed title at 150 characters', () => {
-		const xml = xmlOf(
-			buildItem(
-				(() => {
-					const r = row()
-					r.product!.name = `Sunlu ${'Довга назва '.repeat(20)}`
-					return r
-				})(),
-				CTX
-			)
-		)
-		const composed = /<title>(.*)<\/title>/.exec(xml)?.[1] ?? ''
-		expect(composed.length).toBe(150)
-		expect(composed.endsWith('…')).toBe(true)
+	it('caps the title at 150 characters', () => {
+		const r = row()
+		r.name = `Sunlu ${'Довга назва '.repeat(20)}`
+		const title = /<title>(.*)<\/title>/.exec(xmlOf(buildItem(r, CTX)))?.[1] ?? ''
+		expect(title.length).toBe(150)
+		expect(title.endsWith('…')).toBe(true)
 	})
 })
 
@@ -502,6 +459,40 @@ describe('buildFeedXml', () => {
 		expect(xml).toContain('<g:id>x</g:id>')
 		expect(xml.trimEnd().endsWith('</rss>')).toBe(true)
 	})
+
+	it.each([0, 1, 3])(
+		'is the head, each item with its newline, and the tail — the former join, %p item(s)',
+		count => {
+			const ctx = {
+				title: 'Fillando',
+				link: 'https://fillando.com',
+				description: 'Каталог',
+				generatedAt: new Date('2026-09-06T10:00:00Z')
+			}
+			const items = Array.from(
+				{ length: count },
+				(_, n) => `<item>\n  <g:id>${n}</g:id>\n</item>`
+			)
+			// The envelope as it was built before the feed was streamed (Plan-0010 D06).
+			const former = [
+				'<?xml version="1.0" encoding="UTF-8"?>',
+				'<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">',
+				'<channel>',
+				'<title>Fillando</title>',
+				'<link>https://fillando.com</link>',
+				'<description>Каталог</description>',
+				'<lastBuildDate>Sun, 06 Sep 2026 10:00:00 GMT</lastBuildDate>',
+				...items,
+				'</channel>',
+				'</rss>',
+				''
+			].join('\n')
+			expect(buildFeedXml(items, ctx)).toBe(former)
+			expect(feedXmlHead(ctx) + items.map(item => `${item}\n`).join('') + FEED_XML_TAIL).toBe(
+				former
+			)
+		}
+	)
 })
 
 describe('explicit category attribute requiredness', () => {
@@ -525,4 +516,93 @@ describe('explicit category attribute requiredness', () => {
 			expect(() => buildItem(r, CTX)).toThrow('is_required')
 		}
 	)
+})
+
+it.each([
+	['Автомати введення резерву', 'AVR Home', 'Струм', '63 А'],
+	['Електроковдри', 'Warm Home', 'Розмір', '150 × 180 см']
+])('keeps %s variant suffix without exporting it as colour', (category, name, axis, value) => {
+	const r = row()
+	r.color = null
+	r.v_value = value
+	r.product!.name = name
+	r.name = `${name} — ${value}`
+	r.product!.variant_type = { key: 'axis', label: axis }
+	r.product!.attributes = [{ k: 'manufacturer', l: 'Виробник', v: 'Example' }]
+	r.category!.name = category
+	r.category!.required_attributes = []
+	const built = buildItem(r, { ...CTX, productType: category })
+	expect(built.ok).toBe(true)
+	const xml = xmlOf(built)
+	expect(xml).toContain(`— ${value}</title>`)
+	expect(xml).not.toContain('<g:color>')
+})
+
+describe('v2 rows (Plan-0010 B10)', () => {
+	/** An AVR-like v2 row as the typed adapter shapes it. */
+	const avr = (): FeedRawRow => ({
+		...row(),
+		name: 'АВР Bemko — 63 А',
+		v_value: '63 А',
+		color: null,
+		product: {
+			name: 'АВР Bemko',
+			description_html: '<p>Автомат вводу резерву</p>',
+			attributes: [
+				{ k: 'brand', l: 'Виробник', v: 'Bemko' },
+				{ k: 'poles', l: 'Полюси', v: 'Чотири' },
+				{ k: 'voltage', l: 'Напруга', v: '400' }
+			],
+			variant_type: { key: 'current', label: 'Струм' }
+		},
+		category: {
+			id: '000000000000000000000009',
+			name: 'Автомати вводу резерву',
+			google_product_category: { id: 500000, path: 'Hardware' },
+			required_attributes: [
+				{ key: 'poles', label: 'Полюси', is_required: true, unit: null },
+				{ key: 'voltage', label: 'Напруга', is_required: false, unit: 'В' }
+			]
+		},
+		semantic: { size: '63 А', material: null, brand: 'Bemko' },
+		highlights: ['Полюси: Чотири', 'Напруга: 400 В']
+	})
+
+	it('titles by the SKU name, takes the brand and highlights the adapter named', () => {
+		const xml = xmlOf(buildItem(avr(), CTX))
+		expect(xml).toContain('<title>АВР Bemko — 63 А</title>')
+		expect(xml).toContain('<g:brand>Bemko</g:brand>')
+		expect(xml).toContain('<g:product_highlight>Полюси: Чотири</g:product_highlight>')
+		expect(xml).toContain('<g:product_highlight>Напруга: 400 В</g:product_highlight>')
+		expect(xml).toContain('<g:google_product_category>500000</g:google_product_category>')
+		expect(xml).toContain('<g:custom_label_0>basic</g:custom_label_0>')
+		expect(xml).toContain('<g:custom_label_1>Bemko</g:custom_label_1>')
+		expect(xml).toContain('<g:size>63 А</g:size>')
+		expect(xml).not.toContain('<g:color>')
+	})
+
+	it('never guesses a v2 brand or material from a label (owner, 2026-11-05)', () => {
+		// A «Виробник» row is just a characteristic: without a brand entity or a characteristic
+		// marked `brand` the SKU is left out and reported, never given a brand.
+		expect(buildItem({ ...avr(), semantic: { size: null, material: null } }, CTX)).toEqual({
+			ok: false,
+			reason: 'missing_brand'
+		})
+		const filament = xmlOf(
+			buildItem({ ...row(), semantic: { material: null, brand: 'Sunlu' } }, CTX)
+		)
+		expect(filament).not.toContain('<g:material>')
+		const marked = xmlOf(
+			buildItem({ ...row(), semantic: { material: 'Сталь', brand: 'Sunlu' } }, CTX)
+		)
+		expect(marked).toContain('<g:material>Сталь</g:material>')
+	})
+
+	it('keeps the v1 filament output until the last v1 category is migrated', () => {
+		const filament = xmlOf(buildItem(row(), CTX))
+		expect(filament).toContain('<g:brand>Sunlu</g:brand>')
+		expect(filament).toContain('<g:material>PLA</g:material>')
+		expect(filament).toContain('<g:custom_label_0>decorative</g:custom_label_0>')
+		expect(filament).not.toContain('<g:size>')
+	})
 })

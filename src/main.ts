@@ -1,12 +1,13 @@
 import { createPartnerDocument } from './modules/partner-api/partner-api.swagger'
 import { NestFactory } from '@nestjs/core'
 import { NestExpressApplication } from '@nestjs/platform-express'
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { SwaggerModule } from '@nestjs/swagger'
 import { ValidationPipe } from '@nestjs/common'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
 import { MongooseExceptionFilter } from './database/mongoose/mongoose.filter'
 import { ENV } from './common/constants'
+import { buildOpenApiDocument } from './common/swagger/openapi-document'
 import cookieParser from 'cookie-parser'
 
 async function bootstrap() {
@@ -29,17 +30,8 @@ async function bootstrap() {
 		// server-provided filename and silently fall back to a generic one.
 		exposedHeaders: ['Content-Disposition', 'Retry-After']
 	})
-	const config = new DocumentBuilder()
-		.setTitle('Fillando API')
-		.setDescription('API документація')
-		.setVersion('1.0')
-		.addBearerAuth(
-			{ type: 'http', scheme: 'bearer', bearerFormat: 'API token' },
-			'partner-token'
-		)
-		.build()
-	const document = SwaggerModule.createDocument(app, config)
-	SwaggerModule.setup('swagger', app, document)
+	// The same document `yarn spec:export` writes (security schemes and per-route marks).
+	SwaggerModule.setup('swagger', app, buildOpenApiDocument(app))
 	SwaggerModule.setup('partner-docs', app, createPartnerDocument(app), {
 		jsonDocumentUrl: 'partner-openapi.json',
 		swaggerOptions: { persistAuthorization: false }
@@ -47,4 +39,5 @@ async function bootstrap() {
 
 	await app.listen(ENV.PORT)
 }
-bootstrap()
+// A failed start is left unhandled on purpose: Node exits the process on the rejection.
+void bootstrap()

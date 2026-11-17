@@ -49,51 +49,37 @@ generation is running.
 | Feed field                                 | Source                                                                                                                                                                                                                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `g:id`                                     | `variant.sku`                                                                                                                                                                                                                                    |
-| `g:item_group_id`                          | `variant.product_id` — groups the colours of one product                                                                                                                                                                                         |
-| `title`                                    | composed — see «Title» below; capped at 150 chars                                                                                                                                                                                                |
+| `g:item_group_id`                          | `variant.product_id` — groups the variants of one product; **only when the product has more than one active variant** (`findGroupedProductIds`, TD-0013 D04, owner 31.10) — a product without variation is sent without it, and the ID returns by itself when a second variant is activated|
+| `title`                                    | the SKU name — see «Title» below; capped at 150 chars                                                                                                                                                                                                |
 | `description`                              | `product.description.html` → `sanitizePlainText`, whitespace collapsed, capped at 5000; the title when empty (+ warning)                                                                                                                         |
 | `link`                                     | `${FRONTEND_URL}/products/${slug}` — the page's canonical                                                                                                                                                                                        |
 | `g:image_link` / `g:additional_image_link` | `images[0]` / `images[1..10]`, **original URLs** — the same ones Product JSON-LD uses, so feed and page agree                                                                                                                                    |
 | `g:availability`                           | `in_stock` when `stock > 0`, else `out_of_stock` — underscored, as in Google's attribute reference                                                                                                                                               |
 | `g:price`                                  | `"{price.toFixed(2)} UAH"` — the **regular** price. `prom_base_price` is never a «was» price: it is the supplier's figure                                                                                                                         |
 | `g:sale_price` / `g:sale_price_effective_date` | only while the variant's promotion is on (`activePromo`, TD-0012): `"{sale_price.toFixed(2)} UAH"`, and when the promo has an end date the window `"{generatedAt}/{promo_ends_at}"` as `YYYY-MM-DDThh:mm:ss+00:00` (seconds kept — a window that dropped them could read `12:00/12:00` and be refused as a start that is not before its end). Open-ended promos send no window. The page's JSON-LD derives the same pair from the same rule, so Merchant never sees them disagree |
-| `g:brand`                                  | the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`. **Never `Vendor.name`** — the vendor is the supplier                                                                                                                             |
+| `g:brand`                                  | v2: the linked brand entity, else the characteristic marked `semantic: brand` (hidden from the table or not) — never a label match; v1: the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)` until the last v1 category is migrated. **Never `Vendor.name`** — the vendor is the supplier                                                                                                                             |
 | `g:google_product_category`                | `category.google_product_category.id`; omitted (+ warning) when null                                                                                                                                                                             |
 | `g:product_type`                           | `"{Category.name} > {Landing.h1}"` for the most specific active landing whose pinned filters the product matches, else the category name                                                                                                         |
 | `g:condition` / `g:identifier_exists`      | constants `new` / `false` — no GTIN/MPN in this catalogue                                                                                                                                                                                        |
 | `g:color`                                  | dictionary `color.name_uk`; `pickColor()` heuristic only where the dictionary has a gap                                                                                                                                                          |
-| `g:material`                               | the `polymer` attribute; `pickAttr(MATERIAL_PATTERNS)` until the taxonomy migration has run                                                                                                                                                      |
+| `g:material`                               | v2: only the characteristic marked `semantic: material` (the migration marks filament's `polymer`); v1: `materialOf()` (`polymer`, else `pickAttr(MATERIAL_PATTERNS)`) — the same function gives the product page's JSON-LD `material` (`semantic_values`), so page and feed agree                     |
 | `g:shipping_weight`                        | `"{weight_g / 1000} kg"`; omitted (+ warning) when null                                                                                                                                                                                          |
-| `g:product_highlight`                      | one bullet per stored spec dimension, `«{label}: {value} {unit}»` — diameter, weight, `polymer`, `finish`, `reinforcement`, `series`, `spool_included`; brand, colour and the legacy «Матеріал» are left out because each has a field of its own |
+| `g:product_highlight`                      | v2: the characteristics the product page's table shows, in its order, `«{label}: {value} {unit}»`, without the brand and the colour (fields of their own); v1 (until migrated): one bullet per stored spec dimension — diameter, weight, `polymer`, `finish`, `reinforcement`, `series`, `spool_included`; brand, colour and the legacy «Матеріал» are left out because each has a field of its own |
 | `g:custom_label_0..3`                      | type family (see below) · manufacturer · stock depth (`deep` >10 / `low` 1–10 / `out` 0) · price band (`budget` <500 / `mid` ≤1500 / `premium`) — of the price the shopper pays, i.e. the sale price while a promo is on                        |
 | `g:custom_label_4`                         | sales velocity from PAID orders of the last 90 days (`OrderRepository.countSoldByVariantSince`): `bestseller` ≥10 units · `popular` ≥3 · `standard`                                                                                              |
 
 ### Title
 
-`{Категорія} {тип} {бренд} {діаметр} {вага} — {колір}` — «Філамент PLA Silk Kingroon 1.75 мм
-1 кг — Золотий». Shopping matches the search query against this string, and the stored variant
-name («Kingroon PLA Silk — Золотий (Gold)») contains none of the words people actually type:
-«філамент», the diameter, the weight, the Ukrainian colour alone. Across the live catalogue it
-spent 43 of the 150 characters Google allows; the composed title spends 54 (Google Ads account
-review, 21.09.2026).
+The SKU's own name, exactly as the site prints it — product name, then the variation:
+«Kingroon PETG (CoPET) 3 кг — Філамент (пластик для 3D-друку) — Чорний (Black)» (owner,
+2026-11-05). Nothing is composed in: no category name, no diameter or weight, no brand moved about.
+The words shoppers search for belong in the name itself — the v2 migration writes «Філамент
+(пластик для 3D-друку)» into every filament product and SKU name (`product_name_addition`), so the
+title carries it. Capped at 150 characters with «…».
 
-- The **type phrase** is `product.name` minus the brand it starts with — not the `polymer`
-  attribute. The name is the only place «Silk», «High Speed», «(еко-пакування)», «(без котушки)»
-  or «для AMS» is written, and that is both what tells two otherwise identical items apart and
-  what shoppers search for.
-- Every part is skipped when the phrase already says it, compared with commas normalised to
-  dots: «Kingroon PETG (CoPET) 3 кг» is titled «Філамент PETG (CoPET) 3 кг Kingroon 1.75 мм»,
-  never «… 3 кг … 3 кг».
-- Diameter and weight are matched by **label** (`DIAMETER_PATTERNS`, `FILAMENT_WEIGHT_PATTERNS`)
-  and printed with the unit the **category** defines for that key — units live on
-  `Category.required_attributes[].unit`, never on the product, and are joined in through the same
-  `toPublicAttributes` the product page uses.
-- The colour is the dictionary `color.name_uk`, without the English in brackets the variant name
-  carries.
-- A part with no data is dropped, not padded: a product with no colour ends after the weight.
-
-Changing this changes 301 item titles at once, and Merchant re-reviews every one of them (hours
-to ~3 days), so the change belongs with a deliberate fetch, not next to an unrelated release.
+The composed title of 22.09.2026 (`{Категорія} {тип} {бренд} {діаметр} {вага} — {колір}`,
+`buildTitle`) is removed: it was a filament rule applied to every category. Changing the rule changes
+every item title at once, and Merchant re-reviews them (hours to ~3 days).
 
 ### Type family — `custom_label_0`
 
@@ -122,7 +108,7 @@ endpoints applies to the feed. Stock depth segments campaigns just as well and i
 
 | Reason              | When                                            |
 | ------------------- | ----------------------------------------------- |
-| `missing_brand`     | no «Виробник» attribute — no shop-name fallback |
+| `missing_brand`     | v2: no brand entity and no characteristic marked brand; v1: no «Виробник» attribute — no shop-name fallback |
 | `no_images`         | no image URL                                    |
 | `no_price`          | price missing or ≤ 0                            |
 | `dangling_product`  | the variant's product is gone                   |
@@ -241,3 +227,163 @@ counted once for the taxonomy gap). RBAC: `feed.controller.rbac.spec.ts` (public
 503 before the first generation, admin-only regenerate/status). Integration:
 `product-variant.repository.int-spec.ts` — `findActiveForFeed` returns ACTIVE only and no supplier
 field.
+
+## General catalogue transition (local, 2026-10-24)
+
+`pickColor` no longer falls back to an arbitrary variant value: it requires the legacy
+colour axis label or an explicit colour attribute; dictionary colour still wins.
+The title retains a non-colour variant suffix (e.g. current or size) independently
+from `g:color`. Existing Ukrainian dictionary display is preserved. Category-specific
+export/highlight/custom-label rules and full semantic v2 mapping are still pending;
+current advertising campaigns have not been changed.
+
+## Захист експорту під час переходу каталогу (локально, 24.10.2026)
+
+FeedService перевіряє legacy read stamp до збирання даних і після формування XML,
+безпосередньо перед синхронною публікацією кешу. Та сама перевірка діє для cron,
+bootstrap, ручного rebuild і queued rerun. Збій зберігає попередні XML/дату/summary;
+не публікується ні частковий, ні порожній XML. Опис каналу тепер нейтральний:
+«Каталог товарів Fillando».
+
+Кеш зберігає initialized/revision/epoch генерації. Публічний GET використовує
+getVerifiedXml: busy/несумісний каталог дає 503, а інший initialized або revision — 503
+CATALOG_FEED_STALE до успішної регенерації. Сам epoch фід не застарює (аудит 11.11.2026):
+його без revision зсуває лише відхилена чи відкочена операція, а дані тоді ті самі, з яких
+зібрано фід; до цього кожне збереження «без змін» давало Merchant 503 до перебудови. Такий запит сам ставить регенерацію в чергу
+(`feedRefresh`, 5 с debounce, 29.10.2026): запис каталогу іншим процесом (CLI міграції
+`apply`) не подає сигналу в API, а у вікні релізу `RUN_CRON` вимкнений — без цього
+фід лишався 503 до рестарту чи ручної кнопки. На репетиції — знову 200 через ~6 с. Старий XML зберігається в пам’яті для
+діагностики, але після зміни stamp не віддається. Maintenance/stale помилка має
+Retry-After: 5 і Cache-Control: no-store; без першого XML чинний Retry-After: 60.
+Стабільний download зберігає XML MIME, Last-Modified та max-age=300. Уже збережені
+зовнішнім кешем відповіді потребують майбутнього purge/visibility release протоколу.
+xml_ready у статусі означає наявність кешу, не live-перевірку його доступності.
+
+Партнерські categories/skus/lookup/bulk availability/single availability тепер
+використовують HTTP read barrier. POST читання явно позначені read-only та не
+потрапляють під legacy write interlock. Auth/rate limit зберігаються перед читанням;
+503 має Retry-After: 5/no-store. Чинні payload успішних відповідей не змінено.
+Це узгодженість окремого запиту: revision-bound partner cursor між сторінками
+ще не реалізований, як і typed v2/ancestor visibility adapters.
+
+Ці зміни не активують v2. Legacy exports блокуються на несумісних категоріях.
+Checkout, sitemap, direct partner service calls, external cache invalidation та
+нові write API залишаються окремою роботою. Feed generation захищено на рівні
+service, partner — на рівні HTTP interceptor.
+
+## Typed catalogue rows (local, 2026-10-27)
+
+With the tree in place the feed is an adapted reader: only SKUs of public categories are
+exported, landings of public v1 categories type `product_type`, and v2 rows pass through
+`feed-typed-adapter.ts` — typed specifications, the axis value as the variant label, never
+a colour for an arbitrary axis, the brand from the «Виробник» characteristic or a linked brand
+entity (no vendor fallback; without a brand the SKU is excluded as `missing_brand`; corrected
+30.10 — brands as entities are out of scope, owner 29.10). Of the category feed settings only the Google
+taxonomy exists (below). Not live.
+
+Since the filament rehearsal (2026-10-27): the adapter passes bare values (the builder adds
+units from `required_attributes`), keeps the dictionary colour for a colour axis, and typed
+(`filters_v2`) landings of v2 categories still type `product_type` (by their own pins since the
+31.10 audit — below). On the migrated stand all
+301 filament SKUs are exported with the legacy title rule («Філамент PETG (CoPET) 3 кг Kingroon
+1.75 мм — Чорний»); v2 SKUs without a brand entity are excluded as `missing_brand`.
+
+*Corrected 30.10 (Plan-0010 D06.1):* a v2 SKU's brand is its **«Виробник» characteristic** — a definition visible
+in the specification, which the migrated filament has (mapping `brand_key: null`) — read by the builder's
+«Виробник» label rule; a linked brand entity is added only where one exists (brands are out of the Plan-0010
+scope, owner 29.10). A v2 SKU is excluded as `missing_brand` only when it has neither. *02.11 (P04):* where a
+product has both, the brand entity wins — the same rule as the product page and the price sheet, so `g:brand`
+equals the page's JSON-LD `brand` (`feed-typed-adapter.spec.ts`).
+
+## Category Google taxonomy (local; Plan-0010 B10)
+
+A v2 product category carries one feed setting, its `google_product_category`, edited in the admin card «Google
+Shopping» through `GET/PATCH /categories/:id/admin/export` (ADMIN, `Idempotency-Key`, `expected_revision`;
+journal profile `export`; `{id, path}` or `null`, only the id is sent — the path is an admin note; a save
+requests an early feed rebuild). A category without it gets no `g:google_product_category` and a warning per
+item. Migrated filament keeps the 499682 it had.
+
+**Removed (owner, 04.11.2026):** per-category title keys, highlight keys and static custom labels
+(`export_rules`, 28.10). They made the admin harder to read without a use: the title and the highlights
+follow the one feed rule above for every category, the custom labels are always the computed ones, and
+Google Ads can already split campaigns by `product_type` (category or landing) and by the Google category.
+Checked on the 02.11 production dump: legacy feed (old code) = legacy feed (new code) = feed after the v2
+migration = feed after its revert, 301/301 items byte for byte (lastBuildDate and sale windows aside).
+
+Independently of the taxonomy, the typed adapter fills `semantic.size` / `semantic.material` from the
+definitions with that `semantic` (the product value, or the SKU's axis value when the axis carries it); the
+builder prints `g:size` and lets the material semantic win over the polymer rule. Colour stays the
+dictionary colour of a colour axis only. Tests: `google-shopping-feed.builder.spec.ts` (v2 rows),
+`catalog-exports.int-spec.ts` (size and computed labels through `FeedService`), `category-export.int-spec.ts`
+(the writer).
+
+## Memory at 100 000 SKUs (Plan-0010 D06, local)
+
+**29.10:** `generate()` read every active SKU with its product and category in one `findActiveForFeed()` array and
+kept the built XML in the process. On the synthetic 10 020-category / 100 000-SKU catalogue the bootstrap run alone
+peaked at **518 MiB RSS** (Linux container, 400 MB heap) — with no item published (the fixture had no photos).
+
+**30.10 — streamed generation (D06.1).** Same output, a different shape of work:
+
+- **Working set from a cursor.** `findActiveForFeed()` is an aggregation cursor (`batchSize` 100), not an array; the
+  SKU order is applied first (`$match` + `$sort {sku}` before the joins, served by the unique `sku` index), which is
+  the order sorting the joined rows gave. Small batches on purpose: a batch is deserialised at once and lives while
+  its rows are built, and under concurrent catalogue reads 500 rows a batch survived into V8's old generation.
+- **No item list, no document string.** Each item is handed (in ~64 KiB slices) to a gzip stream as soon as it is
+  built; the artifact is `{ gzip, bytes, generatedAt }` (`FeedArtifact`). `feedXmlHead` + items + `FEED_XML_TAIL`
+  is byte for byte `buildFeedXml(items)`.
+- **The GET serves the same bytes with the same headers:** `Content-Type`, `Last-Modified`, `Cache-Control` and an
+  explicit `Content-Length` (what `res.end(xml)` set implicitly), the body inflated while it is sent — never the
+  whole document in memory, no `Content-Encoding`, no chunked transfer.
+- **Exclusions are counted, not listed in full.** `summary.excluded` is the first `FEED_EXCLUSION_SAMPLE` (500)
+  exclusions in SKU order — every one of them on any real catalogue — plus `excluded_count` and
+  `excluded_by_reason`. The admin screen counts from `excluded_count` (falling back to the list for an older
+  backend) and says «Показано перші N з M» when the list is a sample.
+- **Categories without content.** Visibility and the attribute contract come from the light public tree
+  (`CategoryPublicReadService.productCategories()`); the definitions of v2 categories are read per row batch
+  (`contentOf(…, { cache: false, of })` — against the same tree, past the storefront's content cache) and at most 500
+  of them are kept during a generation.
+- Unchanged: the stamp check (`getVerifiedXml` → 503 + `feedRefresh`), the zero-item refusal, the queued rerun,
+  `FeedRefreshSignal`, bootstrap + hourly generation, the status screen.
+
+Parity: `feed-streaming.int-spec.ts` — on a mixed catalogue (v1/v2, a hidden branch, colour and numeric axes,
+promotions open-ended/dated/ended/rounding to nothing, zero/negative/missing stock, every exclusion reason, v1 and
+typed landings for `product_type`, sales velocity, 600+ items so the compressor flushes many times) the streamed XML
+equals the former generation (one array, the former reader, joined items) byte for byte at the same instant, with
+the same summary; over HTTP the same bytes and headers. Stand (`fillando_catalog_local_v2`, 301 items): the feed
+before and after the change is identical apart from the generation dates, header set identical.
+
+Measured (Linux container `node:24-alpine`, 400 MB heap, synthetic catalogue with photos and the visible «Виробник»
+characteristic — 100 000 real items, 198 MB of XML kept as 5.6 MB): bootstrap generation alone 58 s, VmHWM 317 MiB;
+bootstrap generation overlapped by 10 concurrent catalogue readers for 5 minutes — VmHWM 484 MiB (target ≤ 512 MiB).
+Numbers and history in the Plan-0010 M0 evidence (30.10).
+
+## Audit 31.10.2026 (local)
+
+- **An old SKU address loses its query** (owner decision 31.10: documented, code unchanged). After a SKU slug change
+  (`POST /routes/variants/:id/slug-change`) the storefront answers the old `/products/{old}` with one 308 to the new
+  address, but without the query string: the product page is ISR and does not read `searchParams`. Until Merchant
+  fetches the feed with the new `link`, a Shopping click on the old URL arrives without its `gclid`/`utm_*`, so that
+  window's clicks are not attributed. Category and landing redirects keep the query. TD-0013 SEO matrix, row
+  «Старий URL».
+
+- **`product_type` of typed landings.** A typed landing (`contract_version: 2`) refines `product_type` by its own
+  pins (`filters_v2.attributes` — discrete values or a numeric range, `typedLandingPins`) against the product's typed
+  values (`attributes_v2` plus the SKU's axis value), the storefront's listing rule; no longer by the legacy `filters`
+  a migrated landing kept. A landing created in the new admin (`filters: {}`) used to never type, and a re-pinned
+  migrated one typed by its stale pins. A landing that also pins colour families, price, stock, categories, brands
+  or products does not refine the type (never a type the storefront does not list it under). Migrated filament
+  landings carry the same pins in both forms: the stand feed is the same XML (apart from dates). Tests:
+  `product-type.resolver.spec.ts`, `feed-streaming.int-spec.ts` (fixture `avr-63` now a valid range pin).
+- **Rebuild after every catalogue operation.** `CatalogWriteGate.finishPublication` raises `FeedRefreshSignal` for
+  completed, aborted and rolled-back operations alike: a completed one moves the revision the feed is served under
+  (503 `CATALOG_FEED_STALE` until its next GET or the hourly run — publication, typed landings, storefront
+  settings, SEO and presentation did not ask for it), and any of them discards a generation it overlapped. Since
+  the 11.11 audit only a revision makes the served feed stale — an aborted or rolled-back operation moves the epoch
+  alone and leaves the data the feed was built from.
+- **`g:item_group_id` only for a group** (owner decision 31.10, TD-0013 D04): sent when the product has more than
+  one ACTIVE variant (one `$group` over active variants before the stream), never for a product with a single
+  active variant; multi-variant products are unchanged. Ships with the release (R02), no separate deploy; on the
+  stand 11 single-SKU products lose the tag. Tests: `google-shopping-feed.builder.spec.ts`, `feed.service.spec.ts`,
+  `product-variant.repository.int-spec.ts` (`findGroupedProductIds`), `feed-streaming.int-spec.ts`.
+

@@ -4,6 +4,9 @@ import { Role } from 'src/common/types/enums'
 import { PriceListService } from './price-list/price-list.service'
 import { ProductController } from './product.controller'
 import { ProductService } from './product.service'
+import { PublicCatalogController } from './public-catalog.controller'
+import { PublicCatalogService } from './public-catalog.service'
+import { PublicProductService } from './public-product.service'
 
 const PRODUCT_ID = '000000000000000000000001'
 const VARIANT_ID = '000000000000000000000002'
@@ -12,12 +15,8 @@ const resolved = () => jest.fn().mockResolvedValue({})
 
 const productService = {
 	findAll: resolved(),
-	getCatalog: resolved(),
-	search: resolved(),
 	getAllVariantSlugs: resolved(),
 	getVariantCount: resolved(),
-	getPriceSheet: resolved(),
-	getVariantBySlug: resolved(),
 	findById: resolved(),
 	validate: resolved(),
 	create: resolved(),
@@ -31,6 +30,15 @@ const productService = {
 	update: resolved(),
 	delete: resolved()
 }
+
+const publicCatalogService = {
+	legacy: resolved(),
+	search: resolved(),
+	read: resolved(),
+	categoryCounts: resolved(),
+	priceSheet: resolved()
+}
+const publicProductService = { bySlug: resolved() }
 
 const priceListService = {
 	generatePdf: jest.fn().mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'x.pdf' })
@@ -81,12 +89,14 @@ const ADMIN_ENDPOINTS: AdminRow[] = [
 
 /** Storefront reads — must keep answering anonymous requests. */
 const PUBLIC_GETS: [path: string, handler: ServiceMock][] = [
-	['/products/catalog', productService.getCatalog],
-	['/products/search', productService.search],
+	['/products/catalog', publicCatalogService.legacy],
+	['/products/catalog/v2', publicCatalogService.read],
+	['/products/catalog/v2/category-counts', publicCatalogService.categoryCounts],
+	['/products/search', publicCatalogService.search],
 	['/products/variants/slugs', productService.getAllVariantSlugs],
 	['/products/variants/count', productService.getVariantCount],
-	['/products/price-sheet', productService.getPriceSheet],
-	['/products/by-slug/x', productService.getVariantBySlug]
+	['/products/price-sheet', publicCatalogService.priceSheet],
+	['/products/by-slug/x', publicProductService.bySlug]
 ]
 
 describe('ProductController RBAC', () => {
@@ -94,10 +104,12 @@ describe('ProductController RBAC', () => {
 
 	beforeAll(async () => {
 		app = await createRbacApp({
-			controllers: [ProductController],
+			controllers: [PublicCatalogController, ProductController],
 			providers: [
 				{ provide: ProductService, useValue: productService },
-				{ provide: PriceListService, useValue: priceListService }
+				{ provide: PriceListService, useValue: priceListService },
+				{ provide: PublicCatalogService, useValue: publicCatalogService },
+				{ provide: PublicProductService, useValue: publicProductService }
 			]
 		})
 	})

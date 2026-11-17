@@ -8,7 +8,9 @@ table below. The module also exposes user-owned routes (`POST /orders`, `GET /or
 `GET /orders/me/:id`) and one public, token-protected route — see _Public endpoints_.
 Customer-facing responses (`POST /orders`, `GET /orders/me*`) go through a customer
 projection that omits `items[].vendor_sku` (the supplier article snapshot is for the admin
-invoice and vendor e-mail only); admin routes return the full item. `POST /orders` also
+invoice and vendor e-mail only) and `attribution` (click ids, address and browser of the visit,
+recorded for ad measurement only under the buyer's consent — `DATA_MODELS.md` → _OrderAttribution_);
+admin routes return the full item, and `attribution` only on the order detail, not in the list. `POST /orders` also
 refuses draft/archived variants (`400 VARIANT_UNAVAILABLE`) — they are hidden from every
 public read and must not be orderable by id; see _`POST /orders` refusals_ below for the full
 list of codes.
@@ -386,3 +388,25 @@ An `items` edit prices only the lines that are new to the order at the moment of
 that stays keeps the unit price, list price and promo percent it was sold under (see «Admin `PATCH
 /orders/:id` rules»). LiqPay charges `total_price` as it was at creation: a promotion that starts
 or ends between the cart and `POST /orders` simply prices at creation time.
+
+## Checkout catalog read barrier (локально, 24.10.2026)
+
+OrderService.loadOrderableVariants перевіряє catalog stamp до й після читання
+SKU; guard діє і для create, і для admin revise items. При busy/changed/несумісному
+legacy snapshot — 503 до order write, номера замовлення чи читання/використання
+купона. Не додаємо post-write interceptor, який міг би віддати 503 вже після
+створення замовлення й спровокувати повторний checkout. Повідомлення barrier
+українською; machine-readable details.code збережено. Автоповтору mutation немає.
+
+Admin збільшення кількості чи додавання нової позиції читає каталог і блокується
+під час переходу. Зменшення/видалення збережених позицій, контактні дані, статуси,
+платіжні результати та invoice/report на order snapshots не потребують цього
+каталожного читання. Збережені ціни й назви не перераховуються через нову таксономію.
+Gateway result для вже існуючого замовлення не залежить від catalog control.
+
+Це узгодженість прочитаного snapshot перед side effects, не резерв stock і не
+транзакція від читання до commit. Каталог може змінитися після успішного finishRead;
+перевірений snapshot залишається основою цього замовлення. Ціни/stock Prom не
+серіалізуються catalog gate. (Оновлено 31.10: v2/ancestor visibility adapter
+реалізовано — checkout і правка рядків читають видимість за деревом під бар’єром,
+`order.service.ts`; несумісні дані цей guard і далі відхиляє.)

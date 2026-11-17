@@ -11,6 +11,16 @@ const NOW = new Date('2026-10-04T12:00:00.000Z')
 const FUTURE = new Date('2026-11-01T00:00:00.000Z')
 const PAST = new Date('2026-09-01T00:00:00.000Z')
 
+/** What `run` threw — `undefined` if it returned — so a refusal's `code` can be matched. */
+function thrownBy(run: () => unknown): unknown {
+	try {
+		run()
+	} catch (err) {
+		return err
+	}
+	return undefined
+}
+
 describe('activePromo', () => {
 	it('is null without a percent', () => {
 		expect(activePromo({ price: 649 }, NOW)).toBeNull()
@@ -132,16 +142,24 @@ describe('resolvePromoPatch', () => {
 		expect(() => resolvePromoPatch({ promo_ends_at: FUTURE.toISOString() }, null, NOW)).toThrow(
 			PromoValidationError
 		)
-		expect(() =>
-			resolvePromoPatch({ promo_ends_at: FUTURE.toISOString() }, { promo_percent: null }, NOW)
-		).toThrow(expect.objectContaining({ code: 'PROMO_PERCENT_REQUIRED' }))
+		expect(
+			thrownBy(() =>
+				resolvePromoPatch(
+					{ promo_ends_at: FUTURE.toISOString() },
+					{ promo_percent: null },
+					NOW
+				)
+			)
+		).toEqual(expect.objectContaining({ code: 'PROMO_PERCENT_REQUIRED' }))
 	})
 
 	it('refuses a date that is not in the future', () => {
 		for (const bad of [PAST.toISOString(), NOW.toISOString(), 'not-a-date']) {
-			expect(() =>
-				resolvePromoPatch({ promo_percent: 10, promo_ends_at: bad }, null, NOW)
-			).toThrow(expect.objectContaining({ code: 'PROMO_ENDS_IN_PAST' }))
+			expect(
+				thrownBy(() =>
+					resolvePromoPatch({ promo_percent: 10, promo_ends_at: bad }, null, NOW)
+				)
+			).toEqual(expect.objectContaining({ code: 'PROMO_ENDS_IN_PAST' }))
 		}
 	})
 })

@@ -20,6 +20,8 @@ const summary = (overrides: Partial<FeedGenerationSummary> = {}): FeedGeneration
 	out_of_stock: 0,
 	typed_by_landing: 0,
 	excluded: [],
+	excluded_count: 0,
+	excluded_by_reason: {},
 	warnings: [],
 	warning_kinds: 0,
 	warned_items: 0,

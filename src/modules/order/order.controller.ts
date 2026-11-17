@@ -10,10 +10,17 @@ import {
 	Res,
 	UseGuards
 } from '@nestjs/common'
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+	ApiServiceUnavailableResponse,
+	ApiCreatedResponse,
+	ApiOkResponse,
+	ApiOperation,
+	ApiTags
+} from '@nestjs/swagger'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { clientIp } from 'src/common/guards/client-ip.util'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
 import { OptionalJwtAuthGuard } from 'src/common/guards/optional-jwt-auth.guard'
 import { RolesGuard } from 'src/common/guards/roles.guard'
@@ -44,6 +51,10 @@ import { ChangePaymentMethodDto } from './dto/change-payment-method.dto'
 export class OrderController {
 	constructor(private readonly orderService: OrderService) {}
 
+	@ApiServiceUnavailableResponse({
+		description:
+			'Catalog maintenance or changed read stamp. Rejected before order/number/coupon writes.'
+	})
 	@Post(ENDPOINTS.ORDERS.CREATE)
 	@UseGuards(ThrottlerGuard, OptionalJwtAuthGuard)
 	@Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -51,7 +62,10 @@ export class OrderController {
 	@ApiCreatedResponse({ type: CreateOrderResponseDto })
 	create(@Body() dto: CreateOrderDto, @Req() req: Request) {
 		const userId = (req.user as JWTPayload | undefined)?.id
-		return this.orderService.create(dto, userId)
+		// The browser posts the order itself, so the request's address and User-Agent are the
+		// buyer's. The service keeps them only when the buyer consented (`buildOrderAttribution`).
+		const userAgent = req.headers['user-agent']
+		return this.orderService.create(dto, userId, { ip: clientIp(req), userAgent })
 	}
 
 	@Get(ENDPOINTS.ORDERS.GET_ALL)
@@ -154,6 +168,10 @@ export class OrderController {
 		return this.orderService.changeMyPaymentMethod(userId, id, dto)
 	}
 
+	@ApiServiceUnavailableResponse({
+		description:
+			'Catalog read unavailable when adding a line or increasing quantity. Stored snapshot-only edits remain available.'
+	})
 	@Patch(ENDPOINTS.ORDERS.UPDATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)

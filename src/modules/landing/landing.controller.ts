@@ -1,6 +1,11 @@
+import {
+	CatalogAdaptedRead,
+	LegacyCatalogController
+} from '../catalog-safety/legacy-catalog-write.interceptor'
+import { ApiCreatedResponse, ApiOkResponse, ApiServiceUnavailableResponse } from '@nestjs/swagger'
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
-import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
+import { API_OPERATION, CATALOG_UNAVAILABLE, ENDPOINTS } from 'src/common/constants'
 import { Roles } from 'src/common/decorators/roles.decorator'
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
 import { RolesGuard } from 'src/common/guards/roles.guard'
@@ -9,6 +14,7 @@ import { LandingService } from './landing.service'
 import { CreateLandingDto } from './dto/create-landing.dto'
 import { UpdateLandingDto } from './dto/update-landing.dto'
 
+@LegacyCatalogController()
 @Controller(ENDPOINTS.LANDINGS.BASE)
 @ApiTags(ENDPOINTS.LANDINGS.BASE)
 export class LandingController {
@@ -16,12 +22,17 @@ export class LandingController {
 
 	// Route order matters: '/slugs' and '/admin' are declared before '/:id', which would
 	// otherwise capture them as an id.
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.ADAPTED_READ })
+	@CatalogAdaptedRead()
+	@ApiOkResponse()
 	@Get(ENDPOINTS.LANDINGS.GET_SLUGS)
 	@ApiOperation(API_OPERATION.LANDINGS.GET_SLUGS)
 	findSlugs() {
 		return this.landingService.findActiveSlugs()
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.LANDINGS.GET_ADMIN_ALL)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -31,6 +42,9 @@ export class LandingController {
 		return this.landingService.findAllForAdmin(categoryId)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.ADAPTED_READ })
+	@CatalogAdaptedRead()
+	@ApiOkResponse()
 	@Get(ENDPOINTS.LANDINGS.GET_BY_SLUG)
 	@ApiOperation(API_OPERATION.LANDINGS.GET_BY_SLUG)
 	findBySlugs(
@@ -40,6 +54,9 @@ export class LandingController {
 		return this.landingService.findActiveBySlugs(categorySlug, landingSlug)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.ADAPTED_READ })
+	@CatalogAdaptedRead()
+	@ApiOkResponse()
 	@Get(ENDPOINTS.LANDINGS.GET_ALL)
 	@ApiOperation(API_OPERATION.LANDINGS.GET_ALL)
 	@ApiQuery({ name: 'category_id', required: false })
@@ -47,6 +64,8 @@ export class LandingController {
 		return this.landingService.findActive(categoryId)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_READ })
+	@ApiOkResponse()
 	@Get(ENDPOINTS.LANDINGS.GET_BY_ID)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -55,6 +74,8 @@ export class LandingController {
 		return this.landingService.findById(id)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiCreatedResponse()
 	@Post(ENDPOINTS.LANDINGS.CREATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -63,6 +84,8 @@ export class LandingController {
 		return this.landingService.create(dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Patch(ENDPOINTS.LANDINGS.UPDATE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)
@@ -71,6 +94,8 @@ export class LandingController {
 		return this.landingService.update(id, dto)
 	}
 
+	@ApiServiceUnavailableResponse({ description: CATALOG_UNAVAILABLE.LEGACY_WRITE })
+	@ApiOkResponse()
 	@Delete(ENDPOINTS.LANDINGS.DELETE)
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles(Role.ADMIN)

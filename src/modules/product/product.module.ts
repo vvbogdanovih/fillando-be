@@ -1,3 +1,7 @@
+import { PublicCatalogController } from './public-catalog.controller'
+import { PublicCatalogService } from './public-catalog.service'
+import { PublicProductService } from './public-product.service'
+import { TypedProductController, TypedProductService } from './typed-product.controller'
 import { Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { Product, ProductSchema } from 'src/database/mongoose/schemas/product.schema'
@@ -28,8 +32,11 @@ import { PriceListPdfProvider } from './price-list/price-list-pdf.provider'
 		NumbersModule,
 		CategoryModule
 	],
-	controllers: [ProductController],
+	controllers: [PublicCatalogController, TypedProductController, ProductController],
 	providers: [
+		PublicCatalogService,
+		PublicProductService,
+		TypedProductService,
 		ProductService,
 		ProductRepository,
 		ProductVariantRepository,
@@ -37,6 +44,6 @@ import { PriceListPdfProvider } from './price-list/price-list-pdf.provider'
 		PriceListService,
 		PriceListPdfProvider
 	],
-	exports: [ProductService, ProductRepository, ProductVariantRepository]
+	exports: [ProductService, ProductRepository, ProductVariantRepository, PublicCatalogService]
 })
 export class ProductModule {}

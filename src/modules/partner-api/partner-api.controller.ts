@@ -1,3 +1,8 @@
+import {
+	CatalogAdaptedRead,
+	LegacyCatalogController,
+	CatalogReadOnlyPost
+} from '../catalog-safety/legacy-catalog-write.interceptor'
 import { Body, Controller, Get, Header, HttpCode, Param, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { API_OPERATION, ENDPOINTS } from 'src/common/constants'
@@ -13,12 +18,20 @@ import {
 	PartnerAvailabilityDto,
 	PartnerSkuDto
 } from './partner-api.dto'
+@LegacyCatalogController()
+@ApiResponse({
+	status: 503,
+	description:
+		'Catalog maintenance, changed revision/epoch, corrupt category data or missing control. Retry-After: 5; restart pagination after a catalog transition.'
+})
 @Controller(ENDPOINTS.PARTNER_API.BASE)
 @ApiTags('Наявність товарів')
 @ApiBearerAuth('partner-token')
 @UseGuards(PartnerIpThrottlerGuard, PartnerApiGuard, PartnerTokenThrottlerGuard)
 export class PartnerApiController {
 	constructor(private readonly service: PartnerApiService) {}
+	@CatalogReadOnlyPost()
+	@CatalogAdaptedRead()
 	@Post(ENDPOINTS.PARTNER_API.BULK_AVAILABILITY)
 	@HttpCode(200)
 	@Header('Cache-Control', 'no-store')
@@ -39,6 +52,7 @@ export class PartnerApiController {
 	}
 
 	@Get(ENDPOINTS.PARTNER_API.AVAILABILITY)
+	@CatalogAdaptedRead()
 	@Header('Cache-Control', 'no-store')
 	@ApiOperation(API_OPERATION.PARTNER_API.AVAILABILITY)
 	@ApiOkResponse({ type: PartnerAvailabilityDto })

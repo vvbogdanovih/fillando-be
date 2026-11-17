@@ -1,13 +1,21 @@
+import { LegacyCatalogWritePolicy } from '../catalog-safety/legacy-catalog-write.interceptor'
 import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
 	Logger,
-	NotFoundException
+	NotFoundException,
+	Optional
 } from '@nestjs/common'
+import { CategoryPublicReadService } from '../category/category-public-read.service'
 import { Types } from 'mongoose'
 import { OrderRepository } from 'src/database/mongoose/repositories/order.repository'
-import type { ManualDiscount, OrderDocument } from 'src/database/mongoose/schemas/order.schema'
+import type {
+	ManualDiscount,
+	Order,
+	OrderDocument,
+	OrderItem
+} from 'src/database/mongoose/schemas/order.schema'
 import { NumbersRepository } from 'src/database/mongoose/repositories/numbers.repository'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
 import { DiscountCouponRepository } from 'src/database/mongoose/repositories/discount-coupon.repository'
@@ -53,6 +61,7 @@ import {
 	liqpaySessionExpiredBefore
 } from './helpers/liqpay-session.helpers'
 import { itemsEditHistoryEntry, type ItemsEditLine } from './helpers/order-items-edit'
+import { buildOrderAttribution, type OrderClient } from './helpers/order-attribution'
 import { GenerateReportDto } from './dto/generate-report.dto'
 import { GetOrderStatsQueryDto } from './dto/get-order-stats-query.dto'
 import { buildOrderStats, type OrderStatsData, type StatsSourceOrder } from './stats/stats.builder'
@@ -69,6 +78,8 @@ import { couponDiscountAmount } from './coupon-pricing'
 interface OrderableVariant {
 	_id: Types.ObjectId
 	product_id: Types.ObjectId
+	/** Visibility check only (TD-0013); never copied into the order snapshot. */
+	category_id?: Types.ObjectId
 	name: string
 	sku: string
 	vendor_product_sku?: string | null
@@ -94,18 +105,38 @@ interface OrderLineSnapshot {
 	image: string | null
 }
 
+/** A stored order as a lean read answers it (and as `toObject()` does). */
+type LeanOrder = Order & { _id: Types.ObjectId }
+
 /**
- * The admin order shape: the stored document plus the two TD-0011 fields derived per response.
- * `mapOrderResponse` is untyped, so this names what the admin endpoints are known to return.
+ * A stored order as plain data. The schema sets `timestamps: true`, which the `Order` class does
+ * not declare, so the two fields every stored order carries are named here — the invoice reads
+ * `createdAt`.
  */
-type AdminOrderResponse = Record<string, unknown> & {
-	order_number: string
-	order_status: OrderStatus
-	payment_status: PaymentStatus
-	payment_method: PaymentMethod
-	delivery_method: DeliveryMethod
+type StoredOrder = LeanOrder & { createdAt: Date; updatedAt: Date }
+
+/** One line of an order response: the stored snapshot, read back as TD-0012 prices it. */
+type OrderLineResponse = OrderItem & {
+	list_price: number
+	promo_percent: number | null
+	line_total: number
+}
+
+/** The base order shape every audience's response is cut from (`mapOrderResponse`). */
+type OrderResponse = Omit<StoredOrder, 'items'> & { items: OrderLineResponse[] }
+
+/** The admin order shape: the base shape plus the two TD-0011 fields derived per response. */
+type AdminOrderResponse = OrderResponse & {
 	allowed_status_transitions: OrderStatus[]
 	ships_on_ttn: boolean
+}
+
+/**
+ * A hydrated document — or a spec's stand-in for one — rather than a lean read: whatever carries
+ * `toObject()`. Duck-typed on purpose; `instanceof Document` would miss the stand-ins.
+ */
+function isHydratedOrder(order: OrderDocument | LeanOrder): order is OrderDocument {
+	return 'toObject' in order && typeof order.toObject === 'function'
 }
 
 @Injectable()
@@ -134,7 +165,14 @@ export class OrderService {
 		private readonly discountCouponRepository: DiscountCouponRepository,
 		private readonly emailService: EmailService,
 		private readonly invoicePdfProvider: InvoicePdfProvider,
-		private readonly reportProvider: ReportProvider
+		private readonly reportProvider: ReportProvider,
+		private readonly catalogPolicy: LegacyCatalogWritePolicy,
+		/**
+		 * The public category projection (TD-0013). With it, checkout reads the catalogue as an
+		 * adapted reader and accepts a SKU only when its category is public; without it (unit
+		 * specs) the legacy barrier applies unchanged.
+		 */
+		@Optional() private readonly publicCategories?: CategoryPublicReadService
 	) {}
 
 	private formatOrderNumber(sequence: number): string {
@@ -326,10 +364,28 @@ export class OrderService {
 		variantIds: string[]
 	): Promise<Map<string, OrderableVariant>> {
 		if (variantIds.length === 0) return new Map()
+		const adapted = this.publicCategories !== undefined
+		const stamp = await this.catalogPolicy.beginRead(adapted)
 		const variants = await this.productVariantRepository.findByIds(
 			variantIds.map(id => new Types.ObjectId(id))
 		)
-		return new Map((variants as unknown as OrderableVariant[]).map(v => [v._id.toString(), v]))
+		const visible = adapted
+			? new Set(
+					(await this.publicCategories.productCategories()).map(category => category._id)
+				)
+			: null
+		// Verify before any order/coupon/number write; never reject after side effects.
+		await this.catalogPolicy.finishRead(stamp, adapted)
+		return new Map(
+			(variants as unknown as OrderableVariant[]).map(v => [
+				v._id.toString(),
+				// A SKU of a hidden (draft/archived) branch is sold nowhere: refuse it like an
+				// unpublished SKU, with the same buyer-facing VARIANT_UNAVAILABLE.
+				visible && !visible.has(String(v.category_id))
+					? { ...v, status: ProductStatus.DRAFT }
+					: v
+			])
+		)
 	}
 
 	/**
@@ -413,17 +469,12 @@ export class OrderService {
 		return Number(subtotal.toFixed(2))
 	}
 
-	private mapOrderResponse(order: any) {
-		const plainOrder = typeof order?.toObject === 'function' ? order.toObject() : order
-		type StoredItem = {
-			price: number
-			quantity: number
-			list_price?: number | null
-			promo_percent?: number | null
-		}
+	private mapOrderResponse(order: OrderDocument | LeanOrder): OrderResponse {
+		// Only the timestamps are asserted: `timestamps: true` writes them on every stored order.
+		const plainOrder = (isHydratedOrder(order) ? order.toObject() : order) as StoredOrder
 		return {
 			...plainOrder,
-			items: plainOrder.items.map((item: StoredItem) => ({
+			items: plainOrder.items.map(item => ({
 				...item,
 				// Orders written before TD-0012 carry no list price: the regular price was the price.
 				list_price: item.list_price ?? item.price,
@@ -437,8 +488,8 @@ export class OrderService {
 	 * Admin order detail: the base shape plus the status actions the admin may take from here
 	 * (TD-0011). The rule lives here, so the admin UI renders buttons without mirroring it.
 	 */
-	private mapAdminOrderResponse(order: unknown): AdminOrderResponse {
-		const mapped = this.mapOrderResponse(order) as AdminOrderResponse
+	private mapAdminOrderResponse(order: OrderDocument): AdminOrderResponse {
+		const mapped = this.mapOrderResponse(order)
 		return {
 			...mapped,
 			allowed_status_transitions: adminStatusTransitions(mapped),
@@ -447,15 +498,17 @@ export class OrderService {
 	}
 
 	/** An admin list row: the base shape without the history, which only the detail shows. */
-	private mapAdminListRow(order: unknown) {
-		const row = this.mapOrderResponse(order) as Record<string, unknown>
+	private mapAdminListRow(order: LeanOrder) {
+		const row: Record<string, unknown> = this.mapOrderResponse(order)
 		delete row.status_history
+		delete row.attribution
 		return row
 	}
 
 	/**
 	 * Customer-facing shape (POST /orders, GET /orders/me*): like {@link mapOrderResponse}
-	 * minus `status_history` (who changed what, admin ids — internal) and minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
+	 * minus `status_history` (who changed what, admin ids — internal), minus `attribution` (click
+	 * ids, address, browser — kept for ad measurement) and minus `items[].vendor_sku` — the supplier article snapshot exists for the admin invoice
 	 * and vendor e-mail only and must never reach a buyer.
 	 *
 	 * Plus the two derived payment fields the public lookup already carries, computed by the
@@ -464,32 +517,28 @@ export class OrderService {
 	 * buyer needs is the number of seconds, so only that derived value is added here — never
 	 * a raw session stamp or another internal payment field.
 	 */
-	private mapCustomerOrderResponse(order: any) {
+	private mapCustomerOrderResponse(order: OrderDocument | LeanOrder) {
 		const mapped = this.mapOrderResponse(order)
-		const paymentState = mapped as {
-			payment_method: PaymentMethod
-			payment_status: PaymentStatus
-			order_status: OrderStatus
-			liqpay_checkout_started_at: Date | null
-		}
 		const customerOrder: Record<string, unknown> = { ...mapped }
 		delete customerOrder.status_history
+		// Recorded for ad measurement; the buyer's own address and browser are not echoed back.
+		delete customerOrder.attribution
 		// The amount is the buyer's; the reason is the admin's note about them.
-		const { manual_discount } = mapped as { manual_discount?: ManualDiscount | null }
+		const { manual_discount } = mapped
 		return {
 			...customerOrder,
 			...(manual_discount ? { manual_discount: { amount: manual_discount.amount } } : {}),
-			can_change_payment_method: canCustomerChangePaymentMethod(paymentState),
-			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(paymentState),
-			items: mapped.items.map((item: any) => {
-				const customerItem = { ...item }
+			can_change_payment_method: canCustomerChangePaymentMethod(mapped),
+			liqpay_retry_after_seconds: liqpayRetryAfterSeconds(mapped),
+			items: mapped.items.map(item => {
+				const customerItem: Record<string, unknown> = { ...item }
 				delete customerItem.vendor_sku
 				return customerItem
 			})
 		}
 	}
 
-	async create(dto: CreateOrderDto, userId?: string) {
+	async create(dto: CreateOrderDto, userId?: string, client?: OrderClient) {
 		this.validateDeliveryData(dto.delivery_method, dto.delivery_address)
 		this.validatePaymentDeliveryCombination(dto.payment_method, dto.delivery_method)
 		const { orderItems, subtotalPrice } = await this.buildOrderItems(dto.items)
@@ -565,6 +614,7 @@ export class OrderService {
 					? null
 					: this.mapDeliveryAddress(dto.delivery_address),
 			comment: dto.comment ?? null,
+			attribution: buildOrderAttribution(dto.attribution, client),
 			status_history: initialStatusHistory({
 				order_status: OrderStatus.NEW,
 				payment_status: PaymentStatus.PENDING
@@ -642,7 +692,7 @@ export class OrderService {
 
 			const sendEmail = sendConfirmation()
 
-			sendEmail.catch(err =>
+			sendEmail.catch((err: unknown) =>
 				this.logger.error(
 					{ err },
 					`Failed to send ${dto.payment_method} confirmation email for order ${order_number}`
@@ -818,7 +868,7 @@ export class OrderService {
 				order.payment_method,
 				this.buildOrderEmailDetails(updated)
 			)
-			.catch(err =>
+			.catch((err: unknown) =>
 				this.logger.error(
 					{ err },
 					`Failed to send payment-method-changed email for order ${order.order_number}`
@@ -1303,7 +1353,7 @@ export class OrderService {
 			this.logger.warn(
 				`Order ${orderNumber} was paid via gateway after being CANCELLED — refund required`
 			)
-			this.sendCancelledOrderPaidNotification(updated).catch(err =>
+			this.sendCancelledOrderPaidNotification(updated).catch((err: unknown) =>
 				this.logger.error(
 					{ err },
 					`Failed to notify service about a paid cancelled order ${orderNumber}`
@@ -1342,7 +1392,7 @@ export class OrderService {
 			)
 			if (!updated) return retry()
 			this.logger.log(`Order ${orderNumber} payment marked PAID via gateway`)
-			this.sendPaidConfirmationEmail(updated).catch(err =>
+			this.sendPaidConfirmationEmail(updated).catch((err: unknown) =>
 				this.logger.error(
 					{ err },
 					`Failed to send paid confirmation email for order ${orderNumber}`
@@ -1376,7 +1426,7 @@ export class OrderService {
 				this.buildOrderEmailDetails(updated),
 				{ inFulfilment, ttn: order.nova_post_ttn ?? null }
 			)
-			.catch(err =>
+			.catch((err: unknown) =>
 				this.logger.error(
 					{ err },
 					`Failed to send paid-after-method-change emails for order ${orderNumber}`
@@ -1386,7 +1436,7 @@ export class OrderService {
 	}
 
 	private buildOrderEmailDetails(order: OrderDocument) {
-		const emailItems = order.items.map((i: any) => ({
+		const emailItems = order.items.map(i => ({
 			name: i.name,
 			sku: i.sku,
 			vendor_sku: i.vendor_sku,
@@ -1440,7 +1490,7 @@ export class OrderService {
 		return discount ? { amount: discount.amount, reason: discount.reason } : null
 	}
 
-	private buildInvoiceData(order: any, adminComment?: string): InvoiceData {
+	private buildInvoiceData(order: OrderResponse, adminComment?: string): InvoiceData {
 		return {
 			orderNumber: order.order_number,
 			createdAt: order.createdAt,
@@ -1452,7 +1502,7 @@ export class OrderService {
 				phone: order.customer.phone,
 				email: order.customer.email
 			},
-			items: order.items.map((item: any) => ({
+			items: order.items.map(item => ({
 				name: item.name,
 				sku: item.sku,
 				vendor_sku: item.vendor_sku ?? null,

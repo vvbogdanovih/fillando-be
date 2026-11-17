@@ -88,6 +88,7 @@ Schema: `src/database/mongoose/schemas/order.schema.ts`
 | `order_status`               | `OrderStatus` enum         | default: `NEW` — fulfillment status; transitions, the `COMPLETED` = DELIVERED + PAID rule and the payment side effects in `ORDER_ADMIN_API.md` → _Order lifecycle (TD-0011)_. `PROCESSING` = «Очікує підтвердження» (buyer contacted, before `CONFIRMED`), `RETURNING` = parcel on its way back                                                                                         |
 | `status_history`             | `StatusHistoryEntry[]`     | default `[]` — `{ field, from, to, at, actor, admin_id?, note? }`, one entry per change of `order_status` / `payment_status`, appended in the same update; admin detail only (the list drops it)                                                                                                                                                                                            |
 | `comment`                    | string \| null             | optional                                                                                                                                                                                                                                                                                                                                                                   |
+| `attribution`                | `OrderAttribution` \| null | default `null` (orders placed before 2026-11-16) — ad attribution of the visit, see below; admin detail only, stripped from the list and from every buyer-facing response |
 | `createdAt` / `updatedAt`    | Date                       | auto-managed (timestamps)                                                                                                                                                                                                                                                                                                                                                  |
 
 Indexes: `user_id`, `order_status`, `payment_status`, `createdAt: -1` (every list sorts by it; the report, the tracker and the dashboard range over it) — plus the unique `order_number`.
@@ -105,6 +106,27 @@ There is **no** stored token for the public payment-status lookup
 (`GET /orders/lookup/:orderNumber?token=…`). The token is derived on every request as
 `HMAC-SHA256(PAYMENT_ENCRYPTION_KEY, 'order-lookup:' + order_number)` (hex, first 32 chars),
 so nothing about it lives in this collection. See `src/docs/LIQPAY_FLOW.md`.
+
+#### Embedded: `OrderAttribution` (`_id: false`)
+
+What a conversion upload to Google Ads needs about the visit that placed the order (owner,
+2026-11-16). Built by `buildOrderAttribution` (`src/modules/order/helpers/order-attribution.ts`).
+
+| Field        | Type                               | Notes                                                                                                   |
+| ------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `consent`    | `'granted' \| 'denied' \| 'unknown'` | required — the buyer's answer in the cookie banner; `unknown` also when the client sent no `attribution` |
+| `gclid`      | string \| null                     | Google click id the storefront kept from the landing URL                                                |
+| `gbraid`     | string \| null                     | the same for iOS app-to-web clicks                                                                      |
+| `wbraid`     | string \| null                     | the same for iOS web-to-app clicks                                                                      |
+| `ip_address` | string \| null                     | the buyer's address as `clientIp(req)` read it from `POST /orders`                                      |
+| `user_agent` | string \| null                     | the request's `User-Agent`, cut at 512 characters                                                       |
+
+**One rule: without `consent: 'granted'` every field but `consent` is null**, whatever the client
+sent — an order placed without consent holds nothing that could be sent to an ad platform. The
+click ids come from the request body (`CreateOrderDto.attribution`), the address and the browser
+from the request itself; nothing is uploaded to Google by the backend yet — the fields exist so
+that the data is there when a server-side upload (Data Manager API) is added.
+
 
 #### Embedded: `OrderItem` (`_id: false`)
 
@@ -303,7 +325,7 @@ Schema: `src/database/mongoose/schemas/product-variant.schema.ts`
 | `prom_discount_seen_at`   | Date \| null                | default: `null` — when `prom_discount_ratio` was last refreshed. **Internal — never exposed by public endpoints; only via admin-only variant endpoints**                                                                                                        |
 | `price_updated_at`        | Date \| null                | default: `null` — last successful price resolution (Prom sync)                                                                                                                                                                                                  |
 | `promo_percent`           | number \| null              | default: `null` — the shop's own promotion («акція», TD-0012): whole-number percent off `price`, 1..90. Never folded into `price` (the Prom sync rewrites it); the public `sale_price` is **derived on read** by `modules/product/promo-pricing.ts` and never stored |
-| `promo_ends_at`           | Date \| null                | default: `null` — when the promotion ends; null = open-ended. A promo starts the moment it is written; an ended one stays on the document but every reader treats it as none                                                                      |
+| `promo_ends_at`           | Date \| null                | default: `null` — when the promotion ends; null = open-ended. A promo starts the moment it is written; an ended one stays on the document but every reader treats it as none. For a v2 SKU both are written by the typed editor's `details` (journal profile `draft-product-details`; a value sent back unchanged is no change)                                                                      |
 | `stock_updated_at`        | Date \| null                | default: `null` — last successful stock sync; shown as `synced_at` on the price sheet                                                                                                                                                                           |
 | `status`                  | `ProductStatus` enum        | default: `ACTIVE` — `draft` \| `active` \| `archived`                                                                                                                                                                                                           |
 | `color_id`                | ObjectId → `colors` \| null | default: `null` — dictionary colour; `null` for categories with no colour axis                                                                                                                                                                                  |
@@ -331,8 +353,11 @@ A public endpoint never returns a raw variant document. Responses go through the
   three derived, all null outside an active promotion). Used by `GET /products/by-slug/:slug` (the variant and
   its siblings). `color` is the resolved dictionary entry (`name_uk`, `name_en`, `family`,
   `hex_stops`) or `null`; the raw `color_id` and `color_family` stay internal. The same endpoint
-  adds `product.manufacturer` — the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)`,
-  `null` when absent. It is never `Vendor.name`: the vendor is the supplier, not the brand.
+  adds `product.manufacturer` — v2: the brand entity, else the characteristic marked
+  `semantic: brand`; v1: the «Виробник» attribute via `pickAttr(MANUFACTURER_PATTERNS)` — `null`
+  when absent. It is never `Vendor.name`: the vendor is the supplier, not the brand. A v2 product
+  stores its own `purchase_notice: {title, text, badge|null} | null` (the warning above «В кошик»,
+  owner 2026-11-05), answered as `attribute_notice`; a category's stored `presentation` is ignored.
 - `PRICE_SHEET_PUBLIC_PROJECTION` — the `$project` stage of `GET /products/price-sheet`
   (see `src/docs/PRICE_SHEET.md`).
 
@@ -346,20 +371,19 @@ Only `status = active` variants are listed publicly: `draft` and `archived` vari
 from `catalog`, `search`, `price-sheet`, `variants/slugs` (the sitemap source), `variants/count`
 (its cache key) and the Google Shopping feed. `GET /products/by-slug/:slug` is the one exception,
 and only for `archived`: it returns 200 with `status: archived` so the storefront can render a
-«Знято з продажу» page instead of breaking a live ad or backlink (TD-0006 §5.4); its siblings and
-spooled counterpart stay `active`-only. A `draft` slug is still 404. This is a deliberate, narrow
+«Знято з продажу» page instead of breaking a live ad or backlink (TD-0006 §5.4); its siblings
+stay `active`-only. A `draft` slug is still 404. This is a deliberate, narrow
 revision of plan-0003 — the supplier-field allowlist above is untouched. Draft variants are
 reachable only through the admin-only endpoints.
 
 ---
 
-A refill product carries `spooled_product_id` — the product whose filament comes on a spool.
-`split-refill-products.js` sets it when it moves the refill variants onto a product of their own,
-and it is the only thing left connecting the two afterwards: they share no siblings, so the refill
-page reads the spooled price and its link from here. `GET /products/by-slug/:slug` answers with
-`spooled_counterpart` (`slug`, `name`, `price`) — the ACTIVE variant of that product in the same
-colour, or its cheapest ACTIVE variant when the refill carries no colour — and `null` for every
-ordinary product.
+**No refill ↔ spool link** (removed by the owner on 2026-11-04, together with the admin
+«Інша комплектація» editor). The product page no longer quotes the spooled version of a refill:
+`GET /products/by-slug/:slug` has no `spooled_counterpart`, there is no
+`/products/:id/admin/relations`, and the v1→v2 migration writes no `relations`. Stored products
+may still carry the legacy `spooled_product_id` or a migrated `relations` array — nothing reads or
+writes them, and neither blocks deleting or rolling back a product or SKU.
 
 ---
 
@@ -387,6 +411,14 @@ rather than a stripe. The cap of six keeps a 22–30px swatch distinguishable.
 protect. Writes are ADMIN-only. A colour cannot be deleted while variants still reference it: the
 request answers 409 instead of stranding `color_id` and freezing `color_family` at a value no
 dictionary row explains.
+
+**After the catalogue control exists** (the Plan-0010 release) the legacy writes above are interlocked
+(503); the dictionary is written through the journal-backed `GET|POST /colors/admin/entries`,
+`PATCH /colors/:id/admin` and `POST /colors/:id/admin/deletion` (ADMIN, Idempotency-Key, expected
+revision; `modules/color/color-admin.ts`, journal profile `colors`). Same rules: an update and the
+SKUs that denormalize the colour (`color_family`, the «товар — Чорний (Black)» `name`, only where they
+drift) are **one plan**; `v_value` and slugs never change; a used colour is `COLOR_IN_USE` with
+`details.count`. Details: `CATEGORY_TREE.md` «Admin parity with the old admin».
 
 `GET /colors/admin` is the same rows plus `variant_count` — how many variants point at each
 colour — and is **ADMIN-only**, because that count includes draft and archived variants. It is a
@@ -451,6 +483,17 @@ write rather than on read means the stored value is the reviewed one, and every 
 (sitemap, Merchant feed) reuses it as-is.
 
 ---
+
+### Catalogue service collections (Plan-0010, local)
+
+Not domain data a shopper sees; written by the catalogue gate and journal (`CATEGORY_TREE.md`):
+`catalog_control` (singleton: revision, epoch, phase, `admin_draft_writes_enabled`), `catalog_operations`
+(idempotency receipts), `catalog_mutation_plans` (journal plans with before/after images), `catalog_stage_runs`
+(release CLI runs), `catalog_routes` (old addresses as aliases, unique `path`), `catalog_conversion_plans`
+(a checked product category → group distribution: `{_id: plan UUID, category_id, source_revision, input,
+fingerprint, created_at}`; valid for its revision only, removed after execution) and `storefront_settings` (one
+document: the home page's copy (strip, banner, side card, band — TD-0015) and collections — a category/landing or `product_ids`; the `/catalog` intro is
+storefront copy, not stored; `STOREFRONT_SETTINGS.md`).
 
 ### `numbers`
 

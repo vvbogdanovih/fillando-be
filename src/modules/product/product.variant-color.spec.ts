@@ -24,8 +24,8 @@ const buildService = (
 		})
 	}
 	const productVariantRepository = {
-		create: jest.fn().mockImplementation((data: unknown) => Promise.resolve(data)),
-		update: jest.fn().mockImplementation((_f: unknown, data: unknown) => Promise.resolve(data)),
+		create: jest.fn((data: unknown) => Promise.resolve(data)),
+		update: jest.fn((_f: unknown, data: unknown) => Promise.resolve(data)),
 		// `updateVariant` reads the variant first: a request that omits `color_id` still needs the
 		// colour already stored on it to rebuild the display name.
 		findOne: jest.fn().mockResolvedValue({
@@ -144,7 +144,7 @@ describe('updateVariant — colour', () => {
 	})
 
 	it('answers 404 for a missing product before looking at the colour', async () => {
-		const { service, colorRepository } = buildService()
+		const { colorRepository } = buildService()
 		const productRepository = { findById: jest.fn().mockResolvedValue(null) }
 		const scoped = new ProductService(
 			productRepository as never,

@@ -26,7 +26,13 @@ function setup(orders: ReturnType<typeof makeOrder>[], statuses: Record<string, 
 		update: jest
 			.fn<
 				Promise<unknown>,
-				[unknown, { $set: Record<string, unknown>; $push?: Record<string, any> }]
+				[
+					unknown,
+					{
+						$set: Record<string, unknown>
+						$push?: { status_history: { $each: unknown[] } }
+					}
+				]
 			>()
 			.mockResolvedValue({})
 	}

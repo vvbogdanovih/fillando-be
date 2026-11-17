@@ -3,6 +3,25 @@
  * Used with @ApiOperation() in controllers to keep docs in one place.
  */
 export const API_OPERATION = {
+	CATALOG_OPERATIONS: {
+		STATUS: {
+			summary: 'Стан операції каталогу',
+			description:
+				'ADMIN-only diagnostic receipt. Pending does not distinguish a live writer from a stopped process; no automatic retry/takeover.'
+		}
+	},
+	CATALOG_EXPORT: {
+		SITEMAP: {
+			summary: 'Індекс частин sitemap',
+			description:
+				'Public. The parts of the storefront URL set (SKUs of visible product categories, non-empty visible categories, public landings) under one revision/epoch read barrier: the first part carries every category and landing, the rest are consecutive SKU slug ranges; each part stays below 50 000 URLs and 2 MiB. Read every part with this revision/epoch. Deploy before the corresponding frontend.'
+		},
+		SITEMAP_PART: {
+			summary: 'Частина sitemap',
+			description:
+				'Public. One part of the index — SKU slugs in [from, to), plus every category and landing when `from` is absent — under the revision/epoch the index was read with (409 SITEMAP_REVISION_CHANGED otherwise; 409 SITEMAP_PART_TOO_LARGE if the part outgrew 50 000 URLs or 2 MiB since). Same entries and order as the single export before the split.'
+		}
+	},
 	PARTNER_API: {
 		SKUS_BODY: {
 			summary: 'Артикули категорії або всього каталогу (JSON body)',
@@ -73,6 +92,26 @@ export const API_OPERATION = {
 		}
 	},
 	COLORS: {
+		ADMIN_ENTRIES: {
+			summary: 'Словник кольорів для нової адмінки',
+			description:
+				'ADMIN, no-store; one verified snapshot with the catalogue revision and how many SKUs use each colour.'
+		},
+		ADMIN_CREATE: {
+			summary: 'Додати колір у словник',
+			description:
+				'ADMIN; gate + journal (profile `colors`), Idempotency-Key and expected revision. Unique name_en and slug (derived from name_en if omitted).'
+		},
+		ADMIN_UPDATE: {
+			summary: 'Змінити колір словника',
+			description:
+				'ADMIN; one journal plan: the colour plus the SKUs that denormalize it (color_family, the «товар — Чорний (Black)» name, only where they drift). v_value and slugs never change. Revalidates products/categories and signals the feed.'
+		},
+		ADMIN_DELETE: {
+			summary: 'Видалити невикористаний колір',
+			description:
+				'ADMIN; refused with COLOR_IN_USE (details.count) while any SKU points at it.'
+		},
 		GET_ALL: {
 			summary: 'Get the colour dictionary',
 			description:
@@ -102,7 +141,64 @@ export const API_OPERATION = {
 				'Admin only. Refused while variants still reference the colour — clear or repoint them first.'
 		}
 	},
+	CATALOG_ROUTES: {
+		RESOLVE: {
+			summary: 'Resolve an old catalogue address',
+			description:
+				'Public. An alias left by a slug change → `{kind: redirect, target_path, status: 301}` to the entity’s current public address (never a chain). 404 for an unknown path or a target that is not public.'
+		},
+		VARIANT_SLUG: {
+			summary: 'Change a SKU address (with a redirect)',
+			description:
+				'ADMIN, Idempotency-Key, expected_revision. Writes the slug and keeps `/products/{old}` as an alias of the SKU (journal profile `routes`); an own alias at the new address is reclaimed; an address of another entity is 409 ROUTE_PATH_TAKEN.'
+		},
+		CATEGORY_SLUG: {
+			summary: 'Change a category address (with redirects)',
+			description:
+				'ADMIN; v2 draft/published category. `/{old}` and every `/{old}/{landing}` stay aliases; reserved roots are refused (ROUTE_PATH_RESERVED).'
+		},
+		LANDING_SLUG: {
+			summary: 'Change a typed landing address (with a redirect)',
+			description: 'ADMIN. `/{category}/{old}` stays an alias of the landing.'
+		}
+	},
+	STOREFRONT_SETTINGS: {
+		PUBLIC: {
+			summary: 'Storefront settings (public projection)',
+			description:
+				'Home categories, collections and the /catalog intro — visible categories and active typed landings only; a collection whose landing is no longer public points at its category.'
+		},
+		ADMIN_READ: {
+			summary: 'Storefront settings (admin)',
+			description: 'The stored settings with the catalogue gate revision.'
+		},
+		WRITE: {
+			summary: 'Save storefront settings',
+			description:
+				'ADMIN, Idempotency-Key, expected_revision. References must be non-archived v2 categories and typed landings of their category; the intro is sanitized. Journal-backed (profile `settings`); revalidates the storefront categories cache.'
+		}
+	},
 	LANDINGS: {
+		TYPED_ADMIN_LIST: {
+			summary: 'List the landings of a v2 product category (admin)',
+			description:
+				'Drafts included; each with `product_count` — the active SKUs its `filters_v2` pins match, counted by the same conditions as `GET /products/catalog/v2`.'
+		},
+		TYPED_ADMIN_CREATE: {
+			summary: 'Create a typed landing',
+			description:
+				'Journal-backed (gate revision). Pins are checked against the category definitions (filterable keys, valid values, colour only with a colour axis, active brands); at least one pin; no duplicate pins or slug in the category; publishing needs at least one matching product. Copy is sanitized.'
+		},
+		TYPED_ADMIN_UPDATE: {
+			summary: 'Update a typed landing',
+			description:
+				'Full editable payload (copy, pins, image, order, status); only changed fields are written. The same checks as create; an unchanged payload is 409 LANDING_UNCHANGED.'
+		},
+		TYPED_ADMIN_DELETE: {
+			summary: 'Delete a draft typed landing',
+			description:
+				'Only drafts: a published landing is an indexed address — unpublish it first; its URL is a redirect decision (B07).'
+		},
 		GET_ALL: {
 			summary: 'Get published landings',
 			description:
@@ -143,9 +239,113 @@ export const API_OPERATION = {
 		}
 	},
 	CATEGORIES: {
+		ADMIN_FILTER_PREVIEW: {
+			summary: 'Перевірити фільтри на даних категорії',
+			description:
+				'ADMIN read-only bounded preview. Typed v2 data; active/draft SKU, self-excluding facets, no publication.'
+		},
+		ADMIN_DEFINITIONS: {
+			summary: 'Налаштування характеристик категорії',
+			description:
+				'ADMIN; draft or published v2 product category. Stable server-assigned identities, journal, expected revision. Judged against the exact per-key usage: renames, new optional characteristics, units, order, spec/filter flags of unpinned keys and enum options are allowed; a type change or removal of a used key, removal of a used option, a filter change under landing pins and (published) a requirement products cannot meet are 409 with the counts of products, SKUs and landings.'
+		},
+		ADMIN_DEFINITION_USAGE: {
+			summary: 'Використання характеристик категорії',
+			description:
+				'ADMIN read-only, one verified snapshot: per key the products, SKUs and landings holding or pinning it, products without a value, card/feed settings naming it, and per enum option usage.'
+		},
+		ADMIN_CONFIGURATION: {
+			summary: 'Конфігурація категорії для редактора',
+			description:
+				'ADMIN v2 configuration and derived form/filter controls, one verified snapshot.'
+		},
+		DRAFT_CREATE: {
+			summary: 'Створити чернетку категорії',
+			description:
+				'ADMIN; explicit draft rollout flag, expected revision and idempotency key required. Empty definitions; no publication.'
+		},
+		ADMIN_DETAILS: {
+			summary: 'Назва й зображення категорії',
+			description:
+				'ADMIN; draft or published v2 category. Name (unique) and optional tile image URL; slug, kind and placement unchanged. Journal-backed; a published category purges the storefront caches and signals the feed.'
+		},
+		ADMIN_CAPABILITIES: {
+			summary: 'Доступність редактора дерева',
+			description: 'ADMIN advisory state. Does not initialize or enable writes.'
+		},
+		ADMIN_PUBLICATION: {
+			summary: 'Опублікувати або зняти з публікації v2-категорію',
+			description:
+				'Explicit rollout flag required. Journal-backed status change of a v2 category and of the SKUs of its ready products; parent must be public; unpublish requires no active children. Same-key replay; URLs, SKUs and prices unchanged.'
+		},
+		ADMIN_SEO_READ: {
+			summary: 'Read the managed SEO copy of a v2 category',
+			description:
+				'ADMIN; draft or published v2 category (group or product). With the gate revision.'
+		},
+		ADMIN_SEO_WRITE: {
+			summary: 'Save the managed SEO copy of a v2 category',
+			description:
+				'ADMIN; title, description, H1, text above/below the listing (rich text sanitized, empty → null). A content edit: allowed on published categories, journal-backed (profile `seo`, the `seo` object only), revalidates the storefront categories cache. Unchanged → 409 SEO_UNCHANGED.'
+		},
+		ADMIN_EXPORT_READ: {
+			summary: 'Read the Google taxonomy of a v2 product category',
+			description:
+				'ADMIN. The `google_product_category` the feed sends for the category items.'
+		},
+		ADMIN_EXPORT_WRITE: {
+			summary: 'Save the Google taxonomy of a v2 product category',
+			description:
+				'ADMIN, Idempotency-Key, expected_revision. `{id, path}` or null; the path is an admin note, only the id is sent. Journal profile `export`; requests an early feed rebuild. Unchanged → 409 EXPORT_UNCHANGED.'
+		},
+		DRAFT_DELETION: {
+			summary: 'Видалити порожню чернетку категорії',
+			description:
+				'ADMIN; v2 draft only. Refused while it has subcategories, products, SKUs, landings, route reservations or storefront references; never cascades. Journal-backed with an exact before-image; same-key replay. A published category must be unpublished first; its indexed URL is a redirect decision (B07), not a deletion.'
+		},
+		DRAFT_CONVERSION: {
+			summary: 'Змінити тип категорії (група ↔ товарна категорія)',
+			description:
+				'ADMIN. Without plan_id: an empty v2 draft only (no subcategories, products, SKUs or landings); product → group drops the definitions (kept in the journal before-image), group → product starts with none. With plan_id (from conversion-plan): a draft or published v2 product category becomes a group and every product (with all its SKUs) and landing moves as the stored plan says — one journal plan; category/product URLs, SKU codes, prices and stock unchanged; old landing addresses become aliases. The plan is valid for its revision only (CONVERSION_PLAN_STALE) and must still describe the same writes (CONVERSION_PLAN_CHANGED).'
+		},
+		CONVERSION_PLAN: {
+			summary: 'Перевірити план перетворення товарної категорії на групу',
+			description:
+				'ADMIN, read-only check of an explicit distribution (TD-0013 mutations §5): every product and landing of the category assigned to another v2 product category, exactly once (else 400 CONVERSION_ASSIGNMENTS_INVALID). Answers per-product and per-landing results, problems (values that would be lost, axis, missing required values for a published target, pins that do not fit, slug/pin duplicates, taken addresses, plan size) and warnings (SKUs that become drafts, landings hidden or without products, card/feed settings not carried). An executable plan is stored for this revision and returned with plan_id; otherwise plan_id is null.'
+		},
+		DRAFT_PLACEMENT: {
+			summary: 'Перемістити категорію або змінити її порядок',
+			description:
+				'Explicit rollout flag required. Journal-backed placement: a draft branch moves anywhere; a published category moves only under a public group or to the root (CATEGORY_PARENT_NOT_PUBLIC) — category, landing and product URLs never depend on the tree; archived — CATEGORY_ARCHIVED. Same-key replay.'
+		},
+		CHILDREN: {
+			summary: 'Read visible category children',
+			description:
+				'Direct children ordered by order and ID; omit parent_id for roots. Hidden or absent parent returns 404.'
+		},
+		TREE: {
+			summary: 'Read public category tree',
+			description:
+				'Flat paginated tree; hidden ancestor branches are excluded. Restart on revision conflict.'
+		},
+		ADMIN_TREE: {
+			summary: 'Read complete category tree (ADMIN)',
+			description: 'Includes draft and archived nodes; revision-bound pagination.'
+		},
+		OPTIONS: {
+			summary: 'Read product categories for selects',
+			description:
+				'The visible product categories of GET /categories, in its order (order, then ID), without their content: ID, name, slug, kind, attribute contract version, order, tile image and the number of characteristics. Paginated (limit ≤ 1000, ≤ 2 MiB per page), cursor bound to the catalogue revision — restart on CATEGORY_REVISION_CONFLICT. Characteristics of one category: GET /categories/:id.'
+		},
+		ANCESTORS: {
+			summary: 'Read a category path, page by page',
+			description:
+				'Ancestors of a visible category (group or product), root first: {revision, total, items: [{_id, name, slug}], next_cursor}. A detail embeds them whole up to 1 MiB of JSON; past that it answers ancestors: [] with ancestors_paged: true and ancestors_total (a product: category_path_paged), and the path is read here. limit ≤ 1000 (default 200); the cursor is bound to the catalogue revision and to the path — CATEGORY_REVISION_CONFLICT means restart. Hidden or unknown category: 404.'
+		},
 		GET_ALL: {
-			summary: 'Get all categories',
-			description: 'Get all categories'
+			summary: 'Get all categories (legacy list)',
+			description:
+				'Every visible product category with its full public projection, unpaginated. Kept unchanged for the storefront released before Plan-0010 until its retirement (R04); new readers use GET /categories/options and GET /categories/:id.'
 		},
 		GET_BY_SLUG: {
 			summary: 'Get category by slug',
@@ -201,6 +401,40 @@ export const API_OPERATION = {
 		}
 	},
 	PRODUCTS: {
+		TYPED_DRAFT_CREATE: {
+			summary: 'Create a typed product with its variants',
+			description:
+				'ADMIN, opt-in. Atomic visibility through shared gate and journal. Idempotent UUID, typed values, reserved SKU and stable initial URLs. Carries the whole product: description, purchase notice, each variant’s price, stock, weight and photos. Variants are drafts by default; an active one is accepted only for a complete product (409 PRODUCT_NOT_READY with the gaps).'
+		},
+		TYPED_DRAFT_LIST: {
+			summary: 'List products in a v2 draft category',
+			description:
+				'ADMIN, no-store. category_id required; optional opaque cursor bound to category, revision and epoch, or a 1-based page number (not both); optional q narrows by name over the whole category (literal, case-insensitive). 25 products per page; total counts the matching products.'
+		},
+		TYPED_DRAFT_READ: {
+			summary: 'Read a prepared typed product draft',
+			description: 'ADMIN, revision-consistent, no-store; no legacy inference.'
+		},
+		TYPED_TRANSFER_PREVIEW: {
+			summary: 'Preview moving a typed product to another category',
+			description:
+				'Read-only. Proposes the characteristics carried over (same key, or same label and a compatible type), lists the ones lost, the required values the target still needs and whether the variant axis fits.'
+		},
+		TYPED_DELETION: {
+			summary: 'Видалити товар, якого ще не продавали',
+			description:
+				'ADMIN, journalled. The product and all its SKUs, only when no SKU is active and nothing points at them (orders, carts, old-address aliases). A single never-sold draft/archived SKU is removed with `variant_action: {type: "delete"}`; `{type: "archive_all"}` archives every SKU at once.'
+		},
+		TYPED_TRANSFER: {
+			summary: 'Move a typed product to another category',
+			description:
+				'Journalled. The product and all its SKUs change category in one plan; values are checked against the target definitions (all required ones for a published target); `confirm_dropped` must equal the lost keys. URLs, SKU codes, IDs, prices and stock never change; active SKUs moved into a draft category become drafts.'
+		},
+		TYPED_DRAFT_EDIT: {
+			summary: 'Edit typed draft attributes and variant axis',
+			description:
+				'Opt-in journalled update. Complete editable payload, fixed SKU membership, stable URLs and independent commerce fields.'
+		},
 		GET_ALL: {
 			summary: 'List all products (admin)',
 			description:
@@ -260,6 +494,21 @@ export const API_OPERATION = {
 			summary: 'Delete variant',
 			description: 'Delete a specific product variant.'
 		},
+		CATALOG_V2: {
+			summary: 'Public typed catalog',
+			description:
+				'Published SKU across visible category descendants with strict typed filters, stable pagination and self-excluding SKU facets. Draft/archived SKU and hidden branches are excluded.'
+		},
+		CATALOG_V2_STRIP: {
+			summary: 'Product strip: one card per product',
+			description:
+				'The first cards of the «newest» typed listing under the same scope and filters, one per product — its first SKU there (in stock first, newest first, a curated product_ids list in its own order) — with `group`: the product name, how many of its SKUs match, how many are in stock and on sale, their price range (in-stock SKUs; all of them when none is) and up to 12 dictionary colours, each marked in stock or not. {revision, items}; no page, total or facets. limit ≤ 24 (default 8). The walk reads at most 500 SKUs of the listing, so a strip may be shorter than limit. The storefront «Новинки», «Акції» and collections (owner, 2026-11-14).'
+		},
+		CATALOG_V2_CATEGORY_COUNTS: {
+			summary: 'Active SKUs per visible product category (navigation)',
+			description:
+				'The category facet of the unfiltered whole-catalogue listing, without its 100-category limit: {revision, categories: [{id, count}] (non-empty only, by id), next_cursor}. Paged by category id (limit ≤ 20 000, ~1 MB); the cursor is bound to the computation — CATEGORY_COUNTS_CHANGED (409) means restart. Counts are kept per tree key and SKU write mark for at most 60 s. The storefront prunes empty navigation branches with it (Plan-0010 D06.5).'
+		},
 		CATALOG: {
 			summary: 'Get catalog products',
 			description:
@@ -281,14 +530,14 @@ export const API_OPERATION = {
 				'Returns the number of ACTIVE product variants — the same set as /variants/slugs (used as the sitemap cache key).'
 		},
 		PRICE_SHEET: {
-			summary: 'Price sheet (flat variant list)',
+			summary: 'Price sheet (variants by category)',
 			description:
-				'Public paginated flat list of ACTIVE product variants for the price-sheet table. Sorted by availability (in stock first), then name. Supports `q` search by product name, SKU or attribute value. Response is a fixed public projection — no supplier identifiers.'
+				'Public paginated list of ACTIVE product variants for the price-sheet table, one category after another (creation order), in each availability first (in stock first), then name. `categories` lists the page’s categories with their columns — the characteristics the catalogue filters them by, colour included — and each row carries `values` for them. Supports `q` search by product name, SKU or attribute value. Response is a fixed public projection — no supplier identifiers. variant_label displays the variant independently of color; `material` is deprecated.'
 		},
 		PRICE_LIST_PDF: {
 			summary: 'Generate wholesale price list PDF (admin)',
 			description:
-				'Admin-only. Returns an A4 PDF price list of active variants, grouped by product (the product name cell is merged across its variants) and ordered by manufacturer, then product, then colour. Supports filtering by categories and stock, plus two configurable wholesale discount tiers.'
+				'Admin-only. Returns an A4 PDF price list of active variants: one table per category with that category’s columns (the characteristics the catalogue filters it by, colour included), rows grouped by product (the product name and product-level values are merged across its variants) and ordered by brand, then product, then variant. Supports filtering by categories and stock. A stock extract: the base price only — wholesale discounts are agreed with the buyer (owner, 2026-11-06).'
 		},
 		BY_SLUG: {
 			summary: 'Get variant by slug',
@@ -354,7 +603,7 @@ export const API_OPERATION = {
 		WAREHOUSES: {
 			summary: 'Get warehouses by city',
 			description:
-				'Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), POST (поштове відділення), CARGO (вантажне відділення). Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.'
+				'Returns Nova Post warehouses for the given city ref. Optional `type` filter: PARCEL_LOCKER (поштомат), BRANCH (відділення — поштові й вантажні разом), POST (лише поштові), CARGO (лише вантажні). Ordered by branch number. Optional `q` (same idea as on `/nova-post/cities`): when non-empty after trim, returns only branches where the substring appears in the warehouse number (string form), `description`, or `shortAddress` — case-insensitive for text, with whitespace normalized in the query and flexible matching between words. When `q` is omitted or only whitespace, returns the full list for `cityRef` + `type` as before.'
 		}
 	},
 	PROM: {
@@ -459,7 +708,7 @@ export const API_OPERATION = {
 		STATS: {
 			summary: 'Orders dashboard statistics',
 			description:
-				'Figures for the admin dashboard over a period of Kyiv calendar days (`date_from`/`date_to`, default the last 30 days, at most 366): totals and the same for the period of equal length just before it, every day of the period (zero days included), the weekday profile with its per-weekday averages, orders per hour and a weekday × hour heatmap, breakdowns by payment method, delivery method, order status and payment status, and the top 10 variants by revenue and by quantity. `cancelled` is CANCELLED / RETURNING / RETURNED or payment VOIDED / REFUNDED — such an order is counted in `orders` and in the hour/heatmap figures (it was placed) but contributes no revenue and no units. Sale date is the order\'s `createdAt`. Admin only.'
+				"Figures for the admin dashboard over a period of Kyiv calendar days (`date_from`/`date_to`, default the last 30 days, at most 366): totals and the same for the period of equal length just before it, every day of the period (zero days included), the weekday profile with its per-weekday averages, orders per hour and a weekday × hour heatmap, breakdowns by payment method, delivery method, order status and payment status, and the top 10 variants by revenue and by quantity. `cancelled` is CANCELLED / RETURNING / RETURNED or payment VOIDED / REFUNDED — such an order is counted in `orders` and in the hour/heatmap figures (it was placed) but contributes no revenue and no units. Sale date is the order's `createdAt`. Admin only."
 		}
 	},
 	PAYMENT_DETAILS: {

@@ -84,7 +84,15 @@ export interface FeedGenerationSummary {
 	out_of_stock: number
 	/** Items whose product_type was refined by a landing, not just the category name. */
 	typed_by_landing: number
+	/**
+	 * The first {@link FeedGenerationSummary.excluded_count} exclusions in SKU order, at most
+	 * `FEED_EXCLUSION_SAMPLE` of them — the whole list on any real catalogue. The totals are below.
+	 */
 	excluded: FeedExclusion[]
+	/** Every excluded row, however many the sample shows (Plan-0010 D06). */
+	excluded_count: number
+	/** The same total split by reason; a reason with no row is absent. */
+	excluded_by_reason: Partial<Record<FeedExclusionReason, number>>
 	warnings: FeedWarning[]
 	/** Distinct warning kinds — the admin KPI counts kinds, not affected positions. */
 	warning_kinds: number

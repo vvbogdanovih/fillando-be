@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common'
 import { ThrottlerGuard } from '@nestjs/throttler'
 import { Request } from 'express'
+import { clientIp } from 'src/common/guards/client-ip.util'
 import { PartnerApiService, hashPartnerToken } from './partner-api.service'
 export type PartnerRequest = Request & { partnerTokenId?: string }
 @Injectable()
@@ -20,7 +21,7 @@ export class PartnerIpThrottlerGuard extends ThrottlerGuard {
 		await super.onModuleInit()
 		this.throttlers = [{ name: 'default', ttl: 60_000, limit: 300 }]
 		this.commonOptions = {
-			getTracker: req => Promise.resolve(String(req.ip)),
+			getTracker: req => Promise.resolve(clientIp(req as Request) ?? 'unknown'),
 			generateKey: (_context, tracker) => hashPartnerToken('partner-api:ip:' + tracker),
 			setHeaders: true
 		}

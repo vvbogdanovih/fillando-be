@@ -22,10 +22,11 @@ import {
 		JwtModule.registerAsync({
 			imports: [ConfigModule],
 			inject: [ConfigService],
-			useFactory: async () => ({
-				secret: ENV.JWT_SECRET,
-				signOptions: { expiresIn: AccessTokenLifetime.sec }
-			})
+			useFactory: () =>
+				Promise.resolve({
+					secret: ENV.JWT_SECRET,
+					signOptions: { expiresIn: AccessTokenLifetime.sec }
+				})
 		}),
 		MongooseModule.forFeature([
 			{ name: User.name, schema: UserSchema },

@@ -175,6 +175,13 @@ export const PRICE_SHEET_PUBLIC_PROJECTION = {
 	image: { $ifNull: [{ $arrayElemAt: ['$images', 0] }, null] },
 	attributes: '$product.attributes',
 	variant_type: '$product.variant_type',
+	// Typed fields of a v2 product (TD-0013). The service turns them into the same manufacturer,
+	// material and variant columns; they never reach the response as they are.
+	category_id: { $toString: '$category_id' },
+	attributes_v2: { $ifNull: ['$product.attributes_v2', null] },
+	variant_axis: { $ifNull: ['$product.variant_axis', null] },
+	variant_value: { $ifNull: ['$variant_value', null] },
+	brand_name: { $ifNull: [{ $arrayElemAt: ['$brand.name', 0] }, null] },
 	// Joined dictionary names. The price sheet keeps `color` a plain string in its response
 	// (the storefront validates it as one), so the service formats these two into it.
 	// $ifNull, not a bare path: a variant with no dictionary colour would otherwise be missing

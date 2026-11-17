@@ -1,4 +1,3 @@
-import { ConflictException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { Types } from 'mongoose'
 import { ColorFamily } from 'src/common/types/enums'
@@ -16,11 +15,7 @@ import { UpdateVariantDto } from './dto/update-variant.dto'
  *    description — renamed the variant to English. Nothing errored; the catalogue listing, the
  *    `ItemList` markup and the cart rows just drifted into two languages, one product at a time.
  *
- * 2. **A rename never half-applies.** Slugs are unique and a rename regenerates all of a product's
- *    at once. With no transaction available (standalone MongoDB), a duplicate discovered mid-batch
- *    left the product renamed and only some variants rewritten. Two shapes have to be handled: a
- *    genuine clash, refused up front, and a *rotation*, where the address one variant is moving to
- *    is still held by a sibling that is itself moving.
+ * 2. **Existing URLs stay stable.** Renaming a product or variant updates display names only.
  *
  * 3. **A partial PATCH means only what it says.** `target: ES2023` gives every declared DTO field
  *    an own property, so `'field' in dto` is true for fields the client never sent.
@@ -108,7 +103,10 @@ const migratedVariant = (over: Record<string, unknown> = {}) => ({
 
 /** The patch of the last write to a variant — after a rename that is the final identity. */
 const lastPatch = (repo: { update: jest.Mock }) =>
-	repo.update.mock.calls[repo.update.mock.calls.length - 1][1] as Record<string, unknown>
+	(repo.update.mock.calls as unknown[][])[repo.update.mock.calls.length - 1][1] as Record<
+		string,
+		unknown
+	>
 
 describe('variant name — the dictionary spelling wins over v_value', () => {
 	it('create names the variant in Ukrainian while the slug stays English', async () => {
@@ -121,7 +119,10 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 			variants: [{ price: 100, v_value: 'Black', color_id: COLOR_ID }]
 		})
 
-		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
+		const written = (productVariantRepository.create.mock.calls as unknown[][])[0][0] as Record<
+			string,
+			unknown
+		>
 		expect(written.name).toBe('PLA Basic — Чорний (Black)')
 		expect(written.slug).toBe('pla-basic-black')
 	})
@@ -135,7 +136,10 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 			color_id: COLOR_ID
 		})
 
-		const written = productVariantRepository.create.mock.calls[0][0] as Record<string, unknown>
+		const written = (productVariantRepository.create.mock.calls as unknown[][])[0][0] as Record<
+			string,
+			unknown
+		>
 		expect(written.name).toBe('PLA Basic — Чорний (Black)')
 		expect(written.slug).toBe('pla-basic-black')
 	})
@@ -217,7 +221,7 @@ describe('variant name — the dictionary spelling wins over v_value', () => {
 
 		const patch = lastPatch(productVariantRepository)
 		expect(patch.name).toBe('PLA Basic v2 — Чорний (Black)')
-		expect(patch.slug).toBe('pla-basic-v2-black')
+		expect(patch).not.toHaveProperty('slug')
 	})
 })
 
@@ -261,8 +265,8 @@ describe('a partial PATCH means only what it says', () => {
 	})
 })
 
-describe('a rename that would collide is refused before anything is written', () => {
-	it('two variants heading for one address → 409 naming both SKUs', async () => {
+describe('renames preserve existing URLs', () => {
+	it('duplicate display values do not block renaming or change distinct existing URLs', async () => {
 		// The real pair: two 'Candy' variants imported from Prom onto one product, one of which
 		// never got the suffix. Regenerating would send both to the same slug.
 		const { service, productRepository, productVariantRepository } = buildService({
@@ -284,15 +288,15 @@ describe('a rename that would collide is refused before anything is written', ()
 			]
 		})
 
-		const attempt = service.update(PRODUCT_ID, { name: 'Silk Rainbow' })
-
-		await expect(attempt).rejects.toBeInstanceOf(ConflictException)
-		await expect(attempt).rejects.toThrow(/FL-000157 \+ FL-000162/)
-		expect(productRepository.update).not.toHaveBeenCalled()
-		expect(productVariantRepository.update).not.toHaveBeenCalled()
+		await service.update(PRODUCT_ID, { name: 'Silk Rainbow' })
+		expect(productRepository.update).toHaveBeenCalledTimes(1)
+		expect(productVariantRepository.update).toHaveBeenCalledTimes(2)
+		for (const [, patch] of productVariantRepository.update.mock.calls) {
+			expect(patch).not.toHaveProperty('slug')
+		}
 	})
 
-	it('an address owned by another product → 409, still nothing written', async () => {
+	it('a new name matching another address does not change or reserve URLs', async () => {
 		const { service, productRepository, productVariantRepository } = buildService({
 			variants: [migratedVariant()],
 			slugsTaken: [
@@ -304,17 +308,13 @@ describe('a rename that would collide is refused before anything is written', ()
 			]
 		})
 
-		await expect(service.update(PRODUCT_ID, { name: 'PLA Basic v2' })).rejects.toBeInstanceOf(
-			ConflictException
-		)
-		expect(productRepository.update).not.toHaveBeenCalled()
-		expect(productVariantRepository.update).not.toHaveBeenCalled()
+		await service.update(PRODUCT_ID, { name: 'PLA Basic v2' })
+		expect(productRepository.update).toHaveBeenCalledTimes(1)
+		expect(lastPatch(productVariantRepository)).not.toHaveProperty('slug')
+		expect(productVariantRepository.findBySlugs).not.toHaveBeenCalled()
 	})
 
-	it('a variant of this product holding the address is not a conflict — it moves too', async () => {
-		// Rotation: renaming "PLA" to "PLA Black" sends the plain variant to `pla-black`, which its
-		// sibling is still sitting on. One pass would race; the two-pass write parks the movers on
-		// temporary addresses first, so neither write hits the unique index.
+	it('sibling addresses never rotate through temporary URLs', async () => {
 		const plain = migratedVariant({
 			_id: new Types.ObjectId('00000000000000000000000a'),
 			sku: 'FL-000031',
@@ -339,17 +339,19 @@ describe('a rename that would collide is refused before anything is written', ()
 
 		await service.update(PRODUCT_ID, { name: 'PLA Black' })
 
-		const slugs = productVariantRepository.update.mock.calls.map(
-			c => (c[1] as { slug: string }).slug
-		)
-		// Both variants move, so both must be parked — and every park has to land before the first
-		// variant claims its target, or the one still holding it loses the race to the unique index.
-		const parks = slugs.filter(s => s.includes('-moving-'))
-		expect(parks).toHaveLength(2)
-		const firstFinal = slugs.findIndex(s => !s.includes('-moving-'))
-		const lastPark = slugs.map(s => s.includes('-moving-')).lastIndexOf(true)
-		expect(lastPark).toBeLessThan(firstFinal)
-		expect(slugs.slice(firstFinal)).toEqual(['pla-black', 'pla-black-black'])
+		expect(productVariantRepository.update).toHaveBeenCalledTimes(2)
+		for (const [, patch] of productVariantRepository.update.mock.calls) {
+			expect(patch).not.toHaveProperty('slug')
+		}
+	})
+
+	it('changing a non-colour variant value updates its suffix and preserves its URL', async () => {
+		const { service, productVariantRepository } = buildService({
+			existingVariant: migratedVariant({ color_id: null })
+		})
+		await service.updateVariant(PRODUCT_ID, VARIANT_ID, { v_value: '63 A' })
+		expect(lastPatch(productVariantRepository).name).toBe('PLA Basic — 63 A')
+		expect(lastPatch(productVariantRepository)).not.toHaveProperty('slug')
 	})
 
 	it('saving a product without changing its name leaves the variants untouched', async () => {

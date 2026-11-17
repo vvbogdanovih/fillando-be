@@ -4,7 +4,7 @@ import { NovaPostWarehouseRepository } from 'src/database/mongoose/repositories/
 import { NovaPostCity } from 'src/database/mongoose/schemas/nova-post-city.schema'
 import { NovaPostWarehouse } from 'src/database/mongoose/schemas/nova-post-warehouse.schema'
 import { NovaPostWarehouseType } from 'src/common/types/enums'
-import { NOVA_POST_WAREHOUSE_TYPE_ID } from 'src/common/constants'
+import { NOVA_POST_WAREHOUSE_TYPE_IDS } from 'src/common/constants'
 
 @Injectable()
 export class NovaPostService {
@@ -22,7 +22,7 @@ export class NovaPostService {
 		type?: NovaPostWarehouseType,
 		q?: string
 	): Promise<NovaPostWarehouse[]> {
-		const typeOfWarehouse = type ? NOVA_POST_WAREHOUSE_TYPE_ID[type] : undefined
-		return this.warehouseRepo.findByCityRef(cityRef, typeOfWarehouse, q)
+		const typesOfWarehouse = type ? NOVA_POST_WAREHOUSE_TYPE_IDS[type] : undefined
+		return this.warehouseRepo.findByCityRef(cityRef, typesOfWarehouse, q)
 	}
 }

@@ -20,10 +20,10 @@ export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
 		err: unknown,
 		user: unknown,
 		_info: unknown,
-		context: ExecutionContext,
-		_status?: unknown
+		context: ExecutionContext
 	): TUser {
 		if (err && !(err instanceof UnauthorizedException)) {
+			// eslint-disable-next-line @typescript-eslint/only-throw-error -- passport's own error, rethrown as received
 			throw err
 		}
 		if (user) return user as TUser

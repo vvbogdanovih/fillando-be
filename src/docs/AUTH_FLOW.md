@@ -100,5 +100,6 @@ Every time a refresh token is saved (`saveRefreshToken`):
 
 - Tokens are never stored in `localStorage`; only `httpOnly` cookies are used.
 - The refresh token rotates on every use. A consumed token stays presentable for `REFRESH_REUSE_GRACE_MS` (30 s) so two tabs racing one cookie are both served; a reuse after that is rejected and the record deleted. The window is the one place a leaked-and-already-used token still works, which is why it is seconds, not minutes.
+- Token cookies are read as strings only. cookie-parser decodes a `j:`-prefixed cookie as JSON; such a value is no token — `POST /auth/refresh` answers 401 and clears both cookies, `POST /auth/logout` is a plain logout, the access-token strategy a 401 (P19, 02.11.2026: it used to reach the token hash and answer 500).
 - `PASSWORD_PEPPER` is a server-side secret mixed into every Argon2 hash — a leaked database alone is not enough to crack passwords.
-- `app.set('trust proxy', 1)` is enabled so `req.ip` resolves correctly behind a reverse proxy.
+- `app.set('trust proxy', 1)` is enabled so `req.ip` is the address the proxy in front of the app saw; the IP stored with a refresh token is `clientIp(req)` (`src/common/guards/client-ip.util.ts`) — `CF-Connecting-IP` only when that proxy address is a Cloudflare edge, never the client-written `X-Forwarded-For` / `X-Real-IP` (P11).

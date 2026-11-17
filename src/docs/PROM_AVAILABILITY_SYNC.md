@@ -219,6 +219,29 @@ which is worth reading before writing.
 
 ---
 
+## Catalogue transition (local Plan-0010 B11, 2026-10-28)
+
+The sync writes one narrow patch per variant (stock, price, `prom_base_price`, their timestamps,
+the discount snapshot) and never category, identity, names or typed fields, so it needs no adapter
+for v2 products: `findAllWithPromId` reads variants of every contract and status, as before.
+
+- **Deferred during a structural catalogue operation.** Right before each write the sync reads
+  `catalog_control.phase`; anything but `idle` (a journal edit, the v1→v2 migration, recovery)
+  skips the write and counts it in the new summary field `deferred` (the next run catches up).
+  A typed edit's journal checks the before-image of every field it writes — price/stock included
+  when the admin edits them — so a Prom write inside that window would leave the operation
+  unverifiable and the catalogue closed until recovery. The check-then-write window remains
+  (one read just before the write), it is not a lock. Without control (pre-bootstrap) nothing
+  changes. The admin section shows «Відкладено» only when it is non-zero.
+- **`prom_id` in the new editor.** The new admin (typed editor) shows and edits «ID на Промі» and
+  «Артикул вендора» per variant and when adding a variant or a product, as the old variant form did
+  (blank clears; omitted keeps; a new variant without an article gets our SKU). Without it a variant
+  added after bootstrap could never be priced by Prom.
+- **Rehearsal (27.10 dump).** The same deterministic Prom answers on a legacy and a migrated copy
+  produced identical price/stock/`prom_*` on all 301 SKUs; only those fields changed; products were
+  untouched; with `phase: writing` all 301 were deferred and nothing was written. On the stand a real
+  sync (read-only calls to Prom) updated 301/301, changed stock on 80, no errors.
+
 ## Notes / future work
 
 - Currently per-variant `GET /products/{id}`. For very large catalogs, a bulk `GET /products/list`

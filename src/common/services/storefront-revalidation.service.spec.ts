@@ -13,7 +13,10 @@ import { StorefrontRevalidationService } from './storefront-revalidation.service
  */
 jest.mock('axios', () => ({
 	__esModule: true,
-	default: { post: jest.fn().mockResolvedValue({ status: 200 }), isAxiosError: () => false }
+	default: {
+		post: jest.fn().mockResolvedValue({ status: 200 }),
+		isAxiosError: (error: unknown) => !!(error as { isAxiosError?: boolean })?.isAxiosError
+	}
 }))
 // eslint-disable-next-line @typescript-eslint/unbound-method -- the mocked module's method, read once
 const axiosPost = axios.post as jest.Mock
@@ -25,6 +28,7 @@ jest.mock('src/common/constants', () => ({
 const env = ENV as { FRONTEND_URL: string; REVALIDATE_SECRET?: string }
 const SECRET = 's'.repeat(32)
 const THROTTLE_WINDOW_MS = 5000
+const RETRY_PAUSE_MS = 2000
 
 type PostCall = [string, { resource: string }, { headers: Record<string, string> }]
 
@@ -138,8 +142,53 @@ describe('StorefrontRevalidationService', () => {
 		const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
 
 		expect(() => service.revalidate('products', 'variant update')).not.toThrow()
-		await jest.advanceTimersByTimeAsync(0)
+		await jest.advanceTimersByTimeAsync(2 * RETRY_PAUSE_MS)
 
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining('failed'))
+	})
+
+	// Owner decision 31.10.2026: no outbox before the release; a purge that fails is retried
+	// three times with a pause, and the last failure names what stays stale for up to an hour.
+	it('retries a failed purge three times with a pause, then warns once with the stale paths', async () => {
+		axiosPost.mockRejectedValue(new Error('ECONNREFUSED'))
+		const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+		service.revalidate('categories', 'category seo')
+		await jest.advanceTimersByTimeAsync(0)
+		expect(axiosPost).toHaveBeenCalledTimes(1)
+		await jest.advanceTimersByTimeAsync(RETRY_PAUSE_MS)
+		expect(axiosPost).toHaveBeenCalledTimes(2)
+		expect(warn).not.toHaveBeenCalled()
+		await jest.advanceTimersByTimeAsync(RETRY_PAUSE_MS)
+		expect(axiosPost).toHaveBeenCalledTimes(3)
+		expect(warn).toHaveBeenCalledTimes(1)
+		expect(warn.mock.calls[0][0]).toMatch(/after 3 attempts/)
+		expect(warn.mock.calls[0][0]).toContain('/catalog, /{category}, /{category}/{landing}')
+		await jest.advanceTimersByTimeAsync(10 * RETRY_PAUSE_MS)
+		expect(axiosPost).toHaveBeenCalledTimes(3)
+	})
+
+	it('a retry that gets through is a purge like any other', async () => {
+		axiosPost.mockRejectedValueOnce(new Error('ETIMEDOUT')).mockResolvedValue({ status: 200 })
+		const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+		const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+		service.revalidate('landings', 'typed landing')
+		await jest.advanceTimersByTimeAsync(RETRY_PAUSE_MS)
+		expect(axiosPost).toHaveBeenCalledTimes(2)
+		expect(warn).not.toHaveBeenCalled()
+		expect(log).toHaveBeenCalledWith(expect.stringContaining('purged'))
+	})
+
+	it('does not retry a refusal that a retry cannot change (a wrong secret)', async () => {
+		axiosPost.mockRejectedValue(
+			Object.assign(new Error('Request failed with status code 401'), {
+				isAxiosError: true,
+				response: { status: 401 }
+			})
+		)
+		const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+		service.revalidate('products', 'variant update')
+		await jest.advanceTimersByTimeAsync(3 * RETRY_PAUSE_MS)
+		expect(axiosPost).toHaveBeenCalledTimes(1)
+		expect(warn.mock.calls[0][0]).toMatch(/\(401\).*after 1 attempt/)
 	})
 })

@@ -1,4 +1,8 @@
-import { resolveProductType, type LandingForProductType } from './product-type.resolver'
+import {
+	resolveProductType,
+	typedLandingPins,
+	type LandingForProductType
+} from './product-type.resolver'
 
 const CAT = '000000000000000000000003'
 const OTHER = '000000000000000000000009'
@@ -83,5 +87,75 @@ describe('resolveProductType', () => {
 		expect(
 			resolveProductType('Філамент', CAT, PLA_SILK, [landing('Усе', {})]).landing
 		).toBeNull()
+	})
+})
+
+describe('typed landings (filters_v2) — the pins the storefront lists by', () => {
+	const typed = (h1: string, filtersV2: unknown, order = 0): LandingForProductType => ({
+		category_id: CAT,
+		h1,
+		order,
+		pins: typedLandingPins(filtersV2)!
+	})
+	// The product's typed values: attributes_v2 plus its SKU's axis value.
+	const AVR = [
+		{ k: 'current', v: 63 },
+		{ k: 'phases', v: '3' },
+		{ k: 'brand_line', v: 'Pro' }
+	]
+	it('matches discrete values and numeric ranges against the typed values, not the rows', () => {
+		const landings = [
+			typed('АВР 63 А', { attributes: [{ key: 'current', min: 63, max: 63 }] }),
+			typed('Трифазні 40–80 А', {
+				attributes: [
+					{ key: 'phases', values: ['3'] },
+					{ key: 'current', min: 40, max: 80 }
+				]
+			}),
+			typed('АВР 16 А', { attributes: [{ key: 'current', max: 16 }] })
+		]
+		// The legacy rows say nothing about these keys: only the typed values decide.
+		expect(resolveProductType('АВР', CAT, [], landings, AVR).product_type).toBe(
+			'АВР > Трифазні 40–80 А'
+		)
+		expect(
+			resolveProductType('АВР', CAT, [], landings, [{ k: 'current', v: 16 }]).product_type
+		).toBe('АВР > АВР 16 А')
+		// A string «63» is not the number 63, as on the storefront.
+		expect(
+			resolveProductType('АВР', CAT, [], landings, [{ k: 'current', v: '63' }]).landing
+		).toBeNull()
+	})
+	it('uses the current pins, never stale legacy ones of a re-pinned landing', () => {
+		const repinned: LandingForProductType = {
+			...typed('Silk', { attributes: [{ key: 'finish', values: ['Silk'] }] }),
+			filters: { polymer: ['PETG'] }
+		}
+		const values = [
+			{ k: 'polymer', v: 'PLA' },
+			{ k: 'finish', v: 'Silk' }
+		]
+		expect(resolveProductType('Філамент', CAT, PLA_SILK, [repinned], values).product_type).toBe(
+			'Філамент > Silk'
+		)
+	})
+	it('reads only attribute pins; a landing pinning anything else never types', () => {
+		expect(
+			typedLandingPins({
+				attributes: [{ key: 'polymer', values: ['PLA'] }],
+				category_ids: [],
+				brand_ids: [],
+				color_families: []
+			})
+		).toEqual([{ key: 'polymer', values: ['PLA'] }])
+		for (const other of [
+			{ attributes: [{ key: 'polymer', values: ['PLA'] }], color_families: ['black'] },
+			{ attributes: [], price: { max: 500 } },
+			{ attributes: [{ key: 'polymer', values: ['PLA'] }], in_stock: true },
+			{ attributes: [] },
+			{ current: { min: 63, max: 63 } },
+			null
+		])
+			expect(typedLandingPins(other)).toBeNull()
 	})
 })

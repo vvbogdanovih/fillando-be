@@ -3,6 +3,7 @@ import { PartnerCatalogRepository } from 'src/database/mongoose/repositories/par
 import { PartnerCatalogService } from './partner-catalog.service'
 import { PartnerCatalogController } from './partner-catalog.controller'
 import { Module } from '@nestjs/common'
+import { CategoryPublicReadService } from '../category/category-public-read.service'
 import { MongooseModule } from '@nestjs/mongoose'
 import {
 	PartnerApiToken,
@@ -30,6 +31,8 @@ import {
 		])
 	],
 	providers: [
+		// Stateless, connection-only: registered here rather than importing CategoryModule.
+		CategoryPublicReadService,
 		PartnerCatalogRepository,
 		PartnerCatalogService,
 		PartnerApiRepository,

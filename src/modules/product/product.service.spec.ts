@@ -11,6 +11,7 @@ const buildService = () => {
 		findOne: jest.fn().mockResolvedValue(null),
 		findByProductId: jest.fn().mockResolvedValue([]),
 		findVariantWithProduct: jest.fn().mockResolvedValue(null),
+		findPriceSheet: jest.fn().mockResolvedValue({ items: [], total: 0 }),
 		update: jest.fn().mockResolvedValue(null),
 		delete: jest.fn().mockResolvedValue(null)
 	}
@@ -41,11 +42,11 @@ describe('ProductService — malformed ObjectId handling', () => {
 		['getVariants', (s: ProductService) => s.getVariants(BAD_ID)],
 		['getVariant (product id)', (s: ProductService) => s.getVariant(BAD_ID, GOOD_ID)],
 		['getVariant (variant id)', (s: ProductService) => s.getVariant(GOOD_ID, BAD_ID)],
-		['updateVariant', (s: ProductService) => s.updateVariant(GOOD_ID, BAD_ID, {} as never)],
+		['updateVariant', (s: ProductService) => s.updateVariant(GOOD_ID, BAD_ID, {})],
 		['deleteVariant', (s: ProductService) => s.deleteVariant(BAD_ID, GOOD_ID)],
 		[
 			'setVariantImages',
-			(s: ProductService) => s.setVariantImages(GOOD_ID, BAD_ID, { images: [] } as never)
+			(s: ProductService) => s.setVariantImages(GOOD_ID, BAD_ID, { images: [] })
 		]
 	])('%s → 404 without hitting the repositories', async (_name, call) => {
 		const { service, productRepository, productVariantRepository } = buildService()
@@ -74,8 +75,7 @@ describe('ProductService.getVariantBySlug — manufacturer', () => {
 		product: { id: 'p1', name: 'Sunlu PLA Silk', attributes },
 		siblings: [],
 		category_slug: 'filament',
-		category_name: 'Філамент',
-		spooled_counterpart: null
+		category_name: 'Філамент'
 	})
 
 	it('reads the brand from the «Виробник» attribute, never from the vendor', async () => {
@@ -131,8 +131,7 @@ describe('ProductService.getVariantBySlug — attribute units', () => {
 		product: { id: 'p1', name: 'Sunlu PLA Silk', attributes },
 		siblings: [],
 		category_slug: categorySlug,
-		category_name: 'Філамент',
-		spooled_counterpart: null
+		category_name: 'Філамент'
 	})
 
 	it('carries the unit the category defines for the attribute key', async () => {
@@ -336,5 +335,47 @@ describe('ProductService — promotions (TD-0012)', () => {
 		])
 		const result = await service.getVariants(PRODUCT_ID)
 		expect(result.map(v => v.supplier_price)).toEqual([360, null])
+	})
+})
+
+describe('ProductService.getVariantBySlug — no category presentation', () => {
+	it('never sends category display rules, even ones still stored (retired 2026-11-05)', async () => {
+		const { service, productVariantRepository, categoryRepository } = buildService()
+		productVariantRepository.findVariantWithProduct.mockResolvedValue({
+			category_slug: 'blankets',
+			product: { attributes: [] }
+		})
+		categoryRepository.findBySlug.mockResolvedValue({
+			presentation: { spec_order: ['power'], product_name_suffix: 'для дому' }
+		})
+		const result = await service.getVariantBySlug('blanket')
+		expect(result).not.toHaveProperty('category_presentation')
+	})
+})
+
+it('keeps non-colour variants in the price sheet without repurposing color', async () => {
+	const { service, productVariantRepository } = buildService()
+	productVariantRepository.findPriceSheet.mockResolvedValue({
+		items: [
+			{
+				id: GOOD_ID,
+				product_name: 'AVR',
+				slug: 'avr-63',
+				v_value: '63 А',
+				sku: 'AVR-63',
+				price: 2000,
+				stock: 2,
+				variant_type: { label: 'Струм' },
+				attributes: []
+			}
+		],
+		total: 1
+	})
+	const result = await service.getPriceSheet({})
+	expect(result.items[0]).toMatchObject({
+		variant_label: '63 А',
+		color: null,
+		price: 2000,
+		stock: 2
 	})
 })

@@ -15,11 +15,13 @@ import { AuthService } from './auth.service'
 import { PinoLogger } from 'nestjs-pino'
 import { AuthGuard } from '@nestjs/passport'
 import type { Request, Response } from 'express'
-import UAParser from 'ua-parser-js'
+import { UAParser } from 'ua-parser-js'
 import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard'
+import { clientIp } from 'src/common/guards/client-ip.util'
 import { OptionalJwtAuthGuard } from 'src/common/guards/optional-jwt-auth.guard'
+import type { GoogleUser } from 'src/common/strategies/google.strategy'
+import { JWTPayload } from 'src/common/types/jwt-payload'
 
 @Controller(ENDPOINTS.AUTH.BASE)
 @ApiTags(ENDPOINTS.AUTH.BASE)
@@ -52,7 +54,7 @@ export class AuthController {
 	private formatUserAgent(raw: string | undefined): string | undefined {
 		if (!raw) return undefined
 
-		const parsed = new (UAParser as any)(raw).getResult()
+		const parsed = new UAParser(raw).getResult()
 		const browser =
 			parsed.browser.name && parsed.browser.version
 				? `${parsed.browser.name} ${parsed.browser.version}`
@@ -66,11 +68,22 @@ export class AuthController {
 		return parts.length > 0 ? parts.join(' / ') : raw
 	}
 
+	/**
+	 * The refresh token from its cookie — only a string. cookie-parser decodes a `j:`-prefixed
+	 * cookie as JSON, and such an object used to reach the token hash and answer 500 on refresh
+	 * (cookies kept) and logout (P19); it is no token: refresh is a 401 that clears both cookies,
+	 * logout a plain logout.
+	 */
+	private refreshCookie(req: Request): string | undefined {
+		const token: unknown = (req.cookies as Record<string, unknown> | undefined)?.[
+			ENV.REFRESH_TOKEN_NAME
+		]
+		return typeof token === 'string' ? token : undefined
+	}
+
 	private getClientContext(req: Request): { ipAddress?: string; userAgent?: string } {
-		const forwarded = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-		const realIp = req.headers['x-real-ip'] as string | undefined
-		const rawIp = req.ip || req.socket?.remoteAddress
-		const ip = forwarded || realIp || rawIp
+		// The visitor, not a header the client wrote (P11): `X-Forwarded-For` and `X-Real-IP` were.
+		const ip = clientIp(req)
 		const normalized = ip === '::1' ? '127.0.0.1' : ip
 		const rawUserAgent = req.get('User-Agent')
 		const userAgent = this.formatUserAgent(rawUserAgent ?? undefined)
@@ -126,7 +139,11 @@ export class AuthController {
 	@UseGuards(AuthGuard('google'))
 	@ApiOperation(API_OPERATION.AUTH.GOOGLE_CALLBACK)
 	async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
-		const tokens = await this.authService.googleLogin(req.user, this.getClientContext(req))
+		// `GoogleStrategy.validate` put it there.
+		const tokens = await this.authService.googleLogin(
+			req.user as GoogleUser,
+			this.getClientContext(req)
+		)
 
 		this.setJwtCookie(res, tokens.access_token)
 		this.setRefreshCookie(res, tokens.refresh_token)
@@ -137,7 +154,7 @@ export class AuthController {
 	@Post(ENDPOINTS.AUTH.LOGOUT)
 	@ApiOperation(API_OPERATION.AUTH.LOGOUT)
 	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		const refreshToken = req.cookies?.[ENV.REFRESH_TOKEN_NAME]
+		const refreshToken = this.refreshCookie(req)
 		await this.authService.logout(refreshToken)
 
 		res.clearCookie(ENV.ACCSESS_TOKEN_NAME)
@@ -151,7 +168,7 @@ export class AuthController {
 	@Throttle({ default: { limit: 30, ttl: 60_000 } })
 	@ApiOperation(API_OPERATION.AUTH.REFRESH)
 	async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		const refreshToken = req.cookies?.[ENV.REFRESH_TOKEN_NAME]
+		const refreshToken = this.refreshCookie(req)
 		let tokens: { access_token: string; refresh_token: string }
 		try {
 			tokens = await this.authService.refresh(refreshToken, this.getClientContext(req))
@@ -180,7 +197,8 @@ export class AuthController {
 		if (!req.user) {
 			return { message: 'Not authenticated', user: null }
 		}
-		const user = await this.authService.getMe(req.user)
+		// `JwtStrategy.validate` put it there.
+		const user = await this.authService.getMe(req.user as JWTPayload)
 		return { message: 'Me successful', user: user }
 	}
 }

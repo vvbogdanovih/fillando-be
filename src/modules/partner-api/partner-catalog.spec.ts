@@ -110,10 +110,10 @@ describe('Partner catalogue HTTP', () => {
 		expect(
 			(await postSkus({ category_id: categoryId, cursor: body.next_cursor })).body
 		).toEqual({ items: [], next_cursor: null })
-		expect(repository.skus).toHaveBeenLastCalledWith(categoryId, 'A', 100)
+		expect(repository.skus).toHaveBeenLastCalledWith(categoryId, 'A', 100, undefined)
 		expect((await postSkus({ cursor: body.next_cursor })).status).toBe(400)
 		expect((await postSkus({})).status).toBe(200)
-		expect(repository.skus).toHaveBeenLastCalledWith(undefined, undefined, 100)
+		expect(repository.skus).toHaveBeenLastCalledWith(undefined, undefined, 100, undefined)
 	})
 	it.each([
 		{ limit: 0 },
@@ -189,7 +189,7 @@ describe('Partner catalogue HTTP', () => {
 			not_found: ['missing']
 		})
 		expect(repository.lookup).toHaveBeenCalledTimes(1)
-		expect(repository.lookup).toHaveBeenCalledWith(['missing', 'A'])
+		expect(repository.lookup).toHaveBeenCalledWith(['missing', 'A'], undefined)
 	})
 	it.each([0, 599.5])('preserves retail price %s in UAH', async price => {
 		repository.lookup.mockResolvedValue([{ ...row, price }])

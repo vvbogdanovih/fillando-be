@@ -198,3 +198,57 @@ active-варіант, наявні товар і категорія, катег
 регулярною ціною.
 Дробова частина зберігається; це довідкова ціна без фіксації на період.
 Індивідуальні дилерські знижки не застосовуються.
+
+## Local Plan-0010 catalog read barrier
+
+All five public catalog/availability handlers now use the catalog read barrier,
+including read-only POST requests. Existing token/IP/token-quota guards execute
+first; token administration endpoints are unaffected. A busy/changed catalog or
+incompatible v2 data returns JSON 503 with `details.code`, `Retry-After: 5` and
+`Cache-Control: no-store`. Successful payloads retain their existing contract.
+
+This brackets one HTTP request, not a complete paginated export. Revision-bound
+partner cursors and v2 definitions/visibility adapters remain pending. Direct
+service calls do not inherit the HTTP interceptor. After a transition, restart
+pagination; this version does not add automatic revision negotiation to clients.
+
+## Adapted reads across the catalogue transition (local Plan-0010 B11, 2026-10-28)
+
+The five handlers are now adapted reads (`@CatalogAdaptedRead`): the maintenance/revision/epoch
+barrier above stays, but v2 data no longer answers `CATALOG_READ_UPGRADE_REQUIRED`. What a partner
+sees is decided by the public category projection (`CategoryPublicReadService`) — an active product
+category whose every ancestor is active:
+
+| Read | Rule |
+|---|---|
+| `POST /categories` | Visible **product** categories only, still flat (`parent_id: null`); a group holds no SKUs and is not listed. Same `(order, _id)` order, counts of exportable active SKUs. |
+| `POST /products/skus` | SKUs of visible categories; a group, hidden or unknown `category_id` is 404. |
+| `POST /products/lookup` | SKUs of visible categories; a draft/hidden SKU is in `not_found`. |
+| `POST /products/availability`, `GET /products/:sku/availability` | SKUs of visible categories only (hidden → `not_found` / 404). |
+
+A v2 product answers in the frozen v1 card shape through `legacyShapeOf`
+(`modules/product/typed-legacy-shape.ts`, shared with the PDF and the price sheet):
+
+- `attributes` — every characteristic in its stored order, the definition's label, the value as text
+  (enum option label, «Так»/«Ні», a number as written, e.g. `"1.75"`). Nothing is hidden: the export
+  never hid «Матеріал»/«Виробник», and `visible_in_specs` decides only the product page's table (one
+  visibility switch, owner 2026-11-05 — there is no «internal note» characteristic). A linked active
+  brand entity comes first as `{ key: 'brand', label: 'Виробник' }`.
+- `variant` — a colour axis keeps the v1 identity: key `kolir` (derived from its label, the v2 key
+  `color` is internal), value = dictionary `name_en` from `v_value` («Black»). Any other axis keeps
+  its own key and formatted value («63 А»); it is never sent as a colour.
+
+- **«Колір» row of a colour-axis SKU** (owner decision 2026-10-28, `withAxisColourRow`): the
+  legacy cards carried a product-level «Колір» characteristic — one stale copy for every SKU of
+  the product. The migration does not carry that copy over; the partner card instead lists the
+  SKU's **own** dictionary colour (`name_uk`) as `{ key: 'kolir', label: 'Колір' }`, at the place the
+  legacy rollback image had it (after the same preceding characteristic; last for a product created
+  in the new admin). Any stored row with that key is replaced. The PDF and the price sheet never
+  printed this row and are unaffected.
+
+Rehearsal on the 27.10 production dump (all 301 filament SKUs, before vs after the migration):
+categories, SKU enumeration and availability byte-identical; 31 cards identical (8 without an axis,
+23 whose legacy copy already named the SKU's own colour); 270 cards differ only by the value of the
+«Колір» row — keys, labels, order and `variant` unchanged, and in every one the new value is the
+colour in the SKU's own name (legacy: 267 named a sibling's colour, 3 an English/short spelling such
+as «Candy», «TR-1»). The format for the two active partner integrations does not change.

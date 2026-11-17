@@ -3,10 +3,9 @@ import {
 	DIAMETER_PATTERNS,
 	FILAMENT_WEIGHT_PATTERNS,
 	MANUFACTURER_PATTERNS,
-	MATERIAL_PATTERNS,
+	materialOf,
 	matchesAttrLabel,
 	pickAttr,
-	pickAttrEntry,
 	pickColor
 } from 'src/modules/product/product-attribute.helpers'
 import { toPublicAttributes } from 'src/modules/product/product-public.mappers'
@@ -157,61 +156,6 @@ const formatSpec = (attribute: FeedAttribute | null | undefined): string | null 
 	return unit ? `${value} ${unit}` : value
 }
 
-/** Compared, never printed: «1,75 мм» and «1.75 мм» are the same spec written two ways. */
-const comparable = (value: string) => value.toLowerCase().replace(/,/g, '.').replace(/\s+/g, ' ')
-
-/**
- * The product name without the brand it starts with, so the title says «Kingroon» once.
- *
- * A name that is nothing but the brand keeps it — «Філамент Kingroon 1.75 мм» still describes
- * something, «Філамент 1.75 мм» does not.
- */
-export const stripBrandPrefix = (productName: string, brand: string | null): string => {
-	const name = productName.trim()
-	const prefix = brand?.trim()
-	if (!prefix || !comparable(name).startsWith(comparable(prefix))) return name
-	return name.slice(prefix.length).trim() || name
-}
-
-/**
- * `title` — «Філамент PLA Silk Kingroon 1.75 мм 1 кг — Золотий».
- *
- * Shopping matches the query against this string, so the words shoppers type have to be in it:
- * «філамент», the diameter, the weight, the Ukrainian colour. The stored variant name carries
- * none of them — it reads «Kingroon PLA Silk — Золотий (Gold)» and spends 43 of the 150
- * characters Google allows (Google Ads plan, 21.09.2026).
- *
- * The type phrase is the product name minus its brand, not the `polymer` attribute: the name is
- * the only place «Silk», «High Speed», «(еко-пакування)» or «для AMS» is written, and that is
- * both what distinguishes two otherwise identical items and what people search for.
- *
- * Every part is skipped when the phrase already contains it, so a product named «PETG (CoPET)
- * 3 кг» is not titled «… 3 кг Kingroon 1.75 мм 3 кг».
- */
-export const buildTitle = (input: {
-	categoryName: string
-	productName: string
-	brand: string | null
-	color: string | null
-	attributes: FeedAttribute[]
-}): string => {
-	const phrase = stripBrandPrefix(input.productName, input.brand)
-	const said = comparable(phrase)
-	const parts: string[] = []
-	// Anything the name already says is not repeated — «Філамент PETG», never «Філамент Філамент PETG».
-	const append = (part: string | null | undefined) => {
-		const value = part?.trim()
-		if (value && !said.includes(comparable(value))) parts.push(value)
-	}
-	append(input.categoryName)
-	parts.push(phrase)
-	append(input.brand)
-	append(formatSpec(pickAttrEntry(input.attributes, DIAMETER_PATTERNS)))
-	append(formatSpec(pickAttrEntry(input.attributes, FILAMENT_WEIGHT_PATTERNS)))
-	const title = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
-	return input.color ? `${title} — ${input.color.trim()}` : title
-}
-
 /**
  * The dimensions a `product_highlight` bullet is worth spending on, in the order Google shows
  * them. Brand, colour and the legacy «Матеріал» are left out: the first two have fields of their
@@ -263,6 +207,12 @@ export interface BuildItemContext {
 	/** `https://fillando.com` — the storefront origin the `link`s point at. */
 	frontendUrl: string
 	productType: string
+	/**
+	 * The product has more than one active variant: the SKU is sent with `g:item_group_id`. A
+	 * product without variation is not a group (TD-0013 SEO matrix §4, D04) — counted over active
+	 * variants, so the ID comes back by itself once a second colour is added.
+	 */
+	inGroup: boolean
 	/** Units of this variant sold in the trailing window; omitted → 0 → `standard`. */
 	unitsSold?: number
 	/** The generation instant — decides which promotions are on (TD-0012); omitted → now. */
@@ -317,9 +267,15 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 		Array.isArray(row.product.attributes) ? row.product.attributes : [],
 		row.category.required_attributes
 	)
-	// The «Виробник» attribute. Never the vendor — that is the supplier — and never the shop
-	// name: a brand that is not the maker is a typical item-level disapproval without a GTIN.
-	const brand = pickAttr(attributes, MANUFACTURER_PATTERNS)
+	// A v2 row (the feed adapter fills `semantic`) names its brand explicitly: the brand entity or
+	// the characteristic marked `brand` (owner, 2026-11-05). A v1 row keeps the «Виробник» label
+	// match until the last v1 category is migrated. Never the vendor — that is the supplier — and
+	// never the shop name: a brand that is not the maker is a typical item-level disapproval
+	// without a GTIN, so a SKU without a brand is left out and reported, not given one.
+	const typed = row.semantic !== undefined
+	const brand = typed
+		? (row.semantic?.brand ?? null)
+		: pickAttr(attributes, MANUFACTURER_PATTERNS)
 	if (!brand) return { ok: false, reason: 'missing_brand' }
 
 	const warnings: FeedWarningCode[] = []
@@ -349,23 +305,18 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	const color =
 		row.color?.name_uk ??
 		pickColor(row.v_value, attributes, row.product.variant_type ?? undefined)
-	const polymer = attributes.find(a => a?.k === 'polymer')
-	const material = polymer ? String(polymer.v) : pickAttr(attributes, MATERIAL_PATTERNS)
+	// v2: only the characteristic marked `material` (B10), shared with the product page's
+	// structured data (F09). v1 keeps its legacy rule until the last v1 category is migrated.
+	const material = typed ? (row.semantic?.material ?? null) : materialOf(null, attributes)
+	const size = row.semantic?.size ?? null
 
-	const title = truncate(
-		buildTitle({
-			categoryName: row.category.name,
-			productName: row.product.name,
-			brand,
-			color,
-			attributes
-		}),
-		TITLE_MAX
-	)
+	// The SKU's own name, as the site prints it — product name, then the variation (owner,
+	// 2026-11-05). Nothing from the category or the characteristics is composed into it.
+	const title = truncate(row.name, TITLE_MAX)
 
 	const lines: string[] = [
 		tag('g:id', row.sku),
-		tag('g:item_group_id', row.product_id),
+		...(ctx.inGroup ? [tag('g:item_group_id', row.product_id)] : []),
 		tag('title', title),
 		`<description>${cdata(description || title)}</description>`,
 		tag('link', `${ctx.frontendUrl}/products/${row.slug}`),
@@ -394,8 +345,12 @@ export const buildItem = (row: FeedRawRow, ctx: BuildItemContext): BuiltItem => 
 	if (googleCategory) lines.push(tag('g:google_product_category', googleCategory))
 	if (color) lines.push(tag('g:color', color))
 	if (material) lines.push(tag('g:material', material))
-	for (const highlight of productHighlights(attributes)) {
-		lines.push(tag('g:product_highlight', highlight))
+	if (size) lines.push(tag('g:size', size))
+	for (const highlight of (row.highlights ?? productHighlights(attributes)).slice(
+		0,
+		HIGHLIGHTS_MAX
+	)) {
+		lines.push(tag('g:product_highlight', truncate(highlight, HIGHLIGHT_MAX)))
 	}
 	if (row.weight_g !== null && row.weight_g !== undefined) {
 		lines.push(
@@ -426,8 +381,11 @@ export interface BuildFeedContext {
 	generatedAt: Date
 }
 
-/** The RSS 2.0 envelope Google, Bing and Meta all read. */
-export const buildFeedXml = (items: string[], ctx: BuildFeedContext): string =>
+/**
+ * The RSS 2.0 envelope up to the first item, newline included. A streamed feed is
+ * `feedXmlHead + (item + '\n')… + FEED_XML_TAIL` — byte for byte {@link buildFeedXml}.
+ */
+export const feedXmlHead = (ctx: BuildFeedContext): string =>
 	[
 		'<?xml version="1.0" encoding="UTF-8"?>',
 		`<rss version="2.0" xmlns:g="${GOOGLE_NAMESPACE}">`,
@@ -436,8 +394,12 @@ export const buildFeedXml = (items: string[], ctx: BuildFeedContext): string =>
 		tag('link', ctx.link),
 		tag('description', ctx.description),
 		tag('lastBuildDate', ctx.generatedAt.toUTCString()),
-		...items,
-		'</channel>',
-		'</rss>',
 		''
 	].join('\n')
+
+/** What follows the last item. */
+export const FEED_XML_TAIL = '</channel>\n</rss>\n'
+
+/** The RSS 2.0 envelope Google, Bing and Meta all read. */
+export const buildFeedXml = (items: string[], ctx: BuildFeedContext): string =>
+	feedXmlHead(ctx) + items.map(item => `${item}\n`).join('') + FEED_XML_TAIL

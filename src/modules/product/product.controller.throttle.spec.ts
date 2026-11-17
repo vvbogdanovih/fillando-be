@@ -3,9 +3,9 @@ import { ThrottlerModule } from '@nestjs/throttler'
 import { ENV } from 'src/common/constants'
 import { INTERNAL_TOKEN_HEADER, isInternalRequest } from 'src/common/guards/internal-request.util'
 import { createRbacApp, send } from 'src/common/testing/rbac-harness'
-import { PriceListService } from './price-list/price-list.service'
-import { ProductController } from './product.controller'
-import { ProductService } from './product.service'
+import { PublicCatalogController } from './public-catalog.controller'
+import { PublicCatalogService } from './public-catalog.service'
+import { PublicProductService } from './public-product.service'
 
 /**
  * `GET /products/catalog` is the most expensive public read — three `$facet` aggregations per
@@ -18,10 +18,9 @@ const LIMIT = 120
 
 const CATALOG = `/products/catalog?category_id=${'0'.repeat(24)}`
 
-describe('ProductController — rate limiting on the catalogue', () => {
+describe('PublicCatalogController — rate limiting on the catalogue', () => {
 	let app: INestApplication
-	const productService = { getCatalog: jest.fn().mockResolvedValue({ items: [] }) }
-	const priceListService = { generatePdf: jest.fn() }
+	const productService = { legacy: jest.fn().mockResolvedValue({ items: [] }) }
 
 	beforeEach(async () => {
 		app = await createRbacApp({
@@ -31,10 +30,10 @@ describe('ProductController — rate limiting on the catalogue', () => {
 					skipIf: isInternalRequest
 				})
 			],
-			controllers: [ProductController],
+			controllers: [PublicCatalogController],
 			providers: [
-				{ provide: ProductService, useValue: productService },
-				{ provide: PriceListService, useValue: priceListService }
+				{ provide: PublicCatalogService, useValue: productService },
+				{ provide: PublicProductService, useValue: {} }
 			]
 		})
 	})
@@ -53,7 +52,23 @@ describe('ProductController — rate limiting on the catalogue', () => {
 
 		expect(blocked.status).toBe(429)
 		expect(blocked.headers['retry-after']).toBeDefined()
-		expect(productService.getCatalog).toHaveBeenCalledTimes(LIMIT)
+		expect(productService.legacy).toHaveBeenCalledTimes(LIMIT)
+	})
+
+	// The typed catalogue, its navigation counts (Plan-0010 B05/D06.5) and its product strip share
+	// the same limit.
+	it.each([
+		['/products/catalog/v2?limit=1', 'read'],
+		['/products/catalog/v2/category-counts', 'categoryCounts'],
+		['/products/catalog/v2/strip?limit=1', 'strip']
+	] as const)('limits %s to the same 120 a minute', async (path, handler) => {
+		const service = productService as unknown as Record<string, jest.Mock>
+		service[handler] = jest.fn().mockResolvedValue({})
+		for (let i = 0; i < LIMIT; i++) expect((await send(app, 'get', path)).status).toBe(200)
+		const blocked = await send(app, 'get', path)
+		expect(blocked.status).toBe(429)
+		expect(blocked.headers['retry-after']).toBeDefined()
+		expect(service[handler]).toHaveBeenCalledTimes(LIMIT)
 	})
 
 	it('never throttles requests carrying the internal token (our own SSR)', async () => {

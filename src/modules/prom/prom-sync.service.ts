@@ -1,4 +1,6 @@
 import { Injectable, Logger, MessageEvent } from '@nestjs/common'
+import { InjectConnection } from '@nestjs/mongoose'
+import { Connection } from 'mongoose'
 import { Observable, Subject } from 'rxjs'
 import { Optional } from '@nestjs/common'
 import { ProductVariantRepository } from 'src/database/mongoose/repositories/product-variant.repository'
@@ -32,6 +34,11 @@ export interface SyncSummary {
 	/** Price writes rejected by the undiscounted-jump guard. */
 	priceSkipped: number
 	skipped: number
+	/**
+	 * Variants not written because a structural catalogue operation (a journal edit, migration
+	 * or recovery, TD-0013) held the catalogue at that moment; the next sync writes them.
+	 */
+	deferred: number
 	errors: number
 }
 
@@ -48,8 +55,26 @@ export class PromSyncService {
 		 * saves a product shares one throttle window instead of opening a second one.
 		 */
 		@Optional()
-		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation
+		private readonly revalidation: StorefrontRevalidationService = storefrontRevalidation,
+		/** Reads the catalogue control phase; absent in unit specs, where nothing is deferred. */
+		@Optional() @InjectConnection() private readonly connection?: Connection
 	) {}
+
+	/**
+	 * Whether a structural catalogue operation holds the catalogue (`catalog_control.phase` is not
+	 * `idle`). Its journal checks the before-image of every field it writes, price and stock
+	 * included when an admin edits them; a Prom write landing inside that window would leave the
+	 * operation unverifiable and the catalogue closed until recovery. So the sync stays out of it
+	 * and catches up on the next run. Without control (pre-bootstrap) nothing changes.
+	 */
+	private async catalogBusy(): Promise<boolean> {
+		const db = this.connection?.db
+		if (!db) return false
+		const control = await db
+			.collection<{ _id: string; phase?: string }>('catalog_control')
+			.findOne({ _id: 'catalog' }, { projection: { phase: 1 }, readPreference: 'primary' })
+		return control !== null && control.phase !== 'idle'
+	}
 
 	/** True while a sync (manual or scheduled) is in progress. */
 	get isRunning(): boolean {
@@ -65,8 +90,12 @@ export class PromSyncService {
 				subject.next({ data: { type: 'done', ...summary } })
 				subject.complete()
 			})
-			.catch(err => {
-				subject.next({ data: { type: 'error', message: err.message } })
+			.catch((err: unknown) => {
+				const message =
+					typeof err === 'object' && err !== null && 'message' in err
+						? err.message
+						: undefined
+				subject.next({ data: { type: 'error', message } })
 				subject.complete()
 			})
 
@@ -93,6 +122,7 @@ export class PromSyncService {
 				pricesUpdated: 0,
 				priceSkipped: 0,
 				skipped: 0,
+				deferred: 0,
 				errors: 0
 			}
 
@@ -109,6 +139,9 @@ export class PromSyncService {
 
 					if (!product) {
 						summary.skipped++
+					} else if (await this.catalogBusy()) {
+						// Checked last, right before the write, to keep the window minimal.
+						summary.deferred++
 					} else {
 						const { patch, priceRejected } = this.buildPatch(product, v)
 						await this.variantRepo.update({ _id: id }, patch)

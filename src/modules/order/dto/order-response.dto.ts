@@ -144,6 +144,14 @@ class OrderResponseItemDto {
 
 	@ApiProperty({ example: 'https://cdn.example.com/product/image.webp', nullable: true })
 	image: string | null
+
+	@ApiPropertyOptional({
+		example: 12,
+		nullable: true,
+		description:
+			'Admin responses only: stock of this SKU in the catalogue right now; null when the SKU is gone'
+	})
+	stock_now?: number | null
 }
 
 class OrderResponseAttributionDto {

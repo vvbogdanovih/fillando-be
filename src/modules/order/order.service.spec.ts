@@ -2522,9 +2522,13 @@ describe('OrderService.update — items (replacing a line, FRD §9.2)', () => {
 			]
 		})
 
-		// Only the new line is looked up — the kept one is not re-validated or re-priced.
-		expect(findByIds).toHaveBeenCalledTimes(1)
+		// Only the new line is looked up — the kept one is not re-validated or re-priced. The
+		// second read comes after the write: today's stock for the admin response.
+		expect(findByIds).toHaveBeenCalledTimes(2)
 		expect(findByIds.mock.calls[0][0].map(String)).toEqual([NEW_ID])
+		expect(findByIds.mock.invocationCallOrder[1]).toBeGreaterThan(
+			update.mock.invocationCallOrder[0]
+		)
 
 		const { $set, $push } = writeOf(update)
 		const items = $set.items as Array<Record<string, unknown>>
@@ -2563,11 +2567,28 @@ describe('OrderService.update — items (replacing a line, FRD §9.2)', () => {
 
 		await service.update(ORDER_ID, { items: [{ variant_id: KEPT_ID, quantity: 1 }] })
 
-		expect(findByIds).not.toHaveBeenCalled()
+		// Nothing is read to price the edit; the one read follows the write — the response's stock.
+		expect(findByIds).toHaveBeenCalledTimes(1)
+		expect(findByIds.mock.invocationCallOrder[0]).toBeGreaterThan(
+			update.mock.invocationCallOrder[0]
+		)
 		const { $set, $push } = writeOf(update)
 		expect($set.subtotal_price).toBe(500)
 		expect($set.total_price).toBe(500)
 		expect($push?.status_history).toMatchObject({ note: 'PLA чорний: 2 → 1 шт.' })
+	})
+
+	it("answers the admin with today's stock of each line, null for a SKU gone from the catalogue", async () => {
+		const { service } = buildService(
+			unpaid({
+				items: [storedLine(), storedLine({ variant_id: new Types.ObjectId(GONE_ID) })]
+			}),
+			[catalogueVariant(KEPT_ID, { stock: 7 })]
+		)
+
+		const result = await service.findById(ORDER_ID)
+
+		expect(result.items.map(item => item.stock_now)).toEqual([7, null])
 	})
 
 	it('checks the stock when a kept line grows', async () => {

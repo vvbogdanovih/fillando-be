@@ -310,6 +310,11 @@ NEW ─► PROCESSING ─► CONFIRMED ─ TTN ─► SHIPPED ─ НП «отр�
   the planned write carries a derived order status, so a callback racing the tracker must miss
   rather than stamp `COMPLETED` over `RETURNING`. A miss re-reads once and starts over from the
   fresh state; a second miss is logged and left to the next callback.
+- **Admin order responses** (`GET /orders/:id` and every admin `PATCH` that answers the order)
+  carry `items[].stock_now` — the SKU's stock in the catalogue at the moment of the response,
+  `null` when the SKU no longer exists. An order reserves nothing, so this is how the admin sees
+  whether a line confirmed days later can still be fulfilled. Read live, never stored on the
+  order; buyer-facing responses do not carry it.
 - **`GET /orders/:id`** also answers `ships_on_ttn` — whether `PATCH /orders/:id/ttn` will set
   `SHIPPED` — so the admin UI's hint comes from the same rule as the write.
 - **A pickup order is not a fact about the parcel.** In practice a «самовивіз» order (a wholesale

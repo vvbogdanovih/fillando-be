@@ -125,8 +125,16 @@ type OrderLineResponse = OrderItem & {
 /** The base order shape every audience's response is cut from (`mapOrderResponse`). */
 type OrderResponse = Omit<StoredOrder, 'items'> & { items: OrderLineResponse[] }
 
+/**
+ * An admin order line: the snapshot plus what the catalogue holds of that SKU right now. An order
+ * does not reserve stock, so days can pass between checkout and confirmation — the admin reads
+ * here whether the line can still be fulfilled. `null` — the SKU is no longer in the catalogue.
+ */
+type AdminOrderLineResponse = OrderLineResponse & { stock_now: number | null }
+
 /** The admin order shape: the base shape plus the two TD-0011 fields derived per response. */
-type AdminOrderResponse = OrderResponse & {
+type AdminOrderResponse = Omit<OrderResponse, 'items'> & {
+	items: AdminOrderLineResponse[]
 	allowed_status_transitions: OrderStatus[]
 	ships_on_ttn: boolean
 }
@@ -488,13 +496,32 @@ export class OrderService {
 	 * Admin order detail: the base shape plus the status actions the admin may take from here
 	 * (TD-0011). The rule lives here, so the admin UI renders buttons without mirroring it.
 	 */
-	private mapAdminOrderResponse(order: OrderDocument): AdminOrderResponse {
+	private async mapAdminOrderResponse(order: OrderDocument): Promise<AdminOrderResponse> {
 		const mapped = this.mapOrderResponse(order)
+		const stock = await this.currentStock(mapped.items)
 		return {
 			...mapped,
+			items: mapped.items.map(item => ({
+				...item,
+				stock_now: stock.get(String(item.variant_id)) ?? null
+			})),
 			allowed_status_transitions: adminStatusTransitions(mapped),
 			ships_on_ttn: shipsOnTtn(mapped)
 		}
+	}
+
+	/** Today's stock of the ordered SKUs, by variant id; a SKU gone from the catalogue is absent. */
+	private async currentStock(items: readonly OrderItem[]): Promise<Map<string, number>> {
+		const ids = [
+			...new Set(
+				items.map(item => String(item.variant_id)).filter(id => Types.ObjectId.isValid(id))
+			)
+		]
+		if (ids.length === 0) return new Map()
+		const variants = (await this.productVariantRepository.findByIds(
+			ids.map(id => new Types.ObjectId(id))
+		)) as unknown as Array<Pick<OrderableVariant, '_id' | 'stock'>>
+		return new Map(variants.map(variant => [variant._id.toString(), variant.stock]))
 	}
 
 	/** An admin list row: the base shape without the history, which only the detail shows. */

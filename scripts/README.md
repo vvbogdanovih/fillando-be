@@ -5,6 +5,7 @@
 | Скрипт | Призначення | Запуск |
 | --- | --- | --- |
 | `export-spec.ts` | Експорт контракту API після зміни DTO/endpoint | `yarn spec:export` |
+| `db-pull-prod.cjs` | Дамп проду в `dumps/` (gitignored) і заміна ним локальної бази; `--dump-only` — лише дамп, `--from <archive>` — відновлення збереженого архіву. Пише лише в loopback-ціль, непорожню базу спершу зберігає в `dumps/local-*` | `yarn db:pull-prod` · [README](../README.md#production-dump--local-database) · тести: `node --test scripts/db-pull-prod.test.cjs` |
 | `catalog-recover.cjs` | Відновлення перерваної операції нової адмінки (каталог закритий, читання й checkout — 503): `inspect` / `resume` / `rollback` за журналом | Розділ «Відновлення перерваної операції» нижче |
 | `local-catalog-workspace.cjs` | Лише локально: робоча v2-копія для стенда й вхід адміна (пароль у `.local/`, gitignored) | meta `docs/runbooks/local-mongodb.md` |
 | `catalog-audit.cjs` | Read-only інвентаризація TD-0013: ключі, зв’язки, дублікати та кандидати URL | `node scripts/catalog-audit.cjs --local` або `--input snapshot.json` |

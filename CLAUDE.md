@@ -32,6 +32,9 @@ Integration specs connect via `test/integration-db.ts` (`connectTestDb` / `dropT
 and `DATABASE_URL=mongodb://127.0.0.1:27019/fillando`. Data persists in `.local/mongo-8/`
 (bind mount, excluded from Git and Docker build context). `docker-compose.test.yml`
 remains separate and disposable. See README for local setup.
+`yarn db:pull-prod` (`scripts/db-pull-prod.cjs`) dumps production into `dumps/` (gitignored,
+personal data — never commit or share) and replaces the local database with it; it refuses any
+non-loopback target. `--dump-only` / `--from <archive>` for an emergency copy or a kept archive.
 
 To run a single test file: `yarn test -- path/to/file.spec.ts`
 

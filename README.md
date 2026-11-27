@@ -55,6 +55,25 @@ yarn db:logs  # Follow MongoDB logs
 yarn db:down  # Stop; preserve local data
 ```
 
+### Production dump → local database
+
+```bash
+yarn db:pull-prod                     # dump production into dumps/, then replace the local database
+yarn db:pull-prod --dump-only         # only save a dump into dumps/ (emergency copy)
+yarn db:pull-prod --from dumps/<file> # restore a kept archive into the local database
+```
+
+`scripts/db-pull-prod.cjs` reads production (`PROD_DATABASE_URL`, else `DATABASE_URL` in
+`.env.prod`) with `mongodump` and writes only to the local `DATABASE_URL` — a non-loopback target
+is refused. Before replacing a non-empty local database it saves it as
+`dumps/local-<db>-<time>.archive.gz`. It asks for confirmation (`--yes` skips it) and needs
+`mongodump`/`mongorestore` on the host: `brew install mongodb/brew/mongodb-database-tools`.
+
+**`dumps/`** is excluded from Git and the Docker build context and nothing in it is ever deleted
+automatically. The archives contain customers' personal data and password hashes: keep them on
+this machine, do not share or sync them (iCloud Desktop, chats), remove old ones by hand.
+Restoring **production** from an archive is not automated — see the release runbook in the meta repository.
+
 ---
 
 ## Environment Variables

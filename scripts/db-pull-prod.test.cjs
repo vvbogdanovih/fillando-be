@@ -12,14 +12,15 @@ const {
 	PlanError
 } = require('./db-pull-prod.cjs')
 
-const PROD = 'mongodb+srv://user:p%40ss@cluster0.abc.mongodb.net/fillando-prod?appName=Cluster0'
+// Fake fixture: `.invalid` is a reserved TLD, not a real Atlas host (keeps secret scanners quiet).
+const PROD = 'mongodb+srv://user:p%40ss@cluster0.example.invalid/fillando-prod?appName=Cluster0'
 const plan = (argv, { env = {}, envText = null, envProdText = `DATABASE_URL=${PROD}\n` } = {}) =>
 	resolvePlan({ args: parseArgs(argv), env, envText, envProdText, parseDotenv: parse })
 
 test('parseUri strips credentials and reads the database', () => {
 	assert.deepEqual(parseUri(PROD), {
 		srv: true,
-		hosts: ['cluster0.abc.mongodb.net'],
+		hosts: ['cluster0.example.invalid'],
 		database: 'fillando-prod'
 	})
 	assert.deepEqual(parseUri('mongodb://a:1,B:2').hosts, ['a:1', 'b:2'])
